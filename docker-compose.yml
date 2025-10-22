@@ -44,7 +44,7 @@ services:
       - gasolineras
 
   frontend:
-    build: ./frontend-react
+    build: ./frontend-client
     ports: ["3000:80"]
     depends_on: ["gateway"]
 
