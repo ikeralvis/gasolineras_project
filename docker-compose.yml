@@ -1,0 +1,53 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: mongo
+    ports: ["27017:27017"]
+    volumes:
+      - mongo_data:/data/db
+
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: usuariosdb
+    ports: ["5432:5432"]
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      
+  gasolineras:
+    build: ./gasolineras-service
+    ports:
+      - "3002:3002"
+    environment:
+      - MONGO_URL=mongodb://mongo:27017/gasolinerasdb
+    depends_on:
+      - mongo
+
+
+  usuarios:
+    build: ./usuarios-service
+    ports:
+      - "3001:3001"
+    environment:
+      - POSTGRES_URL=postgresql://user:password@postgres:5432/usuariosdb
+    depends_on:
+      - postgres
+
+  gateway:
+    build: ./gateway-hono
+    ports: ["8080:8080"]
+    depends_on:
+      - usuarios
+      - gasolineras
+
+  frontend:
+    build: ./frontend-react
+    ports: ["3000:80"]
+    depends_on: ["gateway"]
+
+volumes:
+  mongo_data:
+  postgres_data:
