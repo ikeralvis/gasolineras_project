@@ -38,45 +38,59 @@ const favSchemas = {
  */
 export async function favoritesRoutes(fastify) {
 
-  // POST /favoritos
-  fastify.post('/favoritos', { schema: favSchemas.addFavorite }, async (request, reply) => {
-    // User ID viene del token verificado por el hook en authRoutes
-    const user_id = request.user.id;
-    const { ideess } = request.body;
+    // Función de verificación reutilizable (debe estar en cada archivo de rutas para ser accesible)
+    const verifyJwt = async (request, reply) => {
+        try {
+            await request.jwtVerify();
+        } catch (err) {
+            return reply.code(401).send({ error: 'Unauthorized' });
+        }
+    };
 
-    try {
-      // Usar ON CONFLICT DO NOTHING para evitar duplicados y errores
-      const query = `
+    // POST /favoritos (PROTEGIDA)
+    fastify.post('/favoritos', {
+        schema: favSchemas.addFavorite,
+        onRequest: [verifyJwt] // <--- APLICAMOS HOOK AQUÍ
+    }, async (request, reply) => {
+        const user_id = request.user.id;
+        const { ideess } = request.body;
+
+        try {
+            // Usar ON CONFLICT DO NOTHING para evitar duplicados y errores
+            const query = `
         INSERT INTO user_favorites (user_id, ideess)
         VALUES ($1, $2)
         ON CONFLICT (user_id, ideess) DO NOTHING
         RETURNING ideess;
       `;
-      const result = await fastify.pg.query(query, [user_id, ideess]);
+            const result = await fastify.pg.query(query, [user_id, ideess]);
 
-      if (result.rowCount === 0) {
-         reply.code(200).send({ message: 'Favorito ya existe.', ideess });
-      } else {
-         reply.code(201).send({ message: 'Favorito añadido.', ideess: result.rows[0].ideess });
-      }
+            if (result.rowCount === 0) {
+                reply.code(200).send({ message: 'Favorito ya existe.', ideess });
+            } else {
+                reply.code(201).send({ message: 'Favorito añadido.', ideess: result.rows[0].ideess });
+            }
 
-    } catch (error) {
-      fastify.log.error(error);
-      reply.code(500).send({ error: 'Error interno del servidor.' });
-    }
-  });
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.code(500).send({ error: 'Error interno del servidor.' });
+        }
+    });
 
-  // GET /favoritos
-  fastify.get('/favoritos', { schema: favSchemas.getFavorites }, async (request, reply) => {
-    const user_id = request.user.id;
+    // GET /favoritos (PROTEGIDA)
+    fastify.get('/favoritos', {
+        schema: favSchemas.getFavorites,
+        onRequest: [verifyJwt] // <--- APLICAMOS HOOK AQUÍ
+    }, async (request, reply) => {
+        const user_id = request.user.id;
 
-    try {
-      const query = 'SELECT ideess, created_at FROM user_favorites WHERE user_id = $1 ORDER BY created_at DESC;';
-      const result = await fastify.pg.query(query, [user_id]);
-      reply.code(200).send(result.rows);
-    } catch (error) {
-      fastify.log.error(error);
-      reply.code(500).send({ error: 'Error interno del servidor.' });
-    }
-  });
+        try {
+            const query = 'SELECT ideess, created_at FROM user_favorites WHERE user_id = $1 ORDER BY created_at DESC;';
+            const result = await fastify.pg.query(query, [user_id]);
+            reply.code(200).send(result.rows);
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.code(500).send({ error: 'Error interno del servidor.' });
+        }
+    });
 }

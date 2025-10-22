@@ -26,6 +26,8 @@ services:
       - "${POSTGRES_PORT}:${POSTGRES_PORT}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./usuarios-service/init.sql:/docker-entrypoint-initdb.d/init.sql  
+
       
   gasolineras:
     build: ./gasolineras-service
@@ -54,6 +56,11 @@ services:
     environment:
       NODE_ENV: development
       PORT: 3001 # Puerto interno del contenedor
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: ${DB_NAME}
     depends_on:
       - postgres
 
@@ -73,7 +80,7 @@ services:
       - gasolineras
 
   frontend:
-    build: ./frontend-react
+    build: ./frontend-client
     container_name: frontend-client
     env_file:
       - .env

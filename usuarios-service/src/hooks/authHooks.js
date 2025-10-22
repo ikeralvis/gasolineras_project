@@ -6,6 +6,7 @@
  */
 export async function adminOnlyHook(request, reply) {
   if (!request.user || request.user.is_admin !== true) {
-    reply.code(403).send({ error: 'Forbidden: Admin access required' });
+    // Es importante usar return reply.code(...) para detener la ejecución
+    return reply.code(403).send({ error: 'Forbidden: Admin access required' });
   }
 }

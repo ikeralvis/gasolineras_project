@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import 'dotenv/config';
-import { dbPlugin } from './db.js';
+import { fastifyPostgres } from '@fastify/postgres';
 import { authRoutes } from './routes/auth.js';
 import { favoritesRoutes } from './routes/favorites.js';
 import fastifyJwt from '@fastify/jwt';
@@ -25,8 +25,6 @@ async function buildServer() {
   // 1. Configuración de JWT
   fastify.register(fastifyJwt, {
     secret: process.env.JWT_SECRET,
-    // @fastify/jwt decora request con 'user' automáticamente
-    // Si no pones payload.id, el user solo tendrá id, email, is_admin
     sign: {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
     }
@@ -66,17 +64,24 @@ async function buildServer() {
     }
   });
 
-  // 3. Conexión a Base de Datos
-  fastify.register(dbPlugin);
+  // 3. Conexión a Base de Datos (DIRECTAMENTE, sin wrapper)
+  await fastify.register(fastifyPostgres, {
+    connectionString: `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`
+  });
 
-  // 4. Registro de rutas
-  // Prefijo principal /api/usuarios, como se indica en el resumen
-  fastify.register(async (instance, opts) => {
-    // Rutas de autenticación (register, login, me, /)
-    instance.register(authRoutes);
-    // Rutas de favoritos
-    instance.register(favoritesRoutes);
-  }, { prefix: '/api/usuarios' });
+  // Verificar conexión (opcional pero útil)
+  try {
+    const client = await fastify.pg.connect();
+    fastify.log.info('✅ Conexión a PostgreSQL establecida');
+    client.release();
+  } catch (err) {
+    fastify.log.error('❌ Error al conectar con PostgreSQL:', err);
+    throw err;
+  }
+
+  // 4. Registro de rutas (ahora tienen acceso a fastify.pg)
+  fastify.register(authRoutes, { prefix: '/api/usuarios' });
+  fastify.register(favoritesRoutes, { prefix: '/api/usuarios' });
 
   return fastify;
 }
