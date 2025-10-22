@@ -1,7 +1,22 @@
 {
+  "name": "usuarios-service",
+  "version": "1.0.0",
+  "description": "Microservicio de gestión de usuarios, autenticación (JWT) y favoritos con Fastify y PostgreSQL.",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+
   "dependencies": {
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/jwt": "^10.0.0",
+    "@fastify/postgres": "^6.0.2",
     "@fastify/swagger": "^9.5.2",
     "@fastify/swagger-ui": "^5.2.3",
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.3",
     "fastify": "^5.6.1"
   }
 }
