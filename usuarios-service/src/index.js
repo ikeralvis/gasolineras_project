@@ -83,6 +83,18 @@ async function buildServer() {
   fastify.register(authRoutes, { prefix: '/api/usuarios' });
   fastify.register(favoritesRoutes, { prefix: '/api/usuarios' });
 
+  // Health check endpoint
+  fastify.get('/api/usuarios/health', async (request, reply) => {
+    try {
+      // Verificar conexión a base de datos
+      const client = await fastify.pg.connect();
+      client.release();
+      return { status: 'UP', service: 'usuarios', database: 'connected' };
+    } catch (err) {
+      return reply.code(503).send({ status: 'DOWN', service: 'usuarios', error: err.message });
+    }
+  });
+
   return fastify;
 }
 
