@@ -93,4 +93,48 @@ export async function favoritesRoutes(fastify) {
             return reply.code(500).send({ error: 'Error interno del servidor.' });
         }
     });
+
+    // DELETE /favoritos/:ideess - Eliminar favorito
+fastify.delete('/favoritos/:ideess', {
+    schema: {
+        security: [{ BearerAuth: [] }],
+        params: {
+            type: 'object',
+            properties: {
+                ideess: { type: 'string' }
+            },
+            required: ['ideess']
+        },
+        response: {
+            200: { type: 'object', properties: { message: { type: 'string' } } },
+            404: { type: 'object', properties: { error: { type: 'string' } } },
+            401: { type: 'object', properties: { error: { type: 'string' } } }
+        }
+    },
+    onRequest: async (request, reply) => {
+        try {
+            await request.jwtVerify();
+        } catch (err) {
+            return reply.code(401).send({ error: 'Unauthorized' });
+        }
+    }
+}, async (request, reply) => {
+    const user_id = request.user.id;
+    const { ideess } = request.params;
+    
+    try {
+        const query = 'DELETE FROM user_favorites WHERE user_id = $1 AND ideess = $2 RETURNING ideess;';
+        const result = await fastify.pg.query(query, [user_id, ideess]);
+        
+        if (result.rowCount === 0) {
+            return reply.code(404).send({ error: 'Favorito no encontrado.' });
+        }
+        
+        return reply.code(200).send({ message: 'Favorito eliminado correctamente.' });
+    } catch (error) {
+        fastify.log.error(error);
+        return reply.code(500).send({ error: 'Error interno del servidor.' });
+    }
+});
+
 }
