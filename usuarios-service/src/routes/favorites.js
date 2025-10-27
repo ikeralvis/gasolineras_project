@@ -1,53 +1,78 @@
 // Esquemas OpenAPI
 const favSchemas = {
     addFavorite: {
-        security: [{ BearerAuth: [] }], // ⭐ AÑADIDO
+        tags: ['Favoritos'],
+        description: 'Añadir una gasolinera a favoritos',
+        security: [{ BearerAuth: [] }],
         body: {
             type: 'object',
             required: ['ideess'],
             properties: {
-                ideess: { type: 'string', description: 'ID de Estación de Servicio de la API pública' }
+                ideess: { 
+                    type: 'string', 
+                    description: 'ID de la Estación de Servicio',
+                    example: '12345'
+                }
             },
             additionalProperties: false
         },
         response: {
-            201: { type: 'object', properties: { message: { type: 'string' }, ideess: { type: 'string' } } },
-            200: { type: 'object', properties: { message: { type: 'string' }, ideess: { type: 'string' } } },
-            401: { type: 'object', properties: { error: { type: 'string' } } },
-            500: { type: 'object', properties: { error: { type: 'string' } } }
+            201: { 
+                description: 'Favorito añadido exitosamente',
+                type: 'object', 
+                properties: { 
+                    message: { type: 'string' }, 
+                    ideess: { type: 'string' } 
+                } 
+            },
+            200: { 
+                description: 'Favorito ya existe',
+                type: 'object', 
+                properties: { 
+                    message: { type: 'string' }, 
+                    ideess: { type: 'string' } 
+                } 
+            },
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } },
+            500: { description: 'Error del servidor', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     getFavorites: {
-        security: [{ BearerAuth: [] }], // ⭐ AÑADIDO
+        tags: ['Favoritos'],
+        description: 'Obtener lista de gasolineras favoritas del usuario',
+        security: [{ BearerAuth: [] }],
         response: {
             200: {
+                description: 'Lista de favoritos',
                 type: 'array',
                 items: {
                     type: 'object',
                     properties: {
-                        ideess: { type: 'string' },
-                        created_at: { type: 'string', format: 'date-time' }
+                        ideess: { type: 'string', description: 'ID de la gasolinera' },
+                        created_at: { type: 'string', format: 'date-time', description: 'Fecha de creación' }
                     }
                 }
             },
-            401: { type: 'object', properties: { error: { type: 'string' } } },
-            500: { type: 'object', properties: { error: { type: 'string' } } }
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } },
+            500: { description: 'Error del servidor', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     deleteFavorite: {
-        security: [{ BearerAuth: [] }], // ⭐ AÑADIDO
+        tags: ['Favoritos'],
+        description: 'Eliminar una gasolinera de favoritos',
+        security: [{ BearerAuth: [] }],
         params: {
             type: 'object',
             properties: {
-                ideess: { type: 'string' }
+                ideess: { type: 'string', description: 'ID de la gasolinera a eliminar' }
             },
             required: ['ideess']
         },
         response: {
-            200: { type: 'object', properties: { message: { type: 'string' } } },
-            404: { type: 'object', properties: { error: { type: 'string' } } },
-            401: { type: 'object', properties: { error: { type: 'string' } } },
-            500: { type: 'object', properties: { error: { type: 'string' } } }
+            200: { description: 'Favorito eliminado', type: 'object', properties: { message: { type: 'string' } } },
+            404: { description: 'Favorito no encontrado', type: 'object', properties: { error: { type: 'string' } } },
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } },
+            500: { description: 'Error del servidor', type: 'object', properties: { error: { type: 'string' } } }
         }
     }
 };

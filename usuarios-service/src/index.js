@@ -7,6 +7,7 @@ import fastifyJwt from '@fastify/jwt';
 import fastifySwagger from '@fastify/swagger';
 import fastifySwaggerUI from '@fastify/swagger-ui';
 import fastifyHelmet from '@fastify/helmet';
+import fastifyCors from '@fastify/cors';
 
 const PORT = parseInt(process.env.PORT, 10) || 3001;
 const HOST = process.env.HOST || '0.0.0.0';
@@ -16,13 +17,30 @@ const HOST = process.env.HOST || '0.0.0.0';
  */
 async function buildServer() {
   const fastify = Fastify({
-    logger: true
+    logger: {
+      level: process.env.NODE_ENV === 'production' ? 'error' : 'info'
+    }
   });
 
-  // Plugins de seguridad y configuración
-  fastify.register(fastifyHelmet);
+  // ========================================
+  // 🛡️ PLUGINS DE SEGURIDAD
+  // ========================================
+  
+  // Helmet: Headers de seguridad HTTP
+  fastify.register(fastifyHelmet, {
+    contentSecurityPolicy: false // Desactivar para Swagger UI
+  });
 
-  // 1. Configuración de JWT
+  // CORS: Permitir peticiones cross-origin
+  fastify.register(fastifyCors, {
+    origin: process.env.CORS_ORIGIN || '*', // En producción: especificar dominios
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+  });
+
+  // ========================================
+  // 🔐 JWT
+  // ========================================
   fastify.register(fastifyJwt, {
     secret: process.env.JWT_SECRET,
     sign: {
@@ -30,28 +48,39 @@ async function buildServer() {
     }
   });
 
-  // 2. Configuración de OpenAPI / Swagger
+  // ========================================
+  // 📄 SWAGGER / OPENAPI
+  // ========================================
   fastify.register(fastifySwagger, {
     openapi: {
       info: {
-        title: 'Microservicio Usuarios',
-        description: 'Gestión de usuarios, autenticación y favoritos.',
-        version: '1.0.0'
+        title: 'Microservicio de Usuarios',
+        description: 'API REST para gestión de usuarios, autenticación JWT y favoritos de gasolineras.',
+        version: '1.0.0',
+        contact: {
+          name: 'Equipo de Desarrollo',
+          email: 'dev@gasolineras.com'
+        }
       },
-      servers: [{ url: `http://localhost:${PORT}/api/usuarios` }],
+      servers: [
+        { url: `http://localhost:${PORT}`, description: 'Desarrollo Local' },
+        { url: `http://localhost:8080`, description: 'Gateway' }
+      ],
       components: {
         securitySchemes: {
           BearerAuth: {
             type: 'http',
             scheme: 'bearer',
-            bearerFormat: 'JWT'
+            bearerFormat: 'JWT',
+            description: 'Ingresa el token JWT obtenido del endpoint /login'
           }
         }
       },
-      security: [
-        {
-          BearerAuth: []
-        }
+      tags: [
+        { name: 'Autenticación', description: 'Registro y login de usuarios' },
+        { name: 'Perfil', description: 'Gestión del perfil de usuario' },
+        { name: 'Favoritos', description: 'Gestión de gasolineras favoritas' },
+        { name: 'Admin', description: 'Endpoints administrativos (requieren rol admin)' }
       ]
     }
   });
@@ -59,17 +88,22 @@ async function buildServer() {
   fastify.register(fastifySwaggerUI, {
     routePrefix: '/api-docs',
     uiConfig: {
-      docExpansion: 'full',
-      deepLinking: false
-    }
+      docExpansion: 'list',
+      deepLinking: true,
+      persistAuthorization: true
+    },
+    staticCSP: true,
+    transformStaticCSP: (header) => header
   });
 
-  // 3. Conexión a Base de Datos (DIRECTAMENTE, sin wrapper)
+  // ========================================
+  // 🗄️ BASE DE DATOS
+  // ========================================
   await fastify.register(fastifyPostgres, {
     connectionString: `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`
   });
 
-  // Verificar conexión (opcional pero útil)
+  // Verificar conexión
   try {
     const client = await fastify.pg.connect();
     fastify.log.info('✅ Conexión a PostgreSQL establecida');
@@ -79,32 +113,71 @@ async function buildServer() {
     throw err;
   }
 
-  // 4. Registro de rutas (ahora tienen acceso a fastify.pg)
+  // ========================================
+  // 🏥 HEALTH CHECK (PÚBLICO)
+  // ========================================
+  fastify.get('/api/usuarios/health', async (request, reply) => {
+    try {
+      const client = await fastify.pg.connect();
+      client.release();
+      return {
+        status: 'UP',
+        service: 'usuarios',
+        database: 'connected',
+        timestamp: new Date().toISOString()
+      };
+    } catch (err) {
+      return reply.code(503).send({
+        status: 'DOWN',
+        service: 'usuarios',
+        error: err.message,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // ========================================
+  // 📍 RUTAS
+  // ========================================
   fastify.register(authRoutes, { prefix: '/api/usuarios' });
   fastify.register(favoritesRoutes, { prefix: '/api/usuarios' });
 
-  // Health check endpoint
-  fastify.get('/api/usuarios/health', async (request, reply) => {
-    try {
-      // Verificar conexión a base de datos
-      const client = await fastify.pg.connect();
-      client.release();
-      return { status: 'UP', service: 'usuarios', database: 'connected' };
-    } catch (err) {
-      return reply.code(503).send({ status: 'DOWN', service: 'usuarios', error: err.message });
+  // Ruta raíz
+  fastify.get('/', async () => ({
+    service: 'usuarios-service',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      docs: '/api-docs',
+      health: '/api/usuarios/health',
+      base: '/api/usuarios'
     }
-  });
+  }));
 
   return fastify;
 }
 
-// Iniciar el servidor
+// ========================================
+// 🚀 INICIAR SERVIDOR
+// ========================================
 const start = async () => {
   const server = await buildServer();
   try {
     await server.listen({ port: PORT, host: HOST });
-    server.log.info(`Servidor de Usuarios escuchando en http://${HOST}:${PORT}`);
-    server.log.info(`Documentación Swagger disponible en http://${HOST}:${PORT}/api-docs`);
+    console.log(`
+╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║   👤 Microservicio de Usuarios                           ║
+║                                                           ║
+║   📍 URL:          http://${HOST}:${PORT}                     ║
+║   📄 Swagger:      http://${HOST}:${PORT}/api-docs            ║
+║   🏥 Health:       http://${HOST}:${PORT}/api/usuarios/health ║
+║                                                           ║
+║   🗄️  PostgreSQL:  Conectado ✅                          ║
+║   🔐 JWT:          Configurado ✅                        ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+    `);
   } catch (err) {
     server.log.error(err);
     process.exit(1);

@@ -6,18 +6,21 @@ const SALT_ROUNDS = 10;
 // Esquemas OpenAPI
 const authSchemas = {
     register: {
+        tags: ['Autenticación'],
+        description: 'Registrar un nuevo usuario en el sistema',
         body: {
             type: 'object',
             required: ['nombre', 'email', 'password'],
             properties: {
-                nombre: { type: 'string', minLength: 1 },
-                email: { type: 'string', format: 'email' },
-                password: { type: 'string', minLength: 6 }
+                nombre: { type: 'string', minLength: 1, example: 'Juan Pérez' },
+                email: { type: 'string', format: 'email', example: 'juan@example.com' },
+                password: { type: 'string', minLength: 6, example: 'password123' }
             },
             additionalProperties: false
         },
         response: {
             201: {
+                description: 'Usuario creado exitosamente',
                 type: 'object',
                 properties: {
                     id: { type: 'integer' },
@@ -25,34 +28,40 @@ const authSchemas = {
                     email: { type: 'string' }
                 }
             },
-            400: { type: 'object', properties: { error: { type: 'string' } } },
-            500: { type: 'object', properties: { error: { type: 'string' } } }
+            400: { description: 'Email ya registrado o datos inválidos', type: 'object', properties: { error: { type: 'string' } } },
+            500: { description: 'Error interno del servidor', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     login: {
+        tags: ['Autenticación'],
+        description: 'Iniciar sesión y obtener token JWT',
         body: {
             type: 'object',
             required: ['email', 'password'],
             properties: {
-                email: { type: 'string', format: 'email' },
-                password: { type: 'string' }
+                email: { type: 'string', format: 'email', example: 'juan@example.com' },
+                password: { type: 'string', example: 'password123' }
             },
             additionalProperties: false
         },
         response: {
             200: {
+                description: 'Login exitoso',
                 type: 'object',
                 properties: {
-                    token: { type: 'string' }
+                    token: { type: 'string', description: 'Token JWT válido por 7 días' }
                 }
             },
-            401: { type: 'object', properties: { error: { type: 'string' } } }
+            401: { description: 'Credenciales inválidas', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     me: {
-        security: [{ BearerAuth: [] }], // ⭐ AÑADIDO
+        tags: ['Perfil'],
+        description: 'Obtener información del usuario autenticado',
+        security: [{ BearerAuth: [] }],
         response: {
             200: {
+                description: 'Información del usuario',
                 type: 'object',
                 properties: {
                     id: { type: 'integer' },
@@ -61,11 +70,13 @@ const authSchemas = {
                     is_admin: { type: 'boolean' }
                 }
             },
-            401: { type: 'object', properties: { error: { type: 'string' } } }
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     updateMe: {
-        security: [{ BearerAuth: [] }], // ⭐ AÑADIDO
+        tags: ['Perfil'],
+        description: 'Actualizar información del usuario autenticado',
+        security: [{ BearerAuth: [] }],
         body: {
             type: 'object',
             properties: {
@@ -78,6 +89,7 @@ const authSchemas = {
         },
         response: {
             200: {
+                description: 'Perfil actualizado',
                 type: 'object',
                 properties: {
                     id: { type: 'integer' },
@@ -85,22 +97,27 @@ const authSchemas = {
                     email: { type: 'string' }
                 }
             },
-            400: { type: 'object', properties: { error: { type: 'string' } } },
-            401: { type: 'object', properties: { error: { type: 'string' } } }
+            400: { description: 'Datos inválidos o email ya en uso', type: 'object', properties: { error: { type: 'string' } } },
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     deleteMe: {
-        security: [{ BearerAuth: [] }], // ⭐ AÑADIDO
+        tags: ['Perfil'],
+        description: 'Eliminar la cuenta del usuario autenticado',
+        security: [{ BearerAuth: [] }],
         response: {
-            200: { type: 'object', properties: { message: { type: 'string' } } },
-            401: { type: 'object', properties: { error: { type: 'string' } } },
-            404: { type: 'object', properties: { error: { type: 'string' } } }
+            200: { description: 'Cuenta eliminada', type: 'object', properties: { message: { type: 'string' } } },
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } },
+            404: { description: 'Usuario no encontrado', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     listUsers: {
-        security: [{ BearerAuth: [] }], // ⭐ AÑADIDO
+        tags: ['Admin'],
+        description: 'Listar todos los usuarios (solo administradores)',
+        security: [{ BearerAuth: [] }],
         response: {
             200: {
+                description: 'Lista de usuarios',
                 type: 'array',
                 items: {
                     type: 'object',
@@ -112,7 +129,8 @@ const authSchemas = {
                     }
                 }
             },
-            403: { type: 'object', properties: { error: { type: 'string' } } }
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } },
+            403: { description: 'No tienes permisos de administrador', type: 'object', properties: { error: { type: 'string' } } }
         }
     }
 };
