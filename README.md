@@ -49,9 +49,45 @@ docker compose up -d --build
 
 | Servicio      | Puerto | URL                              |
 |---------------|--------|----------------------------------|
-| Gateway       | 8080   | http://localhost:8080/health     |
-| Usuarios      | 3001   | http://localhost:3001/health     |
-| Gasolineras   | 3002   | http://localhost:3002/health     |
+| **Gateway**   | 8080   | http://localhost:8080            |
+| Frontend      | 5173   | http://localhost:5173            |
+| Usuarios      | 3001   | http://localhost:3001            |
+| Gasolineras   | 8000   | http://localhost:8000            |
+| MongoDB       | 27017  | mongodb://localhost:27017        |
+| PostgreSQL    | 5432   | postgresql://localhost:5432      |
+
+---
+
+## 🚪 API Gateway
+
+El proyecto cuenta con un **API Gateway** construido con Hono.js que actúa como punto de entrada único:
+
+- ✅ **Documentación OpenAPI/Swagger**: http://localhost:8080/docs
+- ✅ **Health Check**: http://localhost:8080/health
+- ✅ **Proxy inteligente** a todos los microservicios
+- ✅ **CORS** configurado
+- ✅ **Logging** de todas las peticiones
+- ✅ **Manejo de errores** centralizado
+
+### Endpoints Principales
+
+```bash
+# Información del gateway
+GET http://localhost:8080/
+
+# Documentación interactiva
+GET http://localhost:8080/docs
+
+# Usuarios
+POST http://localhost:8080/api/usuarios/register
+POST http://localhost:8080/api/usuarios/login
+GET  http://localhost:8080/api/usuarios/favorites
+
+# Gasolineras
+GET http://localhost:8080/api/gasolineras
+```
+
+**📚 Más información**: Ver `gateway-hono/README.md`
 
 ---
 
