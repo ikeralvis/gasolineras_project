@@ -66,6 +66,110 @@ async function testEndpoint(name, url, options = {}) {
   }
 }
 
+async function testBasicEndpoints() {
+  let passed = 0;
+  let failed = 0;
+
+  logInfo('TEST 1: Información del Gateway');
+  const test1 = await testEndpoint('GET /', `${BASE_URL}/`);
+  test1.success ? passed++ : failed++;
+
+  logInfo('TEST 2: Health Check');
+  const test2 = await testEndpoint('GET /health', `${BASE_URL}/health`);
+  test2.success ? passed++ : failed++;
+
+  logInfo('TEST 3: Especificación OpenAPI');
+  const test3 = await testEndpoint('GET /openapi.json', `${BASE_URL}/openapi.json`);
+  test3.success ? passed++ : failed++;
+
+  logInfo('TEST 4: Obtener Gasolineras');
+  const test4 = await testEndpoint('GET /api/gasolineras', `${BASE_URL}/api/gasolineras`);
+  test4.success ? passed++ : failed++;
+
+  logInfo('TEST 5: Ruta No Encontrada (debe dar 404)');
+  const test5 = await testEndpoint('GET /ruta-inexistente', `${BASE_URL}/ruta-inexistente`);
+  (test5.status === 404) ? passed++ : failed++;
+
+  return { passed, failed };
+}
+
+async function testUserAuthentication() {
+  let passed = 0;
+  let failed = 0;
+  let authToken = null;
+
+  logInfo('TEST 6: Registro de Usuario');
+  const randomEmail = `test${Date.now()}@example.com`;
+  const test6 = await testEndpoint(
+    'POST /api/usuarios/register',
+    `${BASE_URL}/api/usuarios/register`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: randomEmail,
+        password: 'test123456',
+        nombre: 'Test User'
+      })
+    }
+  );
+  
+  if (test6.success || test6.status === 409) {
+    passed++;
+    if (test6.status === 409) {
+      logInfo('Usuario ya existe (esperado en algunos casos)');
+    }
+  } else {
+    failed++;
+  }
+
+  logInfo('TEST 7: Login de Usuario');
+  const test7 = await testEndpoint(
+    'POST /api/usuarios/login',
+    `${BASE_URL}/api/usuarios/login`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: randomEmail,
+        password: 'test123456'
+      })
+    }
+  );
+  
+  if (test7.success && test7.data.token) {
+    passed++;
+    authToken = test7.data.token;
+    logSuccess(`Token obtenido: ${authToken.substring(0, 20)}...`);
+  } else {
+    failed++;
+  }
+
+  return { passed, failed, authToken };
+}
+
+async function testAuthenticatedEndpoints(authToken) {
+  let passed = 0;
+  let failed = 0;
+
+  if (authToken) {
+    logInfo('TEST 8: Obtener Favoritos (autenticado)');
+    const test8 = await testEndpoint(
+      'GET /api/usuarios/favorites',
+      `${BASE_URL}/api/usuarios/favorites`,
+      {
+        headers: { 'Authorization': `Bearer ${authToken}` }
+      }
+    );
+    test8.success ? passed++ : failed++;
+  } else {
+    logError('TEST 8: Saltado (no hay token de autenticación)');
+    failed++;
+  }
+
+  return { passed, failed };
+}
+
 async function runTests() {
   console.log('\n' + '='.repeat(60));
   log('🚀', 'Iniciando tests del API Gateway', colors.blue);
@@ -200,7 +304,9 @@ async function runTests() {
 }
 
 // Ejecutar tests
-runTests().catch(error => {
+try {
+  await runTests();
+} catch (error) {
   logError(`Error fatal: ${error.message}`);
   process.exit(1);
-});
+}

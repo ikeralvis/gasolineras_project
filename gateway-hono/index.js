@@ -297,11 +297,11 @@ app.all("/api/usuarios/*", async (c) => {
 
     // Obtener headers y excluir host
     const headers = {};
-    c.req.raw.headers.forEach((value, key) => {
+    for (const [key, value] of c.req.raw.headers) {
       if (key.toLowerCase() !== "host") {
         headers[key] = value;
       }
-    });
+    }
 
     const options = {
       method: c.req.method,
@@ -318,9 +318,9 @@ app.all("/api/usuarios/*", async (c) => {
 
     // Copiar headers de la respuesta
     const responseHeaders = {};
-    response.headers.forEach((value, key) => {
+    for (const [key, value] of response.headers) {
       responseHeaders[key] = value;
-    });
+    }
 
     // Si es JSON, parsearlo
     if (contentType?.includes("application/json")) {
@@ -352,11 +352,11 @@ app.all("/api/gasolineras/*", async (c) => {
     const url = `${GASOLINERAS_SERVICE}${path}`;
 
     const headers = {};
-    c.req.raw.headers.forEach((value, key) => {
+    for (const [key, value] of c.req.raw.headers) {
       if (key.toLowerCase() !== "host") {
         headers[key] = value;
       }
-    });
+    }
 
     const options = {
       method: c.req.method,
@@ -371,9 +371,9 @@ app.all("/api/gasolineras/*", async (c) => {
     const contentType = response.headers.get("content-type");
 
     const responseHeaders = {};
-    response.headers.forEach((value, key) => {
+    for (const [key, value] of response.headers) {
       responseHeaders[key] = value;
-    });
+    }
 
     if (contentType?.includes("application/json")) {
       const data = await response.json();

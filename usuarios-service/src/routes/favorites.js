@@ -121,6 +121,7 @@ export async function favoritesRoutes(fastify) {
             try {
                 await request.jwtVerify();
             } catch (err) {
+                fastify.log.error(err);
                 return reply.code(401).send({ error: 'Unauthorized' });
             }
         }

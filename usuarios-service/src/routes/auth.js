@@ -232,6 +232,7 @@ export async function authRoutes(fastify) {
             try {
                 await request.jwtVerify();
             } catch (err) {
+                fastify.log.warn('JWT verification failed:', err.message);
                 return reply.code(401).send({ error: 'Unauthorized' });
             }
         }
@@ -372,6 +373,7 @@ export async function authRoutes(fastify) {
                 try {
                     await request.jwtVerify();
                 } catch (err) {
+                    fastify.log.warn('JWT verification failed:', err.message);
                     return reply.code(401).send({ error: 'Unauthorized' });
                 }
             },
