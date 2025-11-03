@@ -1,18 +1,21 @@
 import bcrypt from 'bcryptjs';
-import { adminOnlyHook } from '../hooks/authHooks.js';
+import { adminOnlyHook, verifyJwt } from '../hooks/authHooks.js';
+import { validateStrongPassword, validateEmail, sanitizeName } from '../utils/validators.js';
 
 const SALT_ROUNDS = 10;
 
 // Esquemas OpenAPI (Incluidos aquí para un único archivo)
 const authSchemas = {
     register: {
+        tags: ['Auth'],
+        summary: 'Registrar nuevo usuario',
         body: {
             type: 'object',
             required: ['nombre', 'email', 'password'],
             properties: {
-                nombre: { type: 'string', minLength: 1 },
-                email: { type: 'string', format: 'email' },
-                password: { type: 'string', minLength: 6 }
+                nombre: { type: 'string', minLength: 1, description: 'Nombre del usuario' },
+                email: { type: 'string', format: 'email', description: 'Email único del usuario' },
+                password: { type: 'string', minLength: 8, description: 'Contraseña (mín 8 chars, mayúsculas, minúsculas, números y símbolos)' }
             },
             additionalProperties: false
         },
@@ -30,6 +33,8 @@ const authSchemas = {
         }
     },
     login: {
+        tags: ['Auth'],
+        summary: 'Iniciar sesión',
         body: {
             type: 'object',
             required: ['email', 'password'],
@@ -43,13 +48,16 @@ const authSchemas = {
             200: {
                 type: 'object',
                 properties: {
-                    token: { type: 'string' }
+                    token: { type: 'string', description: 'JWT token de autenticación' }
                 }
             },
             401: { type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     me: {
+        tags: ['Auth'],
+        summary: 'Obtener perfil del usuario autenticado',
+        security: [{ BearerAuth: [] }],
         response: {
             200: {
                 type: 'object',
@@ -64,6 +72,9 @@ const authSchemas = {
         }
     },
     listUsers: {
+        tags: ['Auth'],
+        summary: 'Listar todos los usuarios (solo admin)',
+        security: [{ BearerAuth: [] }],
         response: {
             200: {
                 type: 'array',
@@ -88,33 +99,42 @@ const authSchemas = {
  */
 export async function authRoutes(fastify) {
 
-    // Función reutilizable para verificar JWT
-    const verifyJwt = async (request, reply) => {
-        try {
-            await request.jwtVerify();
-        } catch (err) {
-            // DEBE USAR return para detener la ejecución y enviar la respuesta
-            return reply.code(401).send({ error: 'Unauthorized' });
+    // POST /register (PÚBLICA) - Con rate limiting
+    fastify.post('/register', { 
+        schema: authSchemas.register,
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '15 minutes'
+            }
         }
-    };
-
-
-    // POST /register (PÚBLICA)
-    fastify.post('/register', { schema: authSchemas.register }, async (request, reply) => {
+    }, async (request, reply) => {
         const { nombre, email, password } = request.body;
+
+        // Validar email con validador robusto
+        const emailValidation = validateEmail(email);
+        if (!emailValidation.valid) {
+            return reply.code(400).send({ error: emailValidation.error });
+        }
+
+        // Validar contraseña fuerte
+        const passwordValidation = validateStrongPassword(password);
+        if (!passwordValidation.valid) {
+            return reply.code(400).send({ error: passwordValidation.error });
+        }
 
         try {
             const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
+            const nombreSanitizado = sanitizeName(nombre);
 
             const query = `
                 INSERT INTO users (nombre, email, password_hash)
                 VALUES ($1, $2, $3)
                 RETURNING id, nombre, email;
             `;
-            const result = await fastify.pg.query(query, [nombre, email, password_hash]);
+            const result = await fastify.pg.query(query, [nombreSanitizado, email.toLowerCase(), password_hash]);
 
             if (result.rows.length === 0) {
-                // Siempre usar return para salir de la función del handler
                 return reply.code(500).send({ error: 'Fallo al registrar el usuario' });
             }
 
@@ -129,13 +149,21 @@ export async function authRoutes(fastify) {
         }
     });
 
-    // POST /login (PÚBLICA)
-    fastify.post('/login', { schema: authSchemas.login }, async (request, reply) => {
+    // POST /login (PÚBLICA) - Con rate limiting estricto
+    fastify.post('/login', { 
+        schema: authSchemas.login,
+        config: {
+            rateLimit: {
+                max: 5,
+                timeWindow: '15 minutes'
+            }
+        }
+    }, async (request, reply) => {
         const { email, password } = request.body;
 
         try {
             const query = 'SELECT id, nombre, email, password_hash, is_admin FROM users WHERE email = $1;';
-            const result = await fastify.pg.query(query, [email]);
+            const result = await fastify.pg.query(query, [email.toLowerCase()]);
 
             const user = result.rows[0];
 
@@ -154,11 +182,10 @@ export async function authRoutes(fastify) {
                 { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
             );
 
-            return reply.code(200).send({ token }); // Usar return aquí
+            return reply.code(200).send({ token });
 
         } catch (error) {
             fastify.log.error(error);
-            // Este catch también maneja la falla de conexión a DB, devolviendo 500
             return reply.code(500).send({ error: 'Error interno del servidor.' });
         }
     });
@@ -191,13 +218,15 @@ export async function authRoutes(fastify) {
     // PATCH /me - Actualizar perfil
     fastify.patch('/me', {
         schema: {
+            tags: ['Auth'],
+            summary: 'Actualizar perfil del usuario',
             security: [{ BearerAuth: [] }],
             body: {
                 type: 'object',
                 properties: {
                     nombre: { type: 'string', minLength: 1 },
                     email: { type: 'string', format: 'email' },
-                    password: { type: 'string', minLength: 6 }
+                    password: { type: 'string', minLength: 8 }
                 },
                 additionalProperties: false,
                 minProperties: 1 // Al menos un campo debe estar presente
@@ -215,13 +244,7 @@ export async function authRoutes(fastify) {
                 401: { type: 'object', properties: { error: { type: 'string' } } }
             }
         },
-        onRequest: async (request, reply) => {
-            try {
-                await request.jwtVerify();
-            } catch (err) {
-                return reply.code(401).send({ error: 'Unauthorized' });
-            }
-        }
+        onRequest: [verifyJwt] // ✅ Usar hook en lugar de inline
     }, async (request, reply) => {
         const user_id = request.user.id;
         const { nombre, email, password } = request.body;
@@ -233,21 +256,33 @@ export async function authRoutes(fastify) {
 
             if (nombre) {
                 updates.push(`nombre = $${paramIndex++}`);
-                values.push(nombre);
+                values.push(sanitizeName(nombre));
             }
 
             if (email) {
+                // Validar email
+                const emailValidation = validateEmail(email);
+                if (!emailValidation.valid) {
+                    return reply.code(400).send({ error: emailValidation.error });
+                }
+
                 // Verificar que el email no esté en uso
                 const checkQuery = 'SELECT id FROM users WHERE email = $1 AND id != $2;';
-                const checkResult = await fastify.pg.query(checkQuery, [email, user_id]);
+                const checkResult = await fastify.pg.query(checkQuery, [email.toLowerCase(), user_id]);
                 if (checkResult.rows.length > 0) {
                     return reply.code(400).send({ error: 'El email ya está en uso.' });
                 }
                 updates.push(`email = $${paramIndex++}`);
-                values.push(email);
+                values.push(email.toLowerCase());
             }
 
             if (password) {
+                // Validar contraseña fuerte
+                const passwordValidation = validateStrongPassword(password);
+                if (!passwordValidation.valid) {
+                    return reply.code(400).send({ error: passwordValidation.error });
+                }
+
                 const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
                 updates.push(`password_hash = $${paramIndex++}`);
                 values.push(password_hash);
@@ -276,19 +311,16 @@ export async function authRoutes(fastify) {
     // DELETE /me - Eliminar cuenta
     fastify.delete('/me', {
         schema: {
+            tags: ['Auth'],
+            summary: 'Eliminar cuenta de usuario',
             security: [{ BearerAuth: [] }],
             response: {
                 200: { type: 'object', properties: { message: { type: 'string' } } },
-                401: { type: 'object', properties: { error: { type: 'string' } } }
+                401: { type: 'object', properties: { error: { type: 'string' } } },
+                404: { type: 'object', properties: { error: { type: 'string' } } }
             }
         },
-        onRequest: async (request, reply) => {
-            try {
-                await request.jwtVerify();
-            } catch (err) {
-                return reply.code(401).send({ error: 'Unauthorized' });
-            }
-        }
+        onRequest: [verifyJwt] // ✅ Usar hook en lugar de inline
     }, async (request, reply) => {
         const user_id = request.user.id;
 

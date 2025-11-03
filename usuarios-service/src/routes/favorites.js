@@ -1,3 +1,5 @@
+import { verifyJwt } from '../hooks/authHooks.js';
+
 // Esquemas OpenAPI
 const favSchemas = {
   addFavorite: {
@@ -37,19 +39,13 @@ const favSchemas = {
  * @param {import('fastify').FastifyInstance} fastify
  */
 export async function favoritesRoutes(fastify) {
-
-    // Función de verificación reutilizable (debe estar en cada archivo de rutas para ser accesible)
-    const verifyJwt = async (request, reply) => {
-        try {
-            await request.jwtVerify();
-        } catch (err) {
-            return reply.code(401).send({ error: 'Unauthorized' });
-        }
-    };
-
     // POST /favoritos (PROTEGIDA)
     fastify.post('/favoritos', {
-        schema: favSchemas.addFavorite,
+        schema: {
+            ...favSchemas.addFavorite,
+            tags: ['Favoritos'],
+            summary: 'Añadir un favorito (requiere JWT)',
+        },
         onRequest: [verifyJwt] // <--- APLICAMOS HOOK AQUÍ
     }, async (request, reply) => {
         const user_id = request.user.id;
@@ -95,30 +91,26 @@ export async function favoritesRoutes(fastify) {
     });
 
     // DELETE /favoritos/:ideess - Eliminar favorito
-fastify.delete('/favoritos/:ideess', {
-    schema: {
-        security: [{ BearerAuth: [] }],
-        params: {
-            type: 'object',
-            properties: {
-                ideess: { type: 'string' }
+    fastify.delete('/favoritos/:ideess', {
+        schema: {
+            tags: ['Favoritos'],
+            summary: 'Eliminar un favorito (requiere JWT)',
+            security: [{ BearerAuth: [] }],
+            params: {
+                type: 'object',
+                properties: {
+                    ideess: { type: 'string' }
+                },
+                required: ['ideess']
             },
-            required: ['ideess']
+            response: {
+                200: { type: 'object', properties: { message: { type: 'string' } } },
+                404: { type: 'object', properties: { error: { type: 'string' } } },
+                401: { type: 'object', properties: { error: { type: 'string' } } }
+            }
         },
-        response: {
-            200: { type: 'object', properties: { message: { type: 'string' } } },
-            404: { type: 'object', properties: { error: { type: 'string' } } },
-            401: { type: 'object', properties: { error: { type: 'string' } } }
-        }
-    },
-    onRequest: async (request, reply) => {
-        try {
-            await request.jwtVerify();
-        } catch (err) {
-            return reply.code(401).send({ error: 'Unauthorized' });
-        }
-    }
-}, async (request, reply) => {
+        onRequest: [verifyJwt] // ✅ Usar hook en lugar de inline
+    }, async (request, reply) => {
     const user_id = request.user.id;
     const { ideess } = request.params;
     
