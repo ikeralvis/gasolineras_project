@@ -1,366 +1,247 @@
 # 🔐 Microservicio de Usuarios
 
-Microservicio para gestión de usuarios, autenticación JWT y favoritos de estaciones de servicio.
+Microservicio de autenticación y gestión de usuarios con JWT, construido con **Fastify** y **PostgreSQL**.
 
-## 📋 Tabla de Contenidos
-
-- [Tecnologías](#tecnologías)
-- [Características](#características)
-- [Requisitos Previos](#requisitos-previos)
-- [Instalación](#instalación)
-- [Configuración](#configuración)
-- [Uso](#uso)
-- [Endpoints API](#endpoints-api)
-- [Autenticación](#autenticación)
-- [Base de Datos](#base-de-datos)
-- [Testing con Swagger](#testing-con-swagger)
-- [Despliegue con Docker](#despliegue-con-docker)
+---
 
 ## 🚀 Tecnologías
 
-- **Node.js** v20+
-- **Fastify** - Framework web de alto rendimiento
-- **PostgreSQL 16** - Base de datos relacional
-- **JWT** - Autenticación basada en tokens
-- **bcryptjs** - Hash seguro de contraseñas
-- **Swagger/OpenAPI** - Documentación interactiva de la API
-- **Docker** - Contenedorización
+- **Node.js 20** + **Fastify** (framework rápido y moderno)
+- **PostgreSQL 16** (base de datos relacional)
+- **JWT** (autenticación con tokens)
+- **bcryptjs** (hash seguro de contraseñas)
+- **Swagger/OpenAPI** (documentación interactiva)
+- **Docker** (contenedorización)
+
+---
 
 ## ✨ Características
 
-- Registro y autenticación de usuarios
-- Tokens JWT con expiración configurable
-- Hash seguro de contraseñas con bcrypt
-- Gestión de favoritos (estaciones de servicio)
-- Control de acceso basado en roles (admin)
-- Documentación interactiva con Swagger UI
-- Validación de esquemas con JSON Schema
-- Logs estructurados
-- Protección con Helmet (seguridad HTTP)
+✅ Registro y autenticación de usuarios  
+✅ Tokens JWT con expiración configurable  
+✅ Gestión de favoritos (gasolineras)  
+✅ Control de acceso por roles (admin)  
+✅ Documentación Swagger UI automática  
+✅ Validación de datos con JSON Schema  
+✅ Seguridad con Helmet y bcrypt  
 
-## 📦 Requisitos Previos
+---
 
-- Node.js 20+ y npm
-- PostgreSQL 16+
-- Docker y Docker Compose (opcional)
+## 📦 Instalación
 
-## 🔧 Instalación
-
-### Opción 1: Local
-
-```bash
-# Clonar el repositorio
-cd usuarios-service
-
-# Instalar dependencias
-npm install
-
-# Configurar variables de entorno
-cp .env.example .env
-# Edita .env con tus credenciales
-
-# Inicializar base de datos
-psql -U postgres -d usuarios_db < init.sql
-
-# Ejecutar en desarrollo
-npm run dev
-
-# Ejecutar en producción
-npm start
-```
-
-### Opción 2: Docker Compose
-
+### Con Docker (Recomendado)
 ```bash
 # Desde la raíz del proyecto
 docker-compose up -d usuarios postgres
 ```
 
-## ⚙️ Configuración
+### Manual (Desarrollo Local)
+```bash
+cd usuarios-service
+npm install
 
-Crea un archivo `.env` en la raíz del proyecto:
+# Copiar y configurar variables de entorno
+cp .env.example .env
+# Edita .env con tus credenciales
+
+npm run dev
+```
+
+---
+
+## ⚙️ Variables de Entorno
+
+Crea un archivo `.env` basado en `.env.example`:
 
 ```env
 # Servidor
 PORT=3001
 HOST=0.0.0.0
-NODE_ENV=development
 
-# Base de Datos PostgreSQL
-DB_HOST=localhost
+# PostgreSQL (usar 'postgres' en Docker, 'localhost' en local)
+DB_HOST=postgres
 DB_PORT=5432
 DB_USER=postgres
-DB_PASSWORD=tu_password_seguro
+DB_PASSWORD=tu_password
 DB_NAME=usuarios_db
 
-# JWT
-JWT_SECRET=tu_secreto_super_seguro_cambiame_en_produccion
+# JWT (⚠️ cambiar en producción)
+JWT_SECRET=cambiar_por_secreto_aleatorio_seguro
 JWT_EXPIRES_IN=7d
 ```
 
-⚠️ **IMPORTANTE**: Cambia `JWT_SECRET` por un valor aleatorio y seguro en producción.
-
-## 🎯 Uso
-
-### Servidor Local
-
-Una vez iniciado, el servidor estará disponible en:
-
-- **API Base**: `http://localhost:3001/api/usuarios`
-- **Swagger UI**: `http://localhost:3001/api-docs`
-- **Health Check**: `http://localhost:3001/api/usuarios/me` (requiere autenticación)
-
-## 📡 Endpoints API
-
-### Públicos (sin autenticación)
-
-#### `POST /api/usuarios/register`
-Registrar un nuevo usuario.
-
-**Request:**
-```json
-{
-  "nombre": "Juan Pérez",
-  "email": "juan@example.com",
-  "password": "password123"
-}
+**⚠️ IMPORTANTE**: Genera un `JWT_SECRET` seguro con:
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 ```
 
-**Response (201):**
-```json
-{
-  "id": 1,
-  "nombre": "Juan Pérez",
-  "email": "juan@example.com"
-}
-```
+---
 
-#### `POST /api/usuarios/login`
-Iniciar sesión y obtener token JWT.
+## 🌐 Endpoints Principales
 
-**Request:**
-```json
-{
-  "email": "juan@example.com",
-  "password": "password123"
-}
-```
+### 📄 Documentación
+- **Swagger UI**: http://localhost:3001/api-docs
+- **Health Check**: `GET /api/usuarios/health`
 
-**Response (200):**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-}
-```
+### 🔓 Públicos (sin autenticación)
 
-### Protegidos (requieren autenticación)
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| POST | `/api/usuarios/register` | Registrar usuario |
+| POST | `/api/usuarios/login` | Login (devuelve JWT) |
 
-> 🔒 Todos los endpoints siguientes requieren el header: `Authorization: Bearer <token>`
+### 🔒 Protegidos (requieren token JWT)
 
-#### `GET /api/usuarios/me`
-Obtener información del usuario autenticado.
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/api/usuarios/me` | Obtener perfil |
+| PATCH | `/api/usuarios/me` | Actualizar perfil |
+| DELETE | `/api/usuarios/me` | Eliminar cuenta |
+| GET | `/api/usuarios/favoritos` | Listar favoritos |
+| POST | `/api/usuarios/favoritos` | Añadir favorito |
+| DELETE | `/api/usuarios/favoritos/:ideess` | Eliminar favorito |
 
-**Response (200):**
-```json
-{
-  "id": 1,
-  "nombre": "Juan Pérez",
-  "email": "juan@example.com",
-  "is_admin": false
-}
-```
+### 👑 Admin (requieren rol admin)
 
-#### `POST /api/usuarios/favoritos`
-Añadir una estación de servicio a favoritos.
+| Método | Endpoint | Descripción |
+|--------|----------|-------------|
+| GET | `/api/usuarios/` | Listar todos los usuarios |
 
-**Request:**
-```json
-{
-  "ideess": "12345"
-}
-```
-
-**Response (201):**
-```json
-{
-  "message": "Favorito añadido.",
-  "ideess": "12345"
-}
-```
-
-#### `GET /api/usuarios/favoritos`
-Obtener lista de favoritos del usuario.
-
-**Response (200):**
-```json
-[
-  {
-    "ideess": "12345",
-    "created_at": "2025-10-22T19:30:00.000Z"
-  },
-  {
-    "ideess": "67890",
-    "created_at": "2025-10-21T15:20:00.000Z"
-  }
-]
-```
-
-### Admin (requieren rol de administrador)
-
-#### `GET /api/usuarios/`
-Listar todos los usuarios (solo administradores).
-
-**Response (200):**
-```json
-[
-  {
-    "id": 1,
-    "nombre": "Juan Pérez",
-    "email": "juan@example.com",
-    "is_admin": false
-  },
-  {
-    "id": 2,
-    "nombre": "Admin",
-    "email": "admin@example.com",
-    "is_admin": true
-  }
-]
-```
+---
 
 ## 🔐 Autenticación
 
-Este microservicio usa **JWT (JSON Web Tokens)** para autenticación.
+### Flujo Básico
+```bash
+# 1. Registro
+curl -X POST http://localhost:3001/api/usuarios/register \
+  -H "Content-Type: application/json" \
+  -d '{"nombre":"Juan","email":"juan@test.com","password":"123456"}'
 
-### Flujo de Autenticación
+# 2. Login (obtener token)
+curl -X POST http://localhost:3001/api/usuarios/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"juan@test.com","password":"123456"}'
+  
+# Respuesta: {"token":"eyJhbG..."}
 
-1. **Registro**: El usuario se registra con `POST /register`
-2. **Login**: El usuario hace login con `POST /login` y recibe un token
-3. **Uso del Token**: El token se envía en cada petición protegida
-
-### Formato del Token
-
-```http
-Authorization: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+# 3. Usar token en peticiones protegidas
+curl http://localhost:3001/api/usuarios/me \
+  -H "Authorization: Bearer eyJhbG..."
 ```
 
-### Payload del Token
-
-```json
-{
-  "id": 1,
-  "email": "juan@example.com",
-  "nombre": "Juan Pérez",
-  "is_admin": false,
-  "iat": 1729622400,
-  "exp": 1730227200
-}
-```
-
-### Expiración
-
-Los tokens expiran según la configuración `JWT_EXPIRES_IN` (por defecto: 7 días).
+---
 
 ## 🗄️ Base de Datos
 
-### Esquema PostgreSQL
+### Tablas
 
-#### Tabla `users`
-
+#### `users`
 ```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    nombre VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    is_admin BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+- id (SERIAL PRIMARY KEY)
+- nombre (VARCHAR)
+- email (VARCHAR UNIQUE)
+- password_hash (VARCHAR)
+- is_admin (BOOLEAN)
+- created_at (TIMESTAMP)
 ```
 
-#### Tabla `user_favorites`
-
+#### `user_favorites`
 ```sql
-CREATE TABLE user_favorites (
-    id SERIAL PRIMARY KEY,
-    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    ideess VARCHAR(50) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(user_id, ideess)
-);
+- id (SERIAL PRIMARY KEY)
+- user_id (FK → users.id)
+- ideess (VARCHAR) -- ID de gasolinera
+- created_at (TIMESTAMP)
+- UNIQUE(user_id, ideess)
 ```
 
-### Inicializar Base de Datos
+La base de datos se inicializa automáticamente con `init.sql` al levantar Docker.
 
-```bash
-# Ejecutar script de inicialización
-psql -U postgres -d usuarios_db < init.sql
+---
 
-# O con Docker
-docker exec -i postgres psql -U postgres -d usuarios_db < init.sql
-```
+## 🧪 Probar con Swagger
 
-## 🧪 Testing con Swagger
+1. Abre http://localhost:3001/api-docs
+2. Ejecuta `POST /login` con credenciales válidas
+3. Copia el token de la respuesta
+4. Haz clic en **"Authorize"** 🔓 (arriba a la derecha)
+5. Pega el token y haz clic en "Authorize"
+6. Ahora puedes probar todos los endpoints protegidos 🔒
 
-### Acceder a Swagger UI
+---
 
-Abre tu navegador en: `http://localhost:3001/api-docs`
+## 📊 Códigos de Respuesta
 
-### Probar Endpoints Protegidos
-
-1. **Haz Login**:
-   - Ve a `POST /api/usuarios/login`
-   - Ejecuta con credenciales válidas
-   - **Copia el token** de la respuesta
-
-2. **Autorizar en Swagger**:
-   - Haz clic en el botón **"Authorize"** 🔓 (esquina superior derecha)
-   - Pega: `TU_TOKEN_AQUI`
-   - Haz clic en "Authorize"
-   - Cierra el modal
-
-3. **Probar Endpoints**:
-   - Ahora todos los endpoints protegidos (con candado 🔒) funcionarán
-   - Prueba `GET /api/usuarios/me` para verificar
-
-## 🐳 Despliegue con Docker
-
-### Docker Compose
-
-Ver archivo `docker-compose.yml` en la raíz del proyecto.
-
-```bash
-# Levantar todos los servicios
-docker-compose up -d
-
-# Ver logs
-docker logs -f usuarios-service
-
-# Detener
-docker-compose down
-```
-
-## 📊 Códigos de Estado HTTP
-
-| Código | Descripción |
+| Código | Significado |
 |--------|-------------|
-| 200 | ✅ OK - Solicitud exitosa |
-| 201 | ✅ Created - Recurso creado |
-| 400 | ❌ Bad Request - Datos inválidos |
-| 401 | ❌ Unauthorized - Token inválido o ausente |
-| 403 | ❌ Forbidden - Sin permisos (no admin) |
-| 500 | ❌ Internal Server Error - Error del servidor |
+| 200 | ✅ OK |
+| 201 | ✅ Creado |
+| 400 | ❌ Datos inválidos |
+| 401 | ❌ No autenticado |
+| 403 | ❌ Sin permisos (no admin) |
+| 404 | ❌ No encontrado |
+| 500 | ❌ Error del servidor |
+
+---
 
 ## 🔒 Seguridad
 
 - ✅ Contraseñas hasheadas con bcrypt (10 rounds)
-- ✅ Tokens JWT firmados con secreto
-- ✅ Validación de entrada con JSON Schema
-- ✅ Headers de seguridad con Helmet
-- ✅ Prevención de duplicados en favoritos
-- ✅ Protección contra SQL injection (queries parametrizadas)
-- ⚠️ **No olvides cambiar JWT_SECRET en producción**
+- ✅ Tokens JWT firmados
+- ✅ Validación de entrada (JSON Schema)
+- ✅ Headers de seguridad (Helmet)
+- ✅ Queries parametrizadas (prevención SQL injection)
+- ✅ CORS configurado
+- ⚠️ Cambiar `JWT_SECRET` en producción
 
 ---
 
-**Desarrollado con ❤️ para el proyecto TankGo**
+## 🐳 Docker
+
+```bash
+# Ver logs
+docker logs -f usuarios-service
+
+# Acceder al contenedor
+docker exec -it usuarios-service sh
+
+# Reiniciar servicio
+docker-compose restart usuarios
+```
+
+---
+
+## 📝 Estructura del Proyecto
+
+```
+usuarios-service/
+├── src/
+│   ├── index.js          # Servidor principal
+│   ├── db.js             # Plugin de PostgreSQL
+│   ├── routes/
+│   │   ├── auth.js       # Rutas de autenticación
+│   │   └── favorites.js  # Rutas de favoritos
+│   └── hooks/
+│       └── authHooks.js  # Middleware de autorización
+├── init.sql              # Schema de la BD
+├── Dockerfile
+├── package.json
+├── .env.example
+└── README.MD
+```
+
+---
+
+## 🔗 Integración con Gateway
+
+Este microservicio está diseñado para funcionar detrás del **API Gateway**:
+
+```
+Cliente → Gateway:8080 → /api/usuarios/* → usuarios-service:3001
+```
+
+El gateway reenvía automáticamente los headers de autenticación.
+
+---
+
+**💡 Tip**: Para más ejemplos de uso, revisa la documentación del Gateway en `/gateway-hono/EXAMPLES.md`

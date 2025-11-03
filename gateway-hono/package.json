@@ -1,7 +1,17 @@
 {
+  "name": "gateway-hono",
+  "version": "1.0.0",
   "type": "module",
+  "description": "API Gateway para microservicios de gasolineras",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node test-gateway.js"
+  },
   "dependencies": {
     "@hono/node-server": "^1.19.5",
+    "@hono/swagger-ui": "^0.4.1",
     "hono": "^4.10.1",
     "node-fetch": "^3"
   }

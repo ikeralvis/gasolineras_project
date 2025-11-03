@@ -4,7 +4,7 @@ import { validateStrongPassword, validateEmail, sanitizeName } from '../utils/va
 
 const SALT_ROUNDS = 10;
 
-// Esquemas OpenAPI (Incluidos aquí para un único archivo)
+// Esquemas OpenAPI
 const authSchemas = {
     register: {
         tags: ['Auth'],
@@ -21,6 +21,7 @@ const authSchemas = {
         },
         response: {
             201: {
+                description: 'Usuario creado exitosamente',
                 type: 'object',
                 properties: {
                     id: { type: 'integer' },
@@ -28,8 +29,8 @@ const authSchemas = {
                     email: { type: 'string' }
                 }
             },
-            400: { type: 'object', properties: { error: { type: 'string' } } },
-            500: { type: 'object', properties: { error: { type: 'string' } } }
+            400: { description: 'Email ya registrado o datos inválidos', type: 'object', properties: { error: { type: 'string' } } },
+            500: { description: 'Error interno del servidor', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     login: {
@@ -39,19 +40,20 @@ const authSchemas = {
             type: 'object',
             required: ['email', 'password'],
             properties: {
-                email: { type: 'string', format: 'email' },
-                password: { type: 'string' }
+                email: { type: 'string', format: 'email', example: 'juan@example.com' },
+                password: { type: 'string', example: 'password123' }
             },
             additionalProperties: false
         },
         response: {
             200: {
+                description: 'Login exitoso',
                 type: 'object',
                 properties: {
                     token: { type: 'string', description: 'JWT token de autenticación' }
                 }
             },
-            401: { type: 'object', properties: { error: { type: 'string' } } }
+            401: { description: 'Credenciales inválidas', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     me: {
@@ -60,6 +62,7 @@ const authSchemas = {
         security: [{ BearerAuth: [] }],
         response: {
             200: {
+                description: 'Información del usuario',
                 type: 'object',
                 properties: {
                     id: { type: 'integer' },
@@ -68,7 +71,45 @@ const authSchemas = {
                     is_admin: { type: 'boolean' }
                 }
             },
-            401: { type: 'object', properties: { error: { type: 'string' } } }
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } }
+        }
+    },
+    updateMe: {
+        tags: ['Perfil'],
+        description: 'Actualizar información del usuario autenticado',
+        security: [{ BearerAuth: [] }],
+        body: {
+            type: 'object',
+            properties: {
+                nombre: { type: 'string', minLength: 1 },
+                email: { type: 'string', format: 'email' },
+                password: { type: 'string', minLength: 6 }
+            },
+            additionalProperties: false,
+            minProperties: 1
+        },
+        response: {
+            200: {
+                description: 'Perfil actualizado',
+                type: 'object',
+                properties: {
+                    id: { type: 'integer' },
+                    nombre: { type: 'string' },
+                    email: { type: 'string' }
+                }
+            },
+            400: { description: 'Datos inválidos o email ya en uso', type: 'object', properties: { error: { type: 'string' } } },
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } }
+        }
+    },
+    deleteMe: {
+        tags: ['Perfil'],
+        description: 'Eliminar la cuenta del usuario autenticado',
+        security: [{ BearerAuth: [] }],
+        response: {
+            200: { description: 'Cuenta eliminada', type: 'object', properties: { message: { type: 'string' } } },
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } },
+            404: { description: 'Usuario no encontrado', type: 'object', properties: { error: { type: 'string' } } }
         }
     },
     listUsers: {
@@ -77,6 +118,7 @@ const authSchemas = {
         security: [{ BearerAuth: [] }],
         response: {
             200: {
+                description: 'Lista de usuarios',
                 type: 'array',
                 items: {
                     type: 'object',
@@ -88,14 +130,14 @@ const authSchemas = {
                     }
                 }
             },
-            403: { type: 'object', properties: { error: { type: 'string' } } }
+            401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } },
+            403: { description: 'No tienes permisos de administrador', type: 'object', properties: { error: { type: 'string' } } }
         }
     }
 };
 
 /**
  * Rutas de autenticación y gestión de usuarios.
- * @param {import('fastify').FastifyInstance} fastify
  */
 export async function authRoutes(fastify) {
 
@@ -137,9 +179,7 @@ export async function authRoutes(fastify) {
             if (result.rows.length === 0) {
                 return reply.code(500).send({ error: 'Fallo al registrar el usuario' });
             }
-
             return reply.code(201).send(result.rows[0]);
-
         } catch (error) {
             if (error.code === '23505') {
                 return reply.code(400).send({ error: 'El email ya está registrado.' });
@@ -160,23 +200,18 @@ export async function authRoutes(fastify) {
         }
     }, async (request, reply) => {
         const { email, password } = request.body;
-
         try {
             const query = 'SELECT id, nombre, email, password_hash, is_admin FROM users WHERE email = $1;';
             const result = await fastify.pg.query(query, [email.toLowerCase()]);
 
             const user = result.rows[0];
-
             if (!user) {
                 return reply.code(401).send({ error: 'Credenciales inválidas.' });
             }
-
             const isMatch = await bcrypt.compare(password, user.password_hash);
-
             if (!isMatch) {
                 return reply.code(401).send({ error: 'Credenciales inválidas.' });
             }
-
             const token = fastify.jwt.sign(
                 { id: user.id, email: user.email, is_admin: user.is_admin, nombre: user.nombre },
                 { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
@@ -193,26 +228,16 @@ export async function authRoutes(fastify) {
     // GET /me (PROTEGIDA)
     fastify.get('/me', {
         schema: authSchemas.me,
-        onRequest: [verifyJwt]
+        onRequest: async (request, reply) => {
+            try {
+                await request.jwtVerify();
+            } catch (err) {
+                return reply.code(401).send({ error: 'Unauthorized' });
+            }
+        }
     }, async (request, reply) => {
-        // request.user contiene el payload del token
         const { id, nombre, email, is_admin } = request.user;
         return reply.code(200).send({ id, nombre, email, is_admin });
-    });
-
-    // GET / (Lista usuarios, PROTEGIDA y Admin)
-    fastify.get('/', {
-        schema: authSchemas.listUsers,
-        onRequest: [verifyJwt, adminOnlyHook]
-    }, async (request, reply) => {
-        try {
-            const query = 'SELECT id, nombre, email, is_admin FROM users;';
-            const result = await fastify.pg.query(query);
-            return reply.code(200).send(result.rows);
-        } catch (error) {
-            fastify.log.error(error);
-            return reply.code(500).send({ error: 'Error interno del servidor.' });
-        }
     });
 
     // PATCH /me - Actualizar perfil
@@ -248,17 +273,17 @@ export async function authRoutes(fastify) {
     }, async (request, reply) => {
         const user_id = request.user.id;
         const { nombre, email, password } = request.body;
-
+        
         try {
             const updates = [];
             const values = [];
             let paramIndex = 1;
-
+            
             if (nombre) {
                 updates.push(`nombre = $${paramIndex++}`);
                 values.push(sanitizeName(nombre));
             }
-
+            
             if (email) {
                 // Validar email
                 const emailValidation = validateEmail(email);
@@ -275,7 +300,7 @@ export async function authRoutes(fastify) {
                 updates.push(`email = $${paramIndex++}`);
                 values.push(email.toLowerCase());
             }
-
+            
             if (password) {
                 // Validar contraseña fuerte
                 const passwordValidation = validateStrongPassword(password);
@@ -287,27 +312,27 @@ export async function authRoutes(fastify) {
                 updates.push(`password_hash = $${paramIndex++}`);
                 values.push(password_hash);
             }
-
+            
             if (updates.length === 0) {
                 return reply.code(400).send({ error: 'No hay campos para actualizar.' });
             }
-
+            
             values.push(user_id);
             const query = `
-            UPDATE users 
-            SET ${updates.join(', ')}
-            WHERE id = $${paramIndex}
-            RETURNING id, nombre, email;
-        `;
-
+                UPDATE users 
+                SET ${updates.join(', ')}
+                WHERE id = $${paramIndex}
+                RETURNING id, nombre, email;
+            `;
+            
             const result = await fastify.pg.query(query, values);
-
             return reply.code(200).send(result.rows[0]);
         } catch (error) {
             fastify.log.error(error);
             return reply.code(500).send({ error: 'Error interno del servidor.' });
         }
     });
+
     // DELETE /me - Eliminar cuenta
     fastify.delete('/me', {
         schema: {
@@ -323,17 +348,40 @@ export async function authRoutes(fastify) {
         onRequest: [verifyJwt] // ✅ Usar hook en lugar de inline
     }, async (request, reply) => {
         const user_id = request.user.id;
-
+        
         try {
-            // ON DELETE CASCADE eliminará automáticamente los favoritos
             const query = 'DELETE FROM users WHERE id = $1 RETURNING id;';
             const result = await fastify.pg.query(query, [user_id]);
-
+            
             if (result.rowCount === 0) {
                 return reply.code(404).send({ error: 'Usuario no encontrado.' });
             }
-
+            
             return reply.code(200).send({ message: 'Cuenta eliminada correctamente.' });
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.code(500).send({ error: 'Error interno del servidor.' });
+        }
+    });
+
+    // GET / (Lista usuarios, PROTEGIDA y Admin)
+    fastify.get('/', {
+        schema: authSchemas.listUsers,
+        onRequest: [
+            async (request, reply) => {
+                try {
+                    await request.jwtVerify();
+                } catch (err) {
+                    return reply.code(401).send({ error: 'Unauthorized' });
+                }
+            },
+            adminOnlyHook
+        ]
+    }, async (request, reply) => {
+        try {
+            const query = 'SELECT id, nombre, email, is_admin FROM users;';
+            const result = await fastify.pg.query(query);
+            return reply.code(200).send(result.rows);
         } catch (error) {
             fastify.log.error(error);
             return reply.code(500).send({ error: 'Error interno del servidor.' });

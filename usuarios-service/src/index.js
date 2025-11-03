@@ -29,7 +29,9 @@ if (process.env.JWT_SECRET.length < 32) {
  */
 async function buildServer() {
   const fastify = Fastify({
-    logger: true
+    logger: {
+      level: process.env.NODE_ENV === 'production' ? 'error' : 'info'
+    }
   });
 
   // 1. Plugins de seguridad básica
@@ -77,13 +79,17 @@ async function buildServer() {
         description: 'Gestión de usuarios, autenticación y favoritos con seguridad mejorada.',
         version: '1.0.0'
       },
-      servers: [{ url: `http://localhost:${PORT}/api/usuarios` }],
+      servers: [
+        { url: `http://localhost:${PORT}`, description: 'Desarrollo Local' },
+        { url: `http://localhost:8080`, description: 'Gateway' }
+      ],
       components: {
         securitySchemes: {
           BearerAuth: {
             type: 'http',
             scheme: 'bearer',
-            bearerFormat: 'JWT'
+            bearerFormat: 'JWT',
+            description: 'Ingresa el token JWT obtenido del endpoint /login'
           }
         }
       },
@@ -98,9 +104,12 @@ async function buildServer() {
   fastify.register(fastifySwaggerUI, {
     routePrefix: '/api-docs',
     uiConfig: {
-      docExpansion: 'full',
-      deepLinking: false
-    }
+      docExpansion: 'list',
+      deepLinking: true,
+      persistAuthorization: true
+    },
+    staticCSP: true,
+    transformStaticCSP: (header) => header
   });
 
   // 6. Conexión a Base de Datos
@@ -126,16 +135,42 @@ async function buildServer() {
   fastify.register(authRoutes, { prefix: '/api/usuarios' });
   fastify.register(favoritesRoutes, { prefix: '/api/usuarios' });
 
+  // Ruta raíz
+  fastify.get('/', async () => ({
+    service: 'usuarios-service',
+    version: '1.0.0',
+    status: 'running',
+    endpoints: {
+      docs: '/api-docs',
+      health: '/api/usuarios/health',
+      base: '/api/usuarios'
+    }
+  }));
+
   return fastify;
 }
 
-// Iniciar el servidor
+// ========================================
+// 🚀 INICIAR SERVIDOR
+// ========================================
 const start = async () => {
   const server = await buildServer();
   try {
     await server.listen({ port: PORT, host: HOST });
-    server.log.info(`Servidor de Usuarios escuchando en http://${HOST}:${PORT}`);
-    server.log.info(`Documentación Swagger disponible en http://${HOST}:${PORT}/api-docs`);
+    console.log(`
+╔═══════════════════════════════════════════════════════════╗
+║                                                           ║
+║   👤 Microservicio de Usuarios                           ║
+║                                                           ║
+║   📍 URL:          http://${HOST}:${PORT}                     ║
+║   📄 Swagger:      http://${HOST}:${PORT}/api-docs            ║
+║   🏥 Health:       http://${HOST}:${PORT}/api/usuarios/health ║
+║                                                           ║
+║   🗄️  PostgreSQL:  Conectado ✅                          ║
+║   🔐 JWT:          Configurado ✅                        ║
+║                                                           ║
+╚═══════════════════════════════════════════════════════════╝
+    `);
   } catch (err) {
     server.log.error(err);
     process.exit(1);
