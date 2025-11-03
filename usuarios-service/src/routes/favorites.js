@@ -12,8 +12,7 @@ const favSchemas = {
             properties: {
                 ideess: { 
                     type: 'string', 
-                    description: 'ID de la Estación de Servicio',
-                    example: '12345'
+                    description: 'ID de la Estación de Servicio'
                 }
             },
             additionalProperties: false
@@ -85,14 +84,6 @@ const favSchemas = {
 export async function favoritesRoutes(fastify) {
     // POST /favoritos (PROTEGIDA)
     fastify.post('/favoritos', {
-        schema: favSchemas.addFavorite,
-        onRequest: async (request, reply) => {
-            try {
-                await request.jwtVerify();
-            } catch (err) {
-                return reply.code(401).send({ error: 'Unauthorized' });
-            }
-        }
         schema: {
             ...favSchemas.addFavorite,
             tags: ['Favoritos'],
@@ -145,35 +136,8 @@ export async function favoritesRoutes(fastify) {
             return reply.code(500).send({ error: 'Error interno del servidor.' });
         }
     });
-
-    // DELETE /favoritos/:ideess - Eliminar favorito
-    fastify.delete('/favoritos/:ideess', {
-        schema: favSchemas.deleteFavorite,
-        onRequest: async (request, reply) => {
-            try {
-                await request.jwtVerify();
-            } catch (err) {
-                return reply.code(401).send({ error: 'Unauthorized' });
-            }
-        }
-    }, async (request, reply) => {
-        const user_id = request.user.id;
-        const { ideess } = request.params;
-        
-        try {
-            const query = 'DELETE FROM user_favorites WHERE user_id = $1 AND ideess = $2 RETURNING ideess;';
-            const result = await fastify.pg.query(query, [user_id, ideess]);
-            
-            if (result.rowCount === 0) {
-                return reply.code(404).send({ error: 'Favorito no encontrado.' });
-            }
-            
-            return reply.code(200).send({ message: 'Favorito eliminado correctamente.' });
-        } catch (error) {
-            fastify.log.error(error);
-            return reply.code(500).send({ error: 'Error interno del servidor.' });
-        }
-    });
+    
+    // DELETE /favoritos/:ideess (PROTEGIDA)
     fastify.delete('/favoritos/:ideess', {
         schema: {
             tags: ['Favoritos'],

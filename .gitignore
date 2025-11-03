@@ -11,11 +11,15 @@ yarn-debug.log*
 yarn-error.log*
 package-lock.json
 pnpm-lock.yaml
+
+# Variables de entorno (SOLO archivos con secretos reales)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
+
+# ⚠️ IMPORTANTE: .env.example SÍ debe subirse a Git (es un template)
 
 # ──────────────────────────────
 # 🐍 Python (Microservicio Gasolineras)
@@ -25,7 +29,6 @@ __pycache__/
 *$py.class
 venv/
 .env/
-.env.*
 instance/
 .pytest_cache/
 migrations/

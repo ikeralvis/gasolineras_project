@@ -40,8 +40,8 @@ const authSchemas = {
             type: 'object',
             required: ['email', 'password'],
             properties: {
-                email: { type: 'string', format: 'email', example: 'juan@example.com' },
-                password: { type: 'string', example: 'password123' }
+                email: { type: 'string', format: 'email' },
+                password: { type: 'string' }
             },
             additionalProperties: false
         },
