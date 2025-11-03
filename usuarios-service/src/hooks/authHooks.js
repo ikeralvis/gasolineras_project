@@ -8,6 +8,7 @@ export async function verifyJwt(request, reply) {
   try {
     await request.jwtVerify();
   } catch (err) {
+    request.log.error(err);
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 }
@@ -17,7 +18,7 @@ export async function verifyJwt(request, reply) {
  * Debe usarse junto con verifyJwt.
  */
 export async function adminOnlyHook(request, reply) {
-  if (!request.user || request.user.is_admin !== true) {
+  if (request.user?.is_admin !== true) {
     return reply.code(403).send({ error: 'Forbidden: Admin access required' });
   }
 }

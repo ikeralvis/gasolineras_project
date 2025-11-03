@@ -84,5 +84,5 @@ export function validateEmail(email) {
  * @returns {string} - Nombre sanitizado
  */
 export function sanitizeName(nombre) {
-    return nombre.trim().replace(/\s+/g, ' ');
+    return nombre.trim().replaceAll(/\s+/g, ' ');
 }

@@ -64,7 +64,6 @@ export async function healthRoutes(fastify) {
         } catch (err) {
             fastify.log.error('Health check DB error:', err);
             dbStatus = 'error';
-            overallStatus = 'error';
             
             // Retornar 503 si la DB no está disponible
             return reply.code(503).send({
