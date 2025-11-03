@@ -17,6 +17,169 @@ const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasol
 const app = new Hono();
 
 // ========================================
+// 📡 AGREGACIÓN DE OPENAPI DE MICROSERVICIOS
+// ========================================
+let aggregatedSpec = null;
+
+async function fetchAndAggregateSpecs() {
+  try {
+    console.log("📚 Agregando documentación OpenAPI de microservicios...");
+    
+    // Fetch specs de cada servicio
+    const [usuariosRes, gasolinerasRes] = await Promise.allSettled([
+      fetch(`${USUARIOS_SERVICE}/openapi.json`, { signal: AbortSignal.timeout(5000) }),
+      fetch(`${GASOLINERAS_SERVICE}/openapi.json`, { signal: AbortSignal.timeout(5000) })
+    ]);
+
+    const specs = {
+      usuarios: null,
+      gasolineras: null
+    };
+
+    // Parsear spec de usuarios
+    if (usuariosRes.status === "fulfilled" && usuariosRes.value.ok) {
+      specs.usuarios = await usuariosRes.value.json();
+      console.log("  ✅ Usuarios OpenAPI cargado");
+    } else {
+      console.warn("  ⚠️  Usuarios OpenAPI no disponible");
+    }
+
+    // Parsear spec de gasolineras
+    if (gasolinerasRes.status === "fulfilled" && gasolinerasRes.value.ok) {
+      specs.gasolineras = await gasolinerasRes.value.json();
+      console.log("  ✅ Gasolineras OpenAPI cargado");
+    } else {
+      console.warn("  ⚠️  Gasolineras OpenAPI no disponible");
+    }
+
+    // Crear spec agregado
+    aggregatedSpec = {
+      openapi: "3.1.0",
+      info: {
+        title: "API Gateway - Gasolineras",
+        version: "1.0.0",
+        description: "Gateway centralizado que unifica las APIs de usuarios y gasolineras. Esta documentación agrega automáticamente los endpoints de todos los microservicios.",
+        contact: {
+          name: "Equipo de desarrollo",
+          email: "dev@gasolineras.com",
+        },
+      },
+      servers: [
+        {
+          url: `http://localhost:${PORT}`,
+          description: "API Gateway (punto de entrada único)",
+        },
+      ],
+      paths: {
+        "/health": {
+          get: {
+            summary: "Health Check del Gateway",
+            description: "Verifica el estado del Gateway y todos los microservicios conectados",
+            tags: ["Gateway"],
+            responses: {
+              200: {
+                description: "Todos los servicios operativos",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "object",
+                      properties: {
+                        status: { type: "string", enum: ["UP", "DEGRADED"] },
+                        timestamp: { type: "string", format: "date-time" },
+                        services: { 
+                          type: "object",
+                          additionalProperties: {
+                            type: "object",
+                            properties: {
+                              status: { type: "string", enum: ["UP", "DOWN"] },
+                              url: { type: "string" }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              503: {
+                description: "Uno o más servicios caídos"
+              }
+            }
+          }
+        }
+      },
+      components: {
+        securitySchemes: {}
+      },
+      tags: [
+        { name: "Gateway", description: "Endpoints del Gateway" },
+        { name: "Usuarios", description: "Gestión de usuarios y autenticación (proxeado a usuarios-service)" },
+        { name: "Favoritos", description: "Gestión de gasolineras favoritas (proxeado a usuarios-service)" },
+        { name: "Gasolineras", description: "Información de gasolineras (proxeado a gasolineras-service)" }
+      ]
+    };
+
+    // Agregar paths de usuarios con prefijo /api/usuarios
+    if (specs.usuarios?.paths) {
+      for (const [path, methods] of Object.entries(specs.usuarios.paths)) {
+        // Ajustar path: si ya tiene /api/usuarios, dejarlo; si no, agregarlo
+        const gatewayPath = path.startsWith("/api/usuarios") ? path : `/api/usuarios${path}`;
+        aggregatedSpec.paths[gatewayPath] = methods;
+      }
+    }
+
+    // Agregar paths de gasolineras con prefijo /api/gasolineras
+    if (specs.gasolineras?.paths) {
+      for (const [path, methods] of Object.entries(specs.gasolineras.paths)) {
+        // Si el path es "/" o "/gasolineras", convertirlo a /api/gasolineras
+        let gatewayPath;
+        if (path === "/" || path === "") {
+          gatewayPath = "/api/gasolineras";
+        } else if (path.startsWith("/gasolineras")) {
+          gatewayPath = `/api${path}`;
+        } else {
+          gatewayPath = `/api/gasolineras${path}`;
+        }
+        aggregatedSpec.paths[gatewayPath] = methods;
+      }
+    }
+
+    // Combinar securitySchemes de ambos servicios
+    if (specs.usuarios?.components?.securitySchemes) {
+      Object.assign(aggregatedSpec.components.securitySchemes, specs.usuarios.components.securitySchemes);
+    }
+    if (specs.gasolineras?.components?.securitySchemes) {
+      Object.assign(aggregatedSpec.components.securitySchemes, specs.gasolineras.components.securitySchemes);
+    }
+
+    console.log(`📋 Documentación agregada: ${Object.keys(aggregatedSpec.paths).length} endpoints`);
+    
+  } catch (error) {
+    console.error("❌ Error al agregar specs:", error);
+    // Fallback a spec básico
+    aggregatedSpec = {
+      openapi: "3.1.0",
+      info: {
+        title: "API Gateway - Gasolineras",
+        version: "1.0.0",
+        description: "Gateway en modo degradado. No se pudieron cargar los specs de los microservicios."
+      },
+      paths: {}
+    };
+  }
+}
+
+// Cargar specs al iniciar (con retry cada 10s si falla)
+const tryLoadSpecs = async () => {
+  await fetchAndAggregateSpecs();
+  if (!aggregatedSpec || Object.keys(aggregatedSpec.paths).length <= 1) {
+    console.log("🔄 Reintentando carga de specs en 10 segundos...");
+    setTimeout(tryLoadSpecs, 10000);
+  }
+};
+tryLoadSpecs();
+
+// ========================================
 // 🛡️ MIDDLEWARES GLOBALES
 // ========================================
 app.use("*", logger());
@@ -30,190 +193,22 @@ app.use(
 );
 
 // ========================================
-// 📄 DOCUMENTACIÓN OPENAPI
+// � RUTAS DE DOCUMENTACIÓN (AGREGADA)
 // ========================================
-const openApiSpec = {
-  openapi: "3.1.0",
-  info: {
-    title: "API Gateway - Gasolineras",
-    version: "1.0.0",
-    description: "Gateway centralizado que redirecciona peticiones a los microservicios de usuarios y gasolineras",
-    contact: {
-      name: "Equipo de desarrollo",
-      email: "dev@gasolineras.com",
-    },
-  },
-  servers: [
-    {
-      url: `http://localhost:${PORT}`,
-      description: "Servidor local",
-    },
-  ],
-  paths: {
-    "/health": {
-      get: {
-        summary: "Health Check",
-        description: "Verifica el estado del Gateway y de los microservicios",
-        responses: {
-          200: {
-            description: "Gateway funcionando correctamente",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "object",
-                  properties: {
-                    status: { type: "string" },
-                    timestamp: { type: "string" },
-                    services: { type: "object" },
-                  },
-                },
-              },
-            },
-          },
-        },
+app.get("/openapi.json", (c) => {
+  if (!aggregatedSpec) {
+    return c.json({
+      openapi: "3.1.0",
+      info: {
+        title: "API Gateway - Gasolineras",
+        version: "1.0.0",
+        description: "Cargando especificaciones de microservicios..."
       },
-    },
-    "/api/usuarios/register": {
-      post: {
-        summary: "Registrar usuario",
-        tags: ["Usuarios"],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["email", "password", "nombre"],
-                properties: {
-                  email: { type: "string", format: "email" },
-                  password: { type: "string", minLength: 6 },
-                  nombre: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          201: { description: "Usuario creado exitosamente" },
-          400: { description: "Datos inválidos" },
-          409: { description: "Usuario ya existe" },
-        },
-      },
-    },
-    "/api/usuarios/login": {
-      post: {
-        summary: "Iniciar sesión",
-        tags: ["Usuarios"],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["email", "password"],
-                properties: {
-                  email: { type: "string", format: "email" },
-                  password: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          200: { description: "Login exitoso, devuelve token JWT" },
-          401: { description: "Credenciales inválidas" },
-        },
-      },
-    },
-    "/api/usuarios/favorites": {
-      get: {
-        summary: "Obtener favoritos del usuario",
-        tags: ["Favoritos"],
-        security: [{ BearerAuth: [] }],
-        responses: {
-          200: { description: "Lista de favoritos" },
-          401: { description: "No autenticado" },
-        },
-      },
-      post: {
-        summary: "Agregar gasolinera a favoritos",
-        tags: ["Favoritos"],
-        security: [{ BearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            "application/json": {
-              schema: {
-                type: "object",
-                required: ["gasolineraId"],
-                properties: {
-                  gasolineraId: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          201: { description: "Favorito agregado" },
-          401: { description: "No autenticado" },
-        },
-      },
-    },
-    "/api/usuarios/favorites/{id}": {
-      delete: {
-        summary: "Eliminar favorito",
-        tags: ["Favoritos"],
-        security: [{ BearerAuth: [] }],
-        parameters: [
-          {
-            name: "id",
-            in: "path",
-            required: true,
-            schema: { type: "string" },
-          },
-        ],
-        responses: {
-          200: { description: "Favorito eliminado" },
-          401: { description: "No autenticado" },
-          404: { description: "Favorito no encontrado" },
-        },
-      },
-    },
-    "/api/gasolineras": {
-      get: {
-        summary: "Obtener todas las gasolineras",
-        tags: ["Gasolineras"],
-        responses: {
-          200: {
-            description: "Lista de gasolineras",
-            content: {
-              "application/json": {
-                schema: {
-                  type: "array",
-                  items: { type: "object" },
-                },
-              },
-            },
-          },
-        },
-      },
-    },
-  },
-  components: {
-    securitySchemes: {
-      BearerAuth: {
-        type: "http",
-        scheme: "bearer",
-        bearerFormat: "JWT",
-      },
-    },
-  },
-};
-
-// ========================================
-// 📚 RUTAS DE DOCUMENTACIÓN
-// ========================================
-app.get("/openapi.json", (c) => c.json(openApiSpec));
+      paths: {}
+    });
+  }
+  return c.json(aggregatedSpec);
+});
 
 app.get(
   "/docs",
@@ -243,7 +238,7 @@ app.get("/health", async (c) => {
 
   // Check Usuarios Service
   try {
-    const usuariosRes = await fetch(`${USUARIOS_SERVICE}/api/usuarios/health`, {
+    const usuariosRes = await fetch(`${USUARIOS_SERVICE}/health`, {
       signal: AbortSignal.timeout(3000),
     });
     services.usuarios = {

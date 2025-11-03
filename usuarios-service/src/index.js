@@ -112,6 +112,11 @@ async function buildServer() {
     transformStaticCSP: (header) => header
   });
 
+  // 📋 Exponer OpenAPI JSON para agregación en el Gateway
+  fastify.get('/openapi.json', async (request, reply) => {
+    return reply.send(fastify.swagger());
+  });
+
   // 6. Conexión a Base de Datos
   await fastify.register(fastifyPostgres, {
     connectionString: `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`

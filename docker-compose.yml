@@ -50,6 +50,12 @@ services:
       PORT: 8000 # Puerto interno del contenedor
     depends_on:
       - mongo
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
 
   usuarios:
     build: ./usuarios-service
@@ -93,6 +99,12 @@ services:
     depends_on:
       - usuarios
       - gasolineras
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
   frontend:
     build: ./frontend-client
