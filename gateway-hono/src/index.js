@@ -113,9 +113,10 @@ async function fetchAndAggregateSpecs() {
       },
       tags: [
         { name: "Gateway", description: "Endpoints del Gateway" },
-        { name: "Usuarios", description: "Gestión de usuarios y autenticación (proxeado a usuarios-service)" },
+        { name: "Auth", description: "Autenticación y gestión de usuarios (proxeado a usuarios-service)" },
         { name: "Favoritos", description: "Gestión de gasolineras favoritas (proxeado a usuarios-service)" },
-        { name: "Gasolineras", description: "Información de gasolineras (proxeado a gasolineras-service)" }
+        { name: "Gasolineras", description: "Información de gasolineras (proxeado a gasolineras-service)" },
+        { name: "Health", description: "Health checks y monitoreo" }
       ]
     };
 
