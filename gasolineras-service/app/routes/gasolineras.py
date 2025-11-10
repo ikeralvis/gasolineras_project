@@ -76,6 +76,62 @@ def get_gasolineras(
             detail=f"Error al consultar las gasolineras: {str(e)}"
         )
 
+@router.get(
+    "/cerca",
+    summary="Obtener gasolineras cercanas a una ubicación",
+    description="Devuelve gasolineras cercanas a las coordenadas indicadas ordenadas por distancia"
+)
+def gasolineras_cerca(
+    lat: float = Query(..., description="Latitud", ge=-90, le=90),
+    lon: float = Query(..., description="Longitud", ge=-180, le=180),
+    km: float = Query(50, description="Radio en kilómetros", gt=0, le=200),
+    limit: int = Query(100, description="Número máximo de resultados", ge=1, le=500)
+):
+    """Obtiene gasolineras cercanas a una ubicación específica"""
+    try:
+        collection = get_collection()
+        
+        # Asegurar índice geoespacial
+        collection.create_index([("location", "2dsphere")])
+        
+        logger.info(f"📍 Buscando gasolineras cerca de ({lat}, {lon}) en radio de {km}km")
+        
+        # Usar aggregation con $geoNear para búsqueda geoespacial
+        gasolineras = list(collection.aggregate([
+            {
+                "$geoNear": {
+                    "near": {
+                        "type": "Point",
+                        "coordinates": [lon, lat]  # GeoJSON: [longitud, latitud]
+                    },
+                    "distanceField": "distancia",
+                    "maxDistance": km * 1000,  # Convertir km a metros
+                    "spherical": True,
+                    "key": "location"
+                }
+            },
+            {"$limit": limit},
+            {"$project": {"_id": 0}}  # Excluir campo _id
+        ]))
+        
+        logger.info(f"✅ Encontradas {len(gasolineras)} gasolineras cercanas")
+        
+        return {
+            "ubicacion": {"lat": lat, "lon": lon},
+            "radio_km": km,
+            "count": len(gasolineras),
+            "gasolineras": gasolineras
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error al buscar gasolineras cercanas: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al buscar gasolineras cercanas: {str(e)}"
+        )
+
 @router.post(
     "/sync",
     response_model=dict,
@@ -278,24 +334,3 @@ def get_gasolineras_cercanas(id: str, radio_km: float = 5):
             detail=f"Error al consultar gasolineras cercanas: {str(e)}"
         )
 
-@router.get("/cerca")
-def gasolineras_cerca(
-    lat: float = Query(...),
-    lon: float = Query(...),
-    km: float = Query(5, description="Radio en kilómetros"),
-):
-    collection = get_collection()
-
-    gasolineras = list(collection.find({
-        "location": {
-            "$near": {
-                "$geometry": { "type": "Point", "coordinates": [lon, lat] },
-                "$maxDistance": km * 1000  # metros
-            }
-        }
-    }, {"_id": 0}))
-
-    return {
-        "count": len(gasolineras),
-        "gasolineras": gasolineras
-    }

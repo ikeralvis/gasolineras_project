@@ -1,10 +1,14 @@
 import { useEffect } from "react";
 import { Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./contexts/AuthContext";
 import Navbar from "./components/Navbar";
 import Home from "./pages/Home";
 import Gasolineras from "./pages/Gasolineras";
 import GasolineraDetalle from "./components/GasolineraDetalle";
 import MapaGasolineras from "./pages/MapaGasolineras";
+import Login from "./pages/Login";
+import Register from "./pages/Register";
+import Profile from "./pages/Profile";
 
 function App() {
 
@@ -36,15 +40,18 @@ function App() {
 
 
   return (
-    <>
+    <AuthProvider>
       <Navbar />
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/gasolineras" element={<Gasolineras />} />
         <Route path="/gasolinera/:id" element={<GasolineraDetalle />} />
         <Route path="/mapa" element={<MapaGasolineras />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/profile" element={<Profile />} />
       </Routes>
-    </>
+    </AuthProvider>
   );
 }
 

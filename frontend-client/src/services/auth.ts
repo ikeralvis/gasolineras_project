@@ -10,9 +10,14 @@ export const authAPI = {
 
   async login(data: { email: string; password: string }) {
     const res = await axios.post(`${API_URL}/api/usuarios/login`, data);
-    const { token, user } = res.data;
-    if (token) localStorage.setItem('authToken', token);
-    return { token, user };
+    const { token } = res.data;
+    if (token) {
+      localStorage.setItem('authToken', token);
+      // Obtener el perfil del usuario después de hacer login
+      const user = await this.getProfile();
+      return { token, user };
+    }
+    throw new Error('No se recibió token');
   },
 
   async getProfile() {

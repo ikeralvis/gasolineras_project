@@ -6,10 +6,17 @@ const gasolineras = new Hono();
 
 gasolineras.all('/*', async (c) => {
   const path = c.req.path.replace(/^\/gasolineras/, '');
-  const url = `${config.services.gasolineras}${path}`;
+  
+  // Obtener query params correctamente
+  const searchParams = new URL(c.req.url).searchParams;
+  const queryString = searchParams.toString();
+  
+  const url = `${config.services.gasolineras}${path}${queryString ? '?' + queryString : ''}`;
   const method = c.req.method;
   const body = await c.req.json().catch(() => null);
   const headers = Object.fromEntries(c.req.raw.headers);
+
+  console.log(`🔄 Proxy ${method} ${url}`);
 
   try {
     const response = await axios({

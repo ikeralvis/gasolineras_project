@@ -8,4 +8,5 @@ export interface Gasolinera {
   gasoleoA: number | null;
   lat: number;
   lng: number;
+  distancia?: string | null; // Distancia en km (cuando se busca por cercanía)
 }

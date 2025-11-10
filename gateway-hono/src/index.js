@@ -289,7 +289,14 @@ app.get("/health", async (c) => {
 app.all("/api/usuarios/*", async (c) => {
   try {
     const path = c.req.path.replace("/api/usuarios", "/api/usuarios");
-    const url = `${USUARIOS_SERVICE}${path}`;
+    
+    // Obtener query parameters
+    const searchParams = new URL(c.req.url).searchParams;
+    const queryString = searchParams.toString();
+    
+    const url = `${USUARIOS_SERVICE}${path}${queryString ? '?' + queryString : ''}`;
+    
+    console.log(`🔄 Proxy usuarios: ${c.req.method} ${url}`);
 
     // Obtener headers y excluir host
     const headers = {};
@@ -312,10 +319,12 @@ app.all("/api/usuarios/*", async (c) => {
     const response = await fetch(url, options);
     const contentType = response.headers.get("content-type");
 
-    // Copiar headers de la respuesta
+    // Copiar headers, pero excluir content-length para evitar ERR_CONTENT_LENGTH_MISMATCH
     const responseHeaders = {};
     for (const [key, value] of response.headers) {
-      responseHeaders[key] = value;
+      if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {
+        responseHeaders[key] = value;
+      }
     }
 
     // Si es JSON, parsearlo
@@ -345,7 +354,14 @@ app.all("/api/usuarios/*", async (c) => {
 app.all("/api/gasolineras/*", async (c) => {
   try {
     const path = c.req.path.replace("/api/gasolineras", "/gasolineras");
-    const url = `${GASOLINERAS_SERVICE}${path}`;
+    
+    // Obtener query parameters correctamente
+    const searchParams = new URL(c.req.url).searchParams;
+    const queryString = searchParams.toString();
+    
+    const url = `${GASOLINERAS_SERVICE}${path}${queryString ? '?' + queryString : ''}`;
+    
+    console.log(`🔄 Proxy gasolineras: ${c.req.method} ${url}`);
 
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
@@ -366,9 +382,12 @@ app.all("/api/gasolineras/*", async (c) => {
     const response = await fetch(url, options);
     const contentType = response.headers.get("content-type");
 
+    // Copiar headers, pero excluir content-length para evitar ERR_CONTENT_LENGTH_MISMATCH
     const responseHeaders = {};
     for (const [key, value] of response.headers) {
-      responseHeaders[key] = value;
+      if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {
+        responseHeaders[key] = value;
+      }
     }
 
     if (contentType?.includes("application/json")) {
@@ -393,7 +412,14 @@ app.all("/api/gasolineras/*", async (c) => {
 // Ruta específica para obtener todas las gasolineras
 app.get("/api/gasolineras", async (c) => {
   try {
-    const response = await fetch(`${GASOLINERAS_SERVICE}/gasolineras`);
+    // Obtener query parameters
+    const searchParams = new URL(c.req.url).searchParams;
+    const queryString = searchParams.toString();
+    
+    const url = `${GASOLINERAS_SERVICE}/gasolineras${queryString ? '?' + queryString : ''}`;
+    console.log(`🔄 Proxy gasolineras list: GET ${url}`);
+    
+    const response = await fetch(url);
     const data = await response.json();
     return c.json(data);
   } catch (error) {

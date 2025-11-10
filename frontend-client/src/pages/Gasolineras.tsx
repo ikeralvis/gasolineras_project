@@ -5,6 +5,7 @@ import { getGasolinerasCerca } from "../api/gasolineras";
 export default function Gasolineras() {
     const [gasolineras, setGasolineras] = useState<any[]>([]);
     const [filtered, setFiltered] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
     const [provincia, setProvincia] = useState("");
     const [municipio, setMunicipio] = useState("");
@@ -16,27 +17,54 @@ export default function Gasolineras() {
     useEffect(() => {
   async function cargarDatos() {
     try {
+      console.log("🔄 Iniciando carga de gasolineras...");
+      setLoading(true);
+      
+      // Función para cargar todas las gasolineras (fallback)
+      const cargarTodasLasGasolineras = async () => {
+        console.log("🔄 Cargando todas las gasolineras...");
+        const res = await fetch("http://localhost:8080/api/gasolineras");
+        const data = await res.json();
+        console.log("� Respuesta del servidor:", data);
+        
+        const gasolinerasData = data.gasolineras || [];
+        console.log("� Total gasolineras cargadas:", gasolinerasData.length);
+        
+        setGasolineras(gasolinerasData);
+        setFiltered(gasolinerasData);
+        setLoading(false);
+      };
+
+      // Timeout de 5 segundos para geolocalización
+      const geoTimeout = setTimeout(() => {
+        console.log("⏱️ Timeout de geolocalización - cargando todas...");
+        cargarTodasLasGasolineras();
+      }, 5000);
+
       // Pedir ubicación
       navigator.geolocation.getCurrentPosition(
         async (pos) => {
+          clearTimeout(geoTimeout);
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
-          console.log("📍 Ubicación detectada:", lat, lon);
+          console.log("� Ubicación detectada:", lat, lon);
 
           const cerca = await getGasolinerasCerca(lat, lon, 50);
+          console.log("� Gasolineras cercanas recibidas:", cerca.length);
           setGasolineras(cerca);
           setFiltered(cerca);
+          setLoading(false);
         },
-        async () => {
-          console.log("⚠️ Usuario rechazó ubicación. Cargando todas...");
-          const res = await fetch("http://localhost:8080/api/gasolineras");
-          const data = await res.json();
-          setGasolineras(data.gasolineras || data);
-          setFiltered(data.gasolineras || data);
-        }
+        async (error) => {
+          clearTimeout(geoTimeout);
+          console.log("⚠️ Usuario rechazó ubicación o error:", error.message);
+          cargarTodasLasGasolineras();
+        },
+        { timeout: 5000 } // Timeout para getCurrentPosition
       );
     } catch (error) {
-      console.error("Error cargando gasolineras:", error);
+      console.error("❌ Error cargando gasolineras:", error);
+      setLoading(false);
     }
   }
 
@@ -129,7 +157,17 @@ export default function Gasolineras() {
             </div>
 
             <div className="mt-10">
-                <GasolinerasTable gasolineras={filtered} />
+                {loading ? (
+                    <div className="text-center py-12">
+                        <p className="text-lg text-gray-600">Cargando gasolineras...</p>
+                    </div>
+                ) : filtered.length === 0 ? (
+                    <div className="text-center py-12">
+                        <p className="text-lg text-gray-600">No se encontraron gasolineras</p>
+                    </div>
+                ) : (
+                    <GasolinerasTable gasolineras={filtered} />
+                )}
             </div>
         </div>
 
