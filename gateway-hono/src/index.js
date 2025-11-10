@@ -344,7 +344,7 @@ app.all("/api/usuarios/*", async (c) => {
 // ========================================
 app.all("/api/gasolineras/*", async (c) => {
   try {
-    const path = c.req.path.replace("/api/gasolineras", "");
+    const path = c.req.path.replace("/api/gasolineras", "/gasolineras");
     const url = `${GASOLINERAS_SERVICE}${path}`;
 
     const headers = {};

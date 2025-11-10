@@ -1,27 +1,47 @@
-import { Link } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Link, NavLink } from "react-router-dom";
+import { FiMapPin } from "react-icons/fi";
+import { MdLocalGasStation } from "react-icons/md";
 
 export default function Navbar() {
-  const { user, logout } = useAuth();
+  const linkStyle = ({ isActive }: any) =>
+    `px-4 py-2 rounded-full transition font-medium ${
+      isActive
+        ? "text-[#000C74] bg-[#E4E7FF]"
+        : "text-[#3A3D55] hover:text-[#000C74] hover:bg-[#DEE1FF]"
+    }`;
 
   return (
-    <nav className="flex justify-between items-center px-6 py-3 shadow-sm glass">
-      <Link to="/" className="text-xl font-bold tracking-tight text-gray-900">Gasolineras</Link>
-      <div className="flex gap-4 items-center">
-        {user ? (
-          <>
-            <Link to="/profile" className="text-sm font-medium text-gray-700 hover:text-gray-900 transition">{user.nombre}</Link>
-            <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-900 px-3 py-1 rounded transition">
-              Cerrar sesión
-            </button>
-          </>
-        ) : (
-          <>
-            <Link to="/login" className="text-sm font-medium text-gray-700 hover:text-gray-900 transition">Login</Link>
-            <Link to="/register" className="text-sm font-medium text-gray-700 hover:text-gray-900 transition">Registro</Link>
-          </>
-        )}
-      </div>
-    </nav>
+    <header className="backdrop-blur-xl bg-white/70 border-b border-[#D9DBF2]/60 sticky top-0 z-50">
+      <nav className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+
+        {/* Logo */}
+        <Link
+          to="/"
+          className="text-2xl font-bold tracking-tight text-[#000C74]"
+        >
+          TankGo
+        </Link>
+
+        {/* Links */}
+        <div className="flex items-center gap-2">
+          <NavLink to="/" className={linkStyle}>
+            Inicio
+          </NavLink>
+
+          <NavLink to="/gasolineras" className={linkStyle}>
+            <span className="flex items-center gap-2">
+              <MdLocalGasStation size={18}/> Gasolineras
+            </span>
+          </NavLink>
+
+          <NavLink to="/mapa" className={linkStyle}>
+            <span className="flex items-center gap-2">
+              <FiMapPin size={18}/> Mapa
+            </span>
+          </NavLink>
+        </div>
+
+      </nav>
+    </header>
   );
 }
