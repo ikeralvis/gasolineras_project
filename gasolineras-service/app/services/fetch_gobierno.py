@@ -21,10 +21,9 @@ def get_http_client() -> httpx.Client:
     """
     Crea un cliente httpx con configuración robusta para reconexiones y SSL
     """
-    # httpx maneja automáticamente conexiones persistentes y reintentos
     transport = httpx.HTTPTransport(
-        retries=5,  # Reintentos automáticos
-        verify=False  # Desactivar verificación SSL (servidor del gobierno tiene problemas)
+        retries=5,
+        verify=False
     )
     
     return httpx.Client(
@@ -46,22 +45,25 @@ def parse_float(value: str) -> Optional[float]:
     if not value or value == "":
         return None
     try:
-        return float(value.replace(",", "."))
-    except (ValueError, AttributeError):
+        # Manejar caso donde value no es string
+        if not isinstance(value, str):
+            return float(value)
+        cleaned_value = value.replace(",", ".")
+        return float(cleaned_value)
+    except (ValueError, AttributeError, TypeError) as e:
+        logger.warning(f"⚠️ No se pudo parsear a float el valor: '{value}' tipo: {type(value)} (Error: {e})")
         return None
 
 def parse_gasolinera(raw_data: Dict) -> Optional[Dict]:
     """
     Parsea un registro de gasolinera desde el formato de la API
-    
-    Args:
-        raw_data: Diccionario con datos crudos de la API
-    
-    Returns:
-        Diccionario con datos normalizados o None si hay error
     """
     try:
-        return {
+        # Debug: imprimir el primer registro para ver la estructura
+        lat_raw = raw_data.get("Latitud", "")
+        lon_raw = raw_data.get("Longitud (WGS84)", "")
+        
+        parsed_data = {
             "IDEESS": raw_data.get("IDEESS"),
             "Rótulo": raw_data.get("Rótulo", "").strip(),
             "Municipio": raw_data.get("Municipio", "").strip(),
@@ -69,9 +71,12 @@ def parse_gasolinera(raw_data: Dict) -> Optional[Dict]:
             "Dirección": raw_data.get("Dirección", "").strip(),
             "Precio Gasolina 95 E5": raw_data.get("Precio Gasolina 95 E5", ""),
             "Precio Gasoleo A": raw_data.get("Precio Gasoleo A", ""),
-            "Latitud": parse_float(raw_data.get("Latitud", "")),
-            "Longitud": parse_float(raw_data.get("Longitud (WGS84)", "")),
+            "Latitud": parse_float(lat_raw),
+            "Longitud": parse_float(lon_raw),
         }
+        
+        return parsed_data
+        
     except Exception as e:
         logger.warning(f"⚠️ Error procesando registro {raw_data.get('IDEESS')}: {e}")
         return None
@@ -79,13 +84,6 @@ def parse_gasolinera(raw_data: Dict) -> Optional[Dict]:
 def fetch_data_gobierno() -> List[Dict]:
     """
     Obtiene datos actualizados de gasolineras desde la API del gobierno
-    
-    Returns:
-        Lista de diccionarios con los datos de gasolineras
-    
-    Raises:
-        requests.RequestException: Si falla la petición HTTP
-        ValueError: Si la respuesta no es válida
     """
     try:
         logger.info(f"🌐 Consultando API del gobierno: {API_URL}")
@@ -94,7 +92,6 @@ def fetch_data_gobierno() -> List[Dict]:
             response = client.get(API_URL)
             response.raise_for_status()
         
-        # Parsear respuesta JSON
         json_data = response.json()
         
         if not isinstance(json_data, dict):
@@ -108,13 +105,25 @@ def fetch_data_gobierno() -> List[Dict]:
         
         logger.info(f"📥 Recibidos {len(raw_list)} registros de la API")
         
+        # DEBUG: Mostrar un registro de ejemplo
+        if raw_list:
+            ejemplo = raw_list[0]
+            logger.info(f"🔍 Ejemplo de registro crudo:")
+            logger.info(f"  - IDEESS: {ejemplo.get('IDEESS')}")
+            logger.info(f"  - Latitud (crudo): '{ejemplo.get('Latitud')}' (tipo: {type(ejemplo.get('Latitud'))})")
+            logger.info(f"  - Longitud (crudo): '{ejemplo.get('Longitud (WGS84)')}' (tipo: {type(ejemplo.get('Longitud (WGS84)'))})")
+        
         # Parsear y filtrar registros válidos
         gasolineras = []
         errores = 0
+        sin_coordenadas = 0
         
         for raw_item in raw_list:
             parsed = parse_gasolinera(raw_item)
             if parsed:
+                # Verificar si tiene coordenadas válidas
+                if parsed.get("Latitud") is None or parsed.get("Longitud") is None:
+                    sin_coordenadas += 1
                 gasolineras.append(parsed)
             else:
                 errores += 1
@@ -123,6 +132,15 @@ def fetch_data_gobierno() -> List[Dict]:
             logger.warning(f"⚠️ {errores} registros no pudieron procesarse")
         
         logger.info(f"✅ Procesadas {len(gasolineras)} gasolineras correctamente")
+        logger.info(f"📍 Registros sin coordenadas: {sin_coordenadas}")
+        
+        # Mostrar un ejemplo parseado
+        if gasolineras:
+            ejemplo_parseado = gasolineras[0]
+            logger.info(f"🔍 Ejemplo parseado:")
+            logger.info(f"  - IDEESS: {ejemplo_parseado.get('IDEESS')}")
+            logger.info(f"  - Latitud: {ejemplo_parseado.get('Latitud')} (tipo: {type(ejemplo_parseado.get('Latitud'))})")
+            logger.info(f"  - Longitud: {ejemplo_parseado.get('Longitud')} (tipo: {type(ejemplo_parseado.get('Longitud'))})")
         
         return gasolineras
         

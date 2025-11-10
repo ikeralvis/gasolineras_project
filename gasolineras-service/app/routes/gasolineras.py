@@ -1,5 +1,5 @@
 """
-Rutas de la API de Gasolineras
+Rutas de la API de Gasolineras - VERSIÓN DEBUG
 """
 import logging
 from typing import List, Optional
@@ -83,19 +83,19 @@ def get_gasolineras(
     description="""
     Sincroniza los datos de gasolineras desde la API del Gobierno de España.
     
-    **Atención:** Esta operación:
+    Atención:
     - Elimina todos los datos existentes
     - Descarga datos actualizados desde la API oficial
     - Inserta los nuevos datos en la base de datos
     
-    Puede tardar varios segundos en completarse.
+    Puede tardar varios segundos.
     """
 )
 def sync_gasolineras():
     try:
-        collection = get_collection()
-
         logger.info("🔄 Iniciando sincronización de gasolineras...")
+        
+        collection = get_collection()  # Sin argumentos
 
         datos = fetch_data_gobierno()
         if not datos:
@@ -104,26 +104,64 @@ def sync_gasolineras():
                 detail="No se pudieron obtener datos desde la API del gobierno"
             )
 
+        logger.info(f"📦 Datos recibidos de fetch_data_gobierno: {len(datos)} registros")
+
         deleted_count = collection.delete_many({}).deleted_count
         logger.info(f"🗑️ Eliminados {deleted_count} registros antiguos")
 
+        # DEBUG: Mostrar el primer registro
+        if datos:
+            primer_registro = datos[0]
+            logger.info(f"🔍 DEBUG - Primer registro:")
+            logger.info(f"  Keys disponibles: {list(primer_registro.keys())}")
+            logger.info(f"  IDEESS: {primer_registro.get('IDEESS')}")
+            logger.info(f"  Latitud: {primer_registro.get('Latitud')} (tipo: {type(primer_registro.get('Latitud'))})")
+            logger.info(f"  Longitud: {primer_registro.get('Longitud')} (tipo: {type(primer_registro.get('Longitud'))})")
+
         datos_normalizados = []
-        for g in datos:
-            try:
-                lat = float(g.get("Latitud", "").replace(",", "."))
-                lon = float(g.get("Longitud", "").replace(",", "."))
-                g["Latitud"] = lat
-                g["Longitud"] = lon
-                g["location"] = {"type": "Point", "coordinates": [lon, lat]}
-                datos_normalizados.append(g)
-            except:
+        registros_filtrados = 0
+
+        for idx, g in enumerate(datos):
+            lat = g.get("Latitud")
+            lon = g.get("Longitud")
+
+
+            # DEBUG: Mostrar los primeros 3 registros
+            if idx < 3:
+                logger.info(f"🔍 DEBUG - Registro {idx}:")
+                logger.info(f"  Latitud: {lat} (es None: {lat is None})")
+                logger.info(f"  Longitud: {lon} (es None: {lon is None})")
+
+            if lat is None or lon is None:
+                registros_filtrados += 1
                 continue
+
+            g["location"] = {
+                "type": "Point",
+                "coordinates": [lon, lat]  # GeoJSON → [longitud, latitud]
+            }
+
+            datos_normalizados.append(g)
+        
+        logger.info(f"🔢 Procesados: {len(datos)}. Filtrados por coordenadas: {registros_filtrados}. Válidos para insertar: {len(datos_normalizados)}")
+
+        if not datos_normalizados:
+            logger.error(f"❌ CRÍTICO: datos_normalizados está vacío!")
+            logger.error(f"   Total recibidos: {len(datos)}")
+            logger.error(f"   Total filtrados: {registros_filtrados}")
+            raise HTTPException(
+                status_code=500,
+                detail="No se encontraron gasolineras con coordenadas válidas"
+            )
 
         result = collection.insert_many(datos_normalizados)
 
+        # Índice espacial para búsquedas cercanas
         collection.create_index([("location", "2dsphere")])
 
         inserted_count = len(result.inserted_ids)
+
+        logger.info(f"✅ Insertadas {inserted_count} gasolineras nuevas")
 
         return {
             "mensaje": "Datos sincronizados correctamente 🚀",
@@ -136,6 +174,8 @@ def sync_gasolineras():
         raise
     except Exception as e:
         logger.error(f"❌ Error al sincronizar gasolineras: {e}")
+        import traceback
+        logger.error(f"Traceback completo: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
             detail=f"Error al sincronizar datos: {str(e)}"
@@ -194,7 +234,6 @@ def get_gasolinera_por_id(id: str):
     "/{id}/cercanas",
     summary="Obtener gasolineras cercanas",
     description="Devuelve gasolineras ordenadas por distancia respecto a la gasolinera indicada")
-
 def get_gasolineras_cercanas(id: str, radio_km: float = 5):
     try:
         collection = get_collection()
@@ -238,3 +277,25 @@ def get_gasolineras_cercanas(id: str, radio_km: float = 5):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al consultar gasolineras cercanas: {str(e)}"
         )
+
+@router.get("/cerca")
+def gasolineras_cerca(
+    lat: float = Query(...),
+    lon: float = Query(...),
+    km: float = Query(5, description="Radio en kilómetros"),
+):
+    collection = get_collection()
+
+    gasolineras = list(collection.find({
+        "location": {
+            "$near": {
+                "$geometry": { "type": "Point", "coordinates": [lon, lat] },
+                "$maxDistance": km * 1000  # metros
+            }
+        }
+    }, {"_id": 0}))
+
+    return {
+        "count": len(gasolineras),
+        "gasolineras": gasolineras
+    }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import GasolinerasTable from "../components/GasolinerasTable";
+import { getGasolinerasCerca } from "../api/gasolineras";
 
 export default function Gasolineras() {
     const [gasolineras, setGasolineras] = useState<any[]>([]);
@@ -13,13 +14,34 @@ export default function Gasolineras() {
 
 
     useEffect(() => {
-        fetch("http://localhost:8080/api/gasolineras")
-            .then((res) => res.json())
-            .then((data) => {
-                setGasolineras(data.gasolineras || data);
-                setFiltered(data.gasolineras || data);
-            });
-    }, []);
+  async function cargarDatos() {
+    try {
+      // Pedir ubicación
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          console.log("📍 Ubicación detectada:", lat, lon);
+
+          const cerca = await getGasolinerasCerca(lat, lon, 50);
+          setGasolineras(cerca);
+          setFiltered(cerca);
+        },
+        async () => {
+          console.log("⚠️ Usuario rechazó ubicación. Cargando todas...");
+          const res = await fetch("http://localhost:8080/api/gasolineras");
+          const data = await res.json();
+          setGasolineras(data.gasolineras || data);
+          setFiltered(data.gasolineras || data);
+        }
+      );
+    } catch (error) {
+      console.error("Error cargando gasolineras:", error);
+    }
+  }
+
+  cargarDatos();
+}, []);
 
     const aplicarFiltros = () => {
         let resultado = [...gasolineras];
