@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+
 
 interface Gasolinera {
   IDEESS: string;
@@ -15,6 +17,8 @@ interface Props {
 
 const GasolinerasTable: React.FC<Props> = ({ gasolineras }) => {
   const [page, setPage] = useState(1);
+  const navigate = useNavigate();
+
   const rowsPerPage = 10;
 
   const totalPages = Math.ceil(gasolineras.length / rowsPerPage);
@@ -25,48 +29,88 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras }) => {
   );
 
   return (
-    <div className="bg-white shadow rounded-xl p-6 border border-gray-200">
-      <table className="w-full text-left border-collapse">
-        <thead>
-          <tr className="text-gray-600 text-sm border-b">
-            <th className="py-2">Marca</th>
-            <th className="py-2">Municipio</th>
-            <th className="py-2">Provincia</th>
-            <th className="py-2">Gasolina 95</th>
-            <th className="py-2">Gasóleo A</th>
-          </tr>
-        </thead>
-        <tbody>
-          {paginated.map((g) => (
-            <tr key={g.IDEESS} className="border-b hover:bg-gray-50 cursor-pointer">
-              <td className="py-2">{g["Rótulo"]}</td>
-              <td className="py-2">{g.Municipio}</td>
-              <td className="py-2">{g.Provincia}</td>
-              <td className="py-2">{g["Precio Gasolina 95 E5"]} €</td>
-              <td className="py-2">{g["Precio Gasoleo A"]} €</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="bg-white shadow-sm border border-gray-200 rounded-2xl p-6">
 
-      <div className="flex justify-center gap-4 mt-4">
+      {/* TABLE (ESCRITORIO) */}
+      <div className="hidden md:block overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="text-sm text-[#000C74]/70 border-b">
+              <th className="py-3 text-left font-medium">Marca</th>
+              <th className="py-3 text-left font-medium">Municipio</th>
+              <th className="py-3 text-left font-medium">Provincia</th>
+              <th className="py-3 text-left font-medium">Gasolina 95</th>
+              <th className="py-3 text-left font-medium">Gasóleo A</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {paginated.map((g) => (
+              <tr
+                key={g.IDEESS}
+                className="border-b hover:bg-gray-100 cursor-pointer"
+                onClick={() => navigate(`/gasolinera/${g.IDEESS}`)}
+              >
+                <td className="py-3">{g["Rótulo"]}</td>
+                <td className="py-3">{g.Municipio}</td>
+                <td className="py-3">{g.Provincia}</td>
+                <td className="py-3">{g["Precio Gasolina 95 E5"]} €</td>
+                <td className="py-3">{g["Precio Gasoleo A"]} €</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* CARDS (MÓVIL) */}
+      <div className="md:hidden space-y-4">
+        {paginated.map((g) => (
+          <div
+            key={g.IDEESS}
+            className="border border-gray-200 rounded-xl p-4 shadow-sm bg-white"
+          >
+            <h3 className="font-semibold text-lg text-[#000C74]">
+              {g["Rótulo"]}
+            </h3>
+            <p className="text-sm text-gray-600">{g.Municipio}, {g.Provincia}</p>
+
+            <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+              <div className="p-2 rounded-lg bg-gray-50">
+                <span className="block text-gray-500">Gasolina 95</span>
+                <span className="font-medium">{g["Precio Gasolina 95 E5"]} €</span>
+              </div>
+
+              <div className="p-2 rounded-lg bg-gray-50">
+                <span className="block text-gray-500">Gasóleo A</span>
+                <span className="font-medium">{g["Precio Gasoleo A"]} €</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* PAGINACIÓN */}
+      <div className="flex items-center justify-center gap-6 mt-6">
         <button
           onClick={() => setPage((p) => Math.max(p - 1, 1))}
-          className="px-4 py-1 bg-gray-200 rounded hover:bg-gray-300"
+          className="px-4 py-2 text-sm text-[#000C74] border border-gray-300 rounded-full hover:bg-gray-100 transition"
         >
-          Prev
+          Anterior
         </button>
-        <span className="text-gray-700 text-sm">
+
+        <span className="text-sm text-gray-600">
           Página {page} de {totalPages}
         </span>
+
         <button
           onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-          className="px-4 py-1 bg-gray-200 rounded hover:bg-gray-300"
+          className="px-4 py-2 text-sm text-[#000C74] border border-gray-300 rounded-full hover:bg-gray-100 transition"
         >
-          Next
+          Siguiente
         </button>
       </div>
-    </div>
+
+    </div >
   );
 };
 

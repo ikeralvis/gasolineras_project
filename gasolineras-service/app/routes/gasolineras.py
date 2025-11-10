@@ -92,45 +92,52 @@ def get_gasolineras(
     """
 )
 def sync_gasolineras():
-    """Sincroniza datos desde la API del gobierno"""
     try:
         collection = get_collection()
-        
+
         logger.info("🔄 Iniciando sincronización de gasolineras...")
-        
-        # Obtener datos de la API
+
         datos = fetch_data_gobierno()
-        
         if not datos:
-            logger.warning("⚠️ No se obtuvieron datos de la API")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="No se pudieron obtener datos de la API del gobierno"
+                detail="No se pudieron obtener datos desde la API del gobierno"
             )
-        
-        # Eliminar datos antiguos
+
         deleted_count = collection.delete_many({}).deleted_count
         logger.info(f"🗑️ Eliminados {deleted_count} registros antiguos")
-        
-        # Insertar nuevos datos
-        result = collection.insert_many(datos)
+
+        datos_normalizados = []
+        for g in datos:
+            try:
+                lat = float(g.get("Latitud", "").replace(",", "."))
+                lon = float(g.get("Longitud", "").replace(",", "."))
+                g["Latitud"] = lat
+                g["Longitud"] = lon
+                g["location"] = {"type": "Point", "coordinates": [lon, lat]}
+                datos_normalizados.append(g)
+            except:
+                continue
+
+        result = collection.insert_many(datos_normalizados)
+
+        collection.create_index([("location", "2dsphere")])
+
         inserted_count = len(result.inserted_ids)
-        
-        logger.info(f"✅ Sincronización completada: {inserted_count} gasolineras")
-        
+
         return {
             "mensaje": "Datos sincronizados correctamente 🚀",
             "registros_eliminados": deleted_count,
             "registros_insertados": inserted_count,
             "total": inserted_count
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Error al sincronizar gasolineras: {e}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             detail=f"Error al sincronizar datos: {str(e)}"
         )
 
@@ -158,3 +165,76 @@ def count_gasolineras():
             detail=f"Error al contar gasolineras: {str(e)}"
         )
 
+@router.get(
+    "/{id}",
+    response_model=Gasolinera,
+    summary="Obtener detalles de una gasolinera por ID"
+)
+def get_gasolinera_por_id(id: str):
+    try:
+        collection = get_collection()
+        gasolinera = collection.find_one({"IDEESS": id}, {"_id": 0})
+        
+        if not gasolinera:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No se encontró gasolinera con ID {id}"
+            )
+        
+        return gasolinera
+    
+    except Exception as e:
+        logger.error(f"❌ Error al obtener gasolinera {id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error interno al consultar la gasolinera: {str(e)}"
+        )
+
+@router.get(
+    "/{id}/cercanas",
+    summary="Obtener gasolineras cercanas",
+    description="Devuelve gasolineras ordenadas por distancia respecto a la gasolinera indicada")
+
+def get_gasolineras_cercanas(id: str, radio_km: float = 5):
+    try:
+        collection = get_collection()
+
+        # Asegurar el índice geoespacial
+        collection.create_index([("location", "2dsphere")])
+
+        gas = collection.find_one({"IDEESS": id})
+        if not gas:
+            raise HTTPException(status_code=404, detail=f"No se encontró gasolinera con ID {id}")
+
+        lat = float(gas["Latitud"])
+        lon = float(gas["Longitud"])
+
+        cercanas = list(collection.aggregate([
+            {
+                "$geoNear": {
+                    "near": {"type": "Point", "coordinates": [lon, lat]},
+                    "distanceField": "distancia",
+                    "maxDistance": radio_km * 1000,
+                    "spherical": True
+                }
+            },
+            {"$match": {"IDEESS": {"$ne": id}}},
+            {"$sort": {"distancia": 1}},
+            {"$limit": 10},
+            {"$project": {"_id": 0}}
+        ]))
+
+        return {
+            "origen": id,
+            "radio_km": radio_km,
+            "cantidad": len(cercanas),
+            "gasolineras_cercanas": cercanas
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error al obtener gasolineras cercanas para {id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al consultar gasolineras cercanas: {str(e)}"
+        )

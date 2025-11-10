@@ -47,8 +47,8 @@ export default function Gasolineras() {
 
     const ordenarPorPrecio = () => {
         const resultado = [...filtered].sort((a, b) => {
-            const pA = parseFloat(a["Precio Gasolina 95 E5"].replace(",", "."));
-            const pB = parseFloat(b["Precio Gasolina 95 E5"].replace(",", "."));
+            const pA = Number.parseFloat(a["Precio Gasolina 95 E5"].replace(",", "."));
+            const pB = Number.parseFloat(b["Precio Gasolina 95 E5"].replace(",", "."));
             return ordenAsc ? pA - pB : pB - pA;
         });
 
