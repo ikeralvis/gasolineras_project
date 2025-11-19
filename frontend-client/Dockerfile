@@ -1,9 +1,20 @@
 FROM node:25 AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
+
+# Instalar pnpm
+RUN npm install -g pnpm
+
+# Copiar archivos de dependencias
+COPY package.json pnpm-lock.yaml ./
+
+# Instalar dependencias
+RUN pnpm install --frozen-lockfile
+
+# Copiar código fuente
 COPY . .
-RUN npm run build
+
+# Build
+RUN pnpm run build
 
 FROM nginx:1.29.3-alpine3.22-slim
 COPY --from=build /app/dist /usr/share/nginx/html

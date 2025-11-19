@@ -3,8 +3,9 @@ Rutas de la API de Gasolineras - VERSIÓN DEBUG
 """
 import logging
 from typing import List, Optional
+from datetime import datetime, timezone
 from fastapi import APIRouter, Query, HTTPException, status
-from app.db.connection import get_collection
+from app.db.connection import get_collection, get_historico_collection
 from app.services.fetch_gobierno import fetch_data_gobierno
 from app.models.gasolinera import Gasolinera
 
@@ -140,9 +141,10 @@ def gasolineras_cerca(
     Sincroniza los datos de gasolineras desde la API del Gobierno de España.
     
     Atención:
-    - Elimina todos los datos existentes
+    - Elimina todos los datos existentes de gasolineras actuales
     - Descarga datos actualizados desde la API oficial
     - Inserta los nuevos datos en la base de datos
+    - Guarda snapshot en histórico de precios con timestamp
     
     Puede tardar varios segundos.
     """
@@ -152,6 +154,7 @@ def sync_gasolineras():
         logger.info("🔄 Iniciando sincronización de gasolineras...")
         
         collection = get_collection()  # Sin argumentos
+        historico_collection = get_historico_collection()
 
         datos = fetch_data_gobierno()
         if not datos:
@@ -168,7 +171,7 @@ def sync_gasolineras():
         # DEBUG: Mostrar el primer registro
         if datos:
             primer_registro = datos[0]
-            logger.info(f"🔍 DEBUG - Primer registro:")
+            logger.info("🔍 DEBUG - Primer registro:")
             logger.info(f"  Keys disponibles: {list(primer_registro.keys())}")
             logger.info(f"  IDEESS: {primer_registro.get('IDEESS')}")
             logger.info(f"  Latitud: {primer_registro.get('Latitud')} (tipo: {type(primer_registro.get('Latitud'))})")
@@ -176,6 +179,7 @@ def sync_gasolineras():
 
         datos_normalizados = []
         registros_filtrados = 0
+        fecha_sync = datetime.now(timezone.utc)
 
         for idx, g in enumerate(datos):
             lat = g.get("Latitud")
@@ -202,7 +206,7 @@ def sync_gasolineras():
         logger.info(f"🔢 Procesados: {len(datos)}. Filtrados por coordenadas: {registros_filtrados}. Válidos para insertar: {len(datos_normalizados)}")
 
         if not datos_normalizados:
-            logger.error(f"❌ CRÍTICO: datos_normalizados está vacío!")
+            logger.error("❌ CRÍTICO: datos_normalizados está vacío!")
             logger.error(f"   Total recibidos: {len(datos)}")
             logger.error(f"   Total filtrados: {registros_filtrados}")
             raise HTTPException(
@@ -218,11 +222,41 @@ def sync_gasolineras():
         inserted_count = len(result.inserted_ids)
 
         logger.info(f"✅ Insertadas {inserted_count} gasolineras nuevas")
-
+        
+        # Guardar snapshot en histórico (solo si no existe ya hoy)
+        fecha_hoy = fecha_sync.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        documentos_historicos = []
+        for g in datos_normalizados:
+            # Extraer solo precios relevantes
+            doc_historico = {
+                "IDEESS": g.get("IDEESS"),
+                "fecha": fecha_hoy,
+                "precios": {
+                    "Gasolina 95 E5": g.get("Precio Gasolina 95 E5"),
+                    "Gasolina 98 E5": g.get("Precio Gasolina 98 E5"),
+                    "Gasóleo A": g.get("Precio Gasoleo A"),
+                    "Gasóleo B": g.get("Precio Gasoleo B"),
+                    "Gasóleo Premium": g.get("Precio Gasóleo Premium"),
+                }
+            }
+            documentos_historicos.append(doc_historico)
+        
+        # Eliminar registros del mismo día si existen (evitar duplicados)
+        historico_collection.delete_many({"fecha": fecha_hoy})
+        
+        # Insertar nuevos registros históricos
+        if documentos_historicos:
+            historico_result = historico_collection.insert_many(documentos_historicos)
+            historico_count = len(historico_result.inserted_ids)
+            logger.info(f"📊 Guardados {historico_count} registros en histórico para {fecha_hoy.date()}")
+        
         return {
             "mensaje": "Datos sincronizados correctamente 🚀",
             "registros_eliminados": deleted_count,
             "registros_insertados": inserted_count,
+            "registros_historicos": len(documentos_historicos),
+            "fecha_snapshot": fecha_hoy.isoformat(),
             "total": inserted_count
         }
 
@@ -259,6 +293,110 @@ def count_gasolineras():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al contar gasolineras: {str(e)}"
+        )
+
+@router.get(
+    "/estadisticas",
+    response_model=dict,
+    summary="Obtener estadísticas de precios",
+    description="""
+    Calcula estadísticas de precios de combustibles:
+    - Precio medio, mínimo, máximo
+    - Percentiles 25, 50 (mediana), 75
+    - Total de gasolineras analizadas
+    
+    Los percentiles se usan para determinar umbrales:
+    - P25: Precio considerado "bajo"
+    - P75: Precio considerado "alto"
+    """
+)
+def obtener_estadisticas(
+    provincia: Optional[str] = Query(None, description="Filtrar por provincia"),
+    municipio: Optional[str] = Query(None, description="Filtrar por municipio"),
+):
+    """Calcula estadísticas de precios de combustibles"""
+    try:
+        collection = get_collection()
+        
+        # Construir query de filtros
+        query = {}
+        if provincia:
+            query["Provincia"] = {"$regex": provincia, "$options": "i"}
+        if municipio:
+            query["Municipio"] = {"$regex": municipio, "$options": "i"}
+        
+        gasolineras = list(collection.find(query, {"_id": 0}))
+        total = len(gasolineras)
+        
+        if total == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="No se encontraron gasolineras con los filtros especificados"
+            )
+        
+        def calcular_estadisticas(campo: str):
+            """Calcula estadísticas para un tipo de combustible"""
+            precios = []
+            for g in gasolineras:
+                precio_str = g.get(campo, "")
+                if precio_str and precio_str.strip():
+                    try:
+                        precio = float(precio_str.replace(",", "."))
+                        if precio > 0:
+                            precios.append(precio)
+                    except ValueError:
+                        continue
+            
+            if not precios:
+                return None
+            
+            precios.sort()
+            n = len(precios)
+            
+            return {
+                "min": round(precios[0], 3),
+                "max": round(precios[-1], 3),
+                "media": round(sum(precios) / n, 3),
+                "mediana": round(precios[n // 2], 3),
+                "p25": round(precios[n // 4], 3),  # Percentil 25 (precio bajo)
+                "p75": round(precios[n * 3 // 4], 3),  # Percentil 75 (precio alto)
+                "total_muestras": n
+            }
+        
+        estadisticas = {
+            "total_gasolineras": total,
+            "filtros": {
+                "provincia": provincia,
+                "municipio": municipio
+            },
+            "combustibles": {
+                "gasolina_95": calcular_estadisticas("Precio Gasolina 95 E5"),
+                "gasolina_98": calcular_estadisticas("Precio Gasolina 98 E5"),
+                "gasoleo_a": calcular_estadisticas("Precio Gasoleo A"),
+                "gasoleo_b": calcular_estadisticas("Precio Gasoleo B"),
+                "gasoleo_premium": calcular_estadisticas("Precio Gasóleo Premium"),
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+        # Filtrar combustibles sin datos
+        estadisticas["combustibles"] = {
+            k: v for k, v in estadisticas["combustibles"].items() if v is not None
+        }
+        
+        logger.info(f"📊 Estadísticas calculadas para {total} gasolineras")
+        
+        return estadisticas
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error al calcular estadísticas: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al calcular estadísticas: {str(e)}"
         )
 
 @router.get(
@@ -334,3 +472,78 @@ def get_gasolineras_cercanas(id: str, radio_km: float = 5):
             detail=f"Error al consultar gasolineras cercanas: {str(e)}"
         )
 
+@router.get(
+    "/{id}/historial",
+    summary="Obtener historial de precios",
+    description="""
+    Devuelve el historial de precios de una gasolinera en el período especificado.
+    
+    Parámetros:
+    - id: Identificador de la gasolinera (IDEESS)
+    - dias: Número de días hacia atrás (por defecto 30)
+    
+    Retorna un array con los precios por fecha, ordenados cronológicamente.
+    """
+)
+def get_historial_precios(id: str, dias: int = Query(default=30, ge=1, le=365)):
+    try:
+        historico_collection = get_historico_collection()
+        
+        # Calcular fecha de inicio
+        fecha_limite = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        from datetime import timedelta
+        fecha_inicio = fecha_limite - timedelta(days=dias)
+        
+        # Consultar histórico
+        registros = list(historico_collection.find(
+            {
+                "IDEESS": id,
+                "fecha": {"$gte": fecha_inicio, "$lte": fecha_limite}
+            },
+            {"_id": 0}
+        ).sort("fecha", 1))  # Orden cronológico ascendente
+        
+        if not registros:
+            # Verificar si la gasolinera existe
+            collection = get_collection()
+            gasolinera = collection.find_one({"IDEESS": id})
+            if not gasolinera:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No se encontró gasolinera con ID {id}"
+                )
+            
+            return {
+                "IDEESS": id,
+                "dias_consultados": dias,
+                "fecha_desde": fecha_inicio.isoformat(),
+                "fecha_hasta": fecha_limite.isoformat(),
+                "registros": 0,
+                "mensaje": "No hay datos históricos disponibles para este período",
+                "historial": []
+            }
+        
+        # Formatear fechas para mejor legibilidad
+        for registro in registros:
+            if "fecha" in registro and isinstance(registro["fecha"], datetime):
+                registro["fecha"] = registro["fecha"].isoformat()
+        
+        return {
+            "IDEESS": id,
+            "dias_consultados": dias,
+            "fecha_desde": fecha_inicio.isoformat(),
+            "fecha_hasta": fecha_limite.isoformat(),
+            "registros": len(registros),
+            "historial": registros
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error al obtener historial de precios para {id}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al consultar historial: {str(e)}"
+        )

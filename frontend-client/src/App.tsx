@@ -9,6 +9,7 @@ import MapaGasolineras from "./pages/MapaGasolineras";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
+import Favoritos from "./pages/Favoritos";
 
 function App() {
 
@@ -26,7 +27,7 @@ function App() {
           console.log("✅ Sincronización completada.");
 
           // Opcional: recargar para actualizar automáticamente la tabla
-          window.location.reload();
+          globalThis.location.reload();
         }
       } catch (err) {
         console.error("Error comprobando gasolineras:", err);
@@ -50,6 +51,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/profile" element={<Profile />} />
+        <Route path="/favoritos" element={<Favoritos />} />
       </Routes>
     </AuthProvider>
   );

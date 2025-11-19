@@ -25,6 +25,7 @@ else:
 _client = None
 _db = None
 _collection = None
+_collection_historico = None
 
 def get_mongo_client():
     """Obtiene o crea el cliente de MongoDB"""
@@ -59,6 +60,17 @@ def get_collection():
         _collection = db["gasolineras"]
     return _collection
 
+def get_historico_collection():
+    """Obtiene la colección de precios históricos"""
+    global _collection_historico
+    if _collection_historico is None:
+        db = get_database()
+        _collection_historico = db["precios_historicos"]
+        # Crear índices para optimizar consultas
+        _collection_historico.create_index([("IDEESS", 1), ("fecha", -1)])
+        _collection_historico.create_index([("fecha", -1)])
+    return _collection_historico
+
 def test_db_connection():
     """Prueba la conexión a MongoDB"""
     try:
@@ -71,12 +83,13 @@ def test_db_connection():
 
 def close_db_connection():
     """Cierra la conexión a MongoDB"""
-    global _client, _db, _collection
+    global _client, _db, _collection, _collection_historico
     if _client:
         _client.close()
         _client = None
         _db = None
         _collection = None
+        _collection_historico = None
         logger.info("✅ Conexión a MongoDB cerrada")
 
 # Función para compatibilidad con FastAPI Depends

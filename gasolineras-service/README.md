@@ -31,7 +31,7 @@ https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/
 
 ---
 
-## ✨ Características
+### ✨ Características
 
 ### 🔧 Técnicas
 - ✅ **FastAPI** con documentación OpenAPI automática
@@ -43,6 +43,7 @@ https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/
 - ✅ **Health checks** para monitoreo
 - ✅ **Variables de entorno** para configuración flexible
 - ✅ **Reintentos automáticos** en peticiones HTTP
+- ✅ **Índices geoespaciales** para búsquedas por ubicación
 
 ### 🎯 Funcionales
 - 🔄 Sincronización manual desde API del gobierno
@@ -51,6 +52,9 @@ https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/
 - 🔍 Búsqueda por texto en provincia/municipio
 - 💶 Filtrado por precio máximo
 - 📍 Datos geográficos con coordenadas WGS84
+- 🗺️ Búsqueda de gasolineras cercanas por radio
+- 📈 **Historial de precios** con tracking temporal
+- 📊 **Evolución de precios** por combustible
 
 ---
 
@@ -281,8 +285,9 @@ GET /gasolineras/?skip=20&limit=20
 Sincroniza los datos desde la API del Gobierno de España.
 
 ⚠️ **Atención:** Esta operación:
-- Elimina todos los datos existentes en la base de datos
+- Elimina todos los datos existentes en la base de datos de gasolineras actuales
 - Descarga datos actualizados desde la API oficial
+- **Guarda snapshot en historial de precios** con timestamp del día
 - Puede tardar 10-30 segundos
 
 **Respuesta:**
@@ -291,6 +296,8 @@ Sincroniza los datos desde la API del Gobierno de España.
   "mensaje": "Datos sincronizados correctamente 🚀",
   "registros_eliminados": 11547,
   "registros_insertados": 11612,
+  "registros_historicos": 11612,
+  "fecha_snapshot": "2024-01-15T00:00:00+00:00",
   "total": 11612
 }
 ```
@@ -298,6 +305,8 @@ Sincroniza los datos desde la API del Gobierno de España.
 **Errores posibles:**
 - `503 Service Unavailable` - API del gobierno no disponible
 - `500 Internal Server Error` - Error en la sincronización
+
+💡 **Tip:** Ejecuta este endpoint periódicamente (ej: diario con cron job) para acumular datos históricos. Ver [HISTORIAL_PRECIOS.md](./HISTORIAL_PRECIOS.md) para configurar sincronización automática.
 
 ---
 
@@ -311,6 +320,137 @@ Cuenta el número total de gasolineras almacenadas.
   "mensaje": "Total de gasolineras: 11612"
 }
 ```
+
+---
+
+#### `GET /gasolineras/{id}`
+Obtiene los detalles completos de una gasolinera específica por su ID.
+
+**Path Parameters:**
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `id` | string | IDEESS de la gasolinera |
+
+**Ejemplo:**
+```bash
+GET /gasolineras/1234
+```
+
+**Respuesta:**
+```json
+{
+  "IDEESS": "1234",
+  "Rótulo": "REPSOL",
+  "Municipio": "MADRID",
+  "Provincia": "MADRID",
+  "Dirección": "CALLE MAYOR 123",
+  "Precio Gasolina 95 E5": "1.459",
+  "Precio Gasolina 98 E5": "1.589",
+  "Precio Gasoleo A": "1.329",
+  "Latitud": 40.4168,
+  "Longitud": -3.7038
+}
+```
+
+---
+
+#### `GET /gasolineras/{id}/cercanas`
+Obtiene gasolineras cercanas a una gasolinera específica.
+
+**Path Parameters:**
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `id` | string | IDEESS de la gasolinera de referencia |
+
+**Query Parameters:**
+| Parámetro | Tipo | Descripción | Default |
+|-----------|------|-------------|---------|
+| `radio_km` | float | Radio de búsqueda en km | 5 |
+
+**Ejemplo:**
+```bash
+GET /gasolineras/1234/cercanas?radio_km=10
+```
+
+**Respuesta:**
+```json
+{
+  "origen": "1234",
+  "radio_km": 10,
+  "cantidad": 8,
+  "gasolineras_cercanas": [
+    {
+      "IDEESS": "5678",
+      "Rótulo": "CEPSA",
+      "distancia": 1.234,
+      "Precio Gasolina 95 E5": "1.449"
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /gasolineras/{id}/historial` 🆕
+Obtiene el historial de precios de una gasolinera en el período especificado.
+
+**Path Parameters:**
+| Parámetro | Tipo | Descripción |
+|-----------|------|-------------|
+| `id` | string | IDEESS de la gasolinera |
+
+**Query Parameters:**
+| Parámetro | Tipo | Descripción | Default | Rango |
+|-----------|------|-------------|---------|-------|
+| `dias` | int | Días hacia atrás | 30 | 1-365 |
+
+**Ejemplo:**
+```bash
+# Últimos 30 días
+GET /gasolineras/1234/historial
+
+# Últimos 90 días
+GET /gasolineras/1234/historial?dias=90
+```
+
+**Respuesta con datos:**
+```json
+{
+  "IDEESS": "1234",
+  "dias_consultados": 30,
+  "fecha_desde": "2023-12-16T00:00:00+00:00",
+  "fecha_hasta": "2024-01-15T00:00:00+00:00",
+  "registros": 15,
+  "historial": [
+    {
+      "IDEESS": "1234",
+      "fecha": "2023-12-16T00:00:00+00:00",
+      "precios": {
+        "Gasolina 95 E5": "1.459",
+        "Gasolina 98 E5": "1.589",
+        "Gasóleo A": "1.329",
+        "Gasóleo B": "1.249",
+        "Gasóleo Premium": "1.459"
+      }
+    }
+  ]
+}
+```
+
+**Respuesta sin datos:**
+```json
+{
+  "IDEESS": "1234",
+  "dias_consultados": 30,
+  "fecha_desde": "2023-12-16T00:00:00+00:00",
+  "fecha_hasta": "2024-01-15T00:00:00+00:00",
+  "registros": 0,
+  "mensaje": "No hay datos históricos disponibles para este período",
+  "historial": []
+}
+```
+
+ℹ️ **Nota sobre datos históricos:** El historial se construye con cada ejecución de `/sync`. En la primera sincronización solo habrá datos del día actual. Para acumular datos históricos, ejecuta `/sync` periódicamente (recomendado: diario). Ver [HISTORIAL_PRECIOS.md](./HISTORIAL_PRECIOS.md) para más detalles.
 
 ---
 
