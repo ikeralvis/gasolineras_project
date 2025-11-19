@@ -16,10 +16,17 @@ MONGO_PASS = os.getenv("MONGO_PASS", "")
 MONGO_DB = os.getenv("MONGO_DB", "gasolineras_db")
 
 # Construir URI de conexión
-if MONGO_USER and MONGO_PASS:
-    MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}"
+MONGO_URI_ENV = os.getenv("MONGO_URI")
+
+if MONGO_URI_ENV:
+    # 🔥 Usamos Atlas en Render/Producción
+    MONGO_URI = MONGO_URI_ENV
 else:
-    MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
+    # 🐳 Modo local con Docker (igual que antes)
+    if MONGO_USER and MONGO_PASS:
+        MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}"
+    else:
+        MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
 
 # Cliente global
 _client = None

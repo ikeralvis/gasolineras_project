@@ -41,8 +41,8 @@ async function buildServer() {
 
   // 2. Configuración de CORS
   await fastify.register(fastifyCors, {
-    origin: process.env.ALLOWED_ORIGINS 
-      ? process.env.ALLOWED_ORIGINS.split(',') 
+    origin: process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',')
       : ['http://localhost:5173', 'http://localhost:3000'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
@@ -118,9 +118,16 @@ async function buildServer() {
   });
 
   // 6. Conexión a Base de Datos
-  await fastify.register(fastifyPostgres, {
-    connectionString: `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`
-  });
+  const isProduction = process.env.NODE_ENV === 'production';
+  const connectionString = `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}${isProduction ? '?sslmode=require' : ''}`;
+  const pgConfig = {
+    connectionString,
+  };
+  if (isProduction) {
+    pgConfig.ssl = { rejectUnauthorized: false };
+  }
+  await fastify.register(fastifyPostgres, pgConfig);
+
 
   // Verificar conexión al iniciar
   try {
