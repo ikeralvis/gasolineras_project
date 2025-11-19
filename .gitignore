@@ -9,7 +9,7 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# package-lock.json
 pnpm-lock.yaml
 
 # Variables de entorno (SOLO archivos con secretos reales)
