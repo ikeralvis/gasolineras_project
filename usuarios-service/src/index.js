@@ -12,8 +12,8 @@ import fastifyCors from '@fastify/cors';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { errorHandler } from './middlewares/errorHandler.js';
 
-const PORT = Number.parseInt(process.env.PORT, 10) || 3001;
-const HOST = process.env.HOST || '0.0.0.0';
+const PORT = process.env.PORT || 3001; // Usa el puerto de Render o 3001 por defecto
+const HOST = process.env.HOST || '0.0.0.0'; // Asegúrate de que escucha en 0.0.0.0
 
 // ⚠️ VALIDACIÓN CRÍTICA: JWT_SECRET debe estar definido y ser seguro
 if (!process.env.JWT_SECRET) {
@@ -80,7 +80,7 @@ async function buildServer() {
         version: '1.0.0'
       },
       servers: [
-        { url: `http://localhost:${PORT}`, description: 'Desarrollo Local' },
+        { url: `http://${HOST}:${PORT}`, description: 'Desarrollo Local' },
         { url: `http://localhost:8080`, description: 'Gateway' }
       ],
       components: {
