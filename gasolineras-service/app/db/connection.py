@@ -43,9 +43,11 @@ def get_mongo_client():
                 MONGO_URI,
                 serverSelectionTimeoutMS=5000,
                 maxPoolSize=10,
-                minPoolSize=1
+                minPoolSize=1,
+                tls=True if "mongodb+srv://" in MONGO_URI else False,
+                tlsAllowInvalidCertificates=True if "mongodb+srv://" in MONGO_URI else False
             )
-            logger.info(f"✅ Conectado a MongoDB en {MONGO_HOST}:{MONGO_PORT}")
+            logger.info("✅ Conectado a MongoDB")
         except Exception as e:
             logger.error(f"❌ Error al conectar con MongoDB: {e}")
             raise
