@@ -66,7 +66,7 @@ async function fetchAndAggregateSpecs() {
       },
       servers: [
         {
-          url: `http://localhost:${PORT}`,
+          url: "/",
           description: "API Gateway (punto de entrada único)",
         },
       ],

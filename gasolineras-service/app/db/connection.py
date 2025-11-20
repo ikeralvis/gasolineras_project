@@ -14,6 +14,7 @@ MONGO_PORT = int(os.getenv("MONGO_PORT", "27017"))
 MONGO_USER = os.getenv("MONGO_USER", "")
 MONGO_PASS = os.getenv("MONGO_PASS", "")
 MONGO_DB = os.getenv("MONGO_DB", "gasolineras_db")
+ENVIRONMENT = os.getenv("ENVIRONMENT", "local")  # local o production
 
 # Construir URI de conexión
 MONGO_URI_ENV = os.getenv("MONGO_URI")
@@ -27,6 +28,9 @@ else:
         MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}"
     else:
         MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
+
+# Configuración de TLS
+USE_TLS = "mongodb+srv://" in MONGO_URI or ENVIRONMENT == "production"
 
 # Cliente global
 _client = None
@@ -44,8 +48,8 @@ def get_mongo_client():
                 serverSelectionTimeoutMS=5000,
                 maxPoolSize=10,
                 minPoolSize=1,
-                tls=True if "mongodb+srv://" in MONGO_URI else False,
-                tlsAllowInvalidCertificates=True if "mongodb+srv://" in MONGO_URI else False
+                tls=USE_TLS,  # Habilitar TLS solo si es necesario
+                tlsAllowInvalidCertificates=USE_TLS and "mongodb+srv://" in MONGO_URI  # Solo para Atlas
             )
             logger.info("✅ Conectado a MongoDB")
         except Exception as e:
