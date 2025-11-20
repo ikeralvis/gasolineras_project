@@ -80,7 +80,7 @@ async function buildServer() {
         version: '1.0.0'
       },
       servers: [
-        { url: `http://${HOST}:${PORT}`, description: 'Desarrollo Local' },
+        { url: process.env.USUARIOS_URL || `http://localhost:${PORT}`, description: 'Desarrollo Local' },
         { url: `http://localhost:8080`, description: 'Gateway' }
       ],
       components: {
