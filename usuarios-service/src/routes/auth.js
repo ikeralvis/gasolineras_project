@@ -237,8 +237,26 @@ export async function authRoutes(fastify) {
             }
         }
     }, async (request, reply) => {
-        const { id, nombre, email, is_admin } = request.user;
-        return reply.code(200).send({ id, nombre, email, is_admin });
+        try {
+            const query = 'SELECT id, nombre, email, is_admin, combustible_favorito FROM users WHERE id = $1;';
+            const result = await fastify.pg.query(query, [request.user.id]);
+            
+            if (result.rows.length === 0) {
+                return reply.code(404).send({ error: 'Usuario no encontrado' });
+            }
+            
+            const user = result.rows[0];
+            return reply.code(200).send({
+                id: user.id,
+                nombre: user.nombre,
+                email: user.email,
+                is_admin: user.is_admin,
+                combustible_favorito: user.combustible_favorito
+            });
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.code(500).send({ error: 'Error interno del servidor' });
+        }
     });
 
     // PATCH /me - Actualizar perfil
@@ -252,7 +270,8 @@ export async function authRoutes(fastify) {
                 properties: {
                     nombre: { type: 'string', minLength: 1 },
                     email: { type: 'string', format: 'email' },
-                    password: { type: 'string', minLength: 8 }
+                    password: { type: 'string', minLength: 8 },
+                    combustible_favorito: { type: 'string', enum: ['Precio Gasolina 95 E5', 'Precio Gasolina 98 E5', 'Precio Gasoleo A', 'Precio Gasoleo B', 'Precio Gasoleo Premium'] }
                 },
                 additionalProperties: false,
                 minProperties: 1 // Al menos un campo debe estar presente
@@ -273,7 +292,7 @@ export async function authRoutes(fastify) {
         onRequest: [verifyJwt] // ✅ Usar hook en lugar de inline
     }, async (request, reply) => {
         const user_id = request.user.id;
-        const { nombre, email, password } = request.body;
+        const { nombre, email, password, combustible_favorito } = request.body;
         
         try {
             const updates = [];
@@ -312,6 +331,11 @@ export async function authRoutes(fastify) {
                 const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
                 updates.push(`password_hash = $${paramIndex++}`);
                 values.push(password_hash);
+            }
+            
+            if (combustible_favorito) {
+                updates.push(`combustible_favorito = $${paramIndex++}`);
+                values.push(combustible_favorito);
             }
             
             if (updates.length === 0) {

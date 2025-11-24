@@ -3,6 +3,7 @@ Gestión de conexión a MongoDB
 """
 import os
 import logging
+from typing import Any
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
@@ -30,7 +31,8 @@ else:
         MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
 
 # Configuración de TLS
-USE_TLS = "mongodb+srv://" in MONGO_URI or ENVIRONMENT == "production"
+USE_TLS = os.getenv("USE_TLS", "false").lower() == "true" or "mongodb+srv://" in MONGO_URI or ENVIRONMENT == "production"
+ALLOW_INVALID_CERTS = os.getenv("TLS_ALLOW_INVALID_CERTS", "false").lower() == "true"
 
 # Cliente global
 _client = None
@@ -43,15 +45,21 @@ def get_mongo_client():
     global _client
     if _client is None:
         try:
-            _client = MongoClient(
-                MONGO_URI,
-                serverSelectionTimeoutMS=5000,
-                maxPoolSize=10,
-                minPoolSize=1,
-                tls=USE_TLS,  # Habilitar TLS solo si es necesario
-                tlsAllowInvalidCertificates=USE_TLS and "mongodb+srv://" in MONGO_URI  # Solo para Atlas
-            )
-            logger.info("✅ Conectado a MongoDB")
+            # Configuración base de conexión
+            connection_params: dict[str, Any] = {
+                "serverSelectionTimeoutMS": 5000,
+                "maxPoolSize": 10,
+                "minPoolSize": 1
+            }
+            
+            # Solo agregar parámetros TLS si está habilitado
+            if USE_TLS:
+                connection_params["tls"] = True
+                if ALLOW_INVALID_CERTS:
+                    connection_params["tlsAllowInvalidCertificates"] = True
+            
+            _client = MongoClient(MONGO_URI, **connection_params)
+            logger.info(f"✅ Conectado a MongoDB (TLS: {USE_TLS})")
         except Exception as e:
             logger.error(f"❌ Error al conectar con MongoDB: {e}")
             raise

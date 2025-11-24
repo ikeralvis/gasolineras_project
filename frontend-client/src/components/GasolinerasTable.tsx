@@ -19,14 +19,19 @@ interface Gasolinera {
   Municipio: string;
   Provincia: string;
   ["Precio Gasolina 95 E5"]: string;
+  ["Precio Gasolina 98 E5"]?: string;
   ["Precio Gasoleo A"]: string;
+  ["Precio Gasoleo B"]?: string;
+  ["Precio Gasoleo Premium"]?: string;
+  [key: string]: string | undefined; // Permite acceso dinámico
 }
 
 interface Props {
   gasolineras: Gasolinera[];
+  combustibleSeleccionado: string;
 }
 
-const GasolinerasTable: React.FC<Props> = ({ gasolineras }) => {
+const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionado }) => {
   const [page, setPage] = useState(1);
   const navigate = useNavigate();
   const { estadisticas, loading: loadingStats } = useEstadisticas();
@@ -53,10 +58,29 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras }) => {
     return null;
   };
 
+  // Función para obtener el nombre legible del combustible
+  const getNombreCombustible = (tipoCombustible: string): string => {
+    const nombres: Record<string, string> = {
+      "Precio Gasolina 95 E5": "Gasolina 95 E5",
+      "Precio Gasolina 98 E5": "Gasolina 98 E5",
+      "Precio Gasoleo A": "Gasóleo A",
+      "Precio Gasoleo B": "Gasóleo B",
+      "Precio Gasoleo Premium": "Gasóleo Premium"
+    };
+    return nombres[tipoCombustible] || tipoCombustible;
+  };
+
+  // Función para obtener el tipo de estadística según el combustible
+  const getTipoEstadistica = (tipoCombustible: string): "gasolina_95" | "gasoleo_a" => {
+    if (tipoCombustible.includes("Gasolina 95")) return "gasolina_95";
+    return "gasoleo_a";
+  };
+
   // Función para determinar badge de precio usando estadísticas dinámicas
-  const getPriceBadge = (precio: string, tipo: "gasolina_95" | "gasoleo_a") => {
-    if (!estadisticas || loadingStats) return null;
+  const getPriceBadge = (precio: string | undefined) => {
+    if (!precio || !estadisticas || loadingStats) return null;
     
+    const tipo = getTipoEstadistica(combustibleSeleccionado);
     const stats = estadisticas.combustibles[tipo];
     const badge = getPriceBadgeFromStats(precio, stats);
     
@@ -158,8 +182,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras }) => {
             <tr className="text-sm text-[#000C74]/70 border-b-2 border-[#E4E6FF]">
               <th className="py-4 text-left font-semibold">Marca</th>
               <th className="py-4 text-left font-semibold">Ubicación</th>
-              <th className="py-4 text-left font-semibold">Gasolina 95</th>
-              <th className="py-4 text-left font-semibold">Gasóleo A</th>
+              <th className="py-4 text-left font-semibold">{getNombreCombustible(combustibleSeleccionado)}</th>
               <th className="py-4 text-center font-semibold w-16">Fav</th>
               <th className="py-4 text-left font-semibold"></th>
             </tr>
@@ -203,21 +226,14 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras }) => {
                     </div>
                   </td>
 
-                  {/* GASOLINA 95 */}
+                  {/* PRECIO DEL COMBUSTIBLE SELECCIONADO */}
                   <td className="py-4">
                     <div className="flex items-center">
-                      <span className="text-lg font-bold text-gray-900">{g["Precio Gasolina 95 E5"]}</span>
+                      <span className="text-lg font-bold text-gray-900">
+                        {g[combustibleSeleccionado] || "N/D"}
+                      </span>
                       <span className="text-sm text-gray-500 ml-1">€/L</span>
-                      {getPriceBadge(g["Precio Gasolina 95 E5"], "gasolina_95")}
-                    </div>
-                  </td>
-
-                  {/* GASÓLEO A */}
-                  <td className="py-4">
-                    <div className="flex items-center">
-                      <span className="text-lg font-bold text-gray-900">{g["Precio Gasoleo A"]}</span>
-                      <span className="text-sm text-gray-500 ml-1">€/L</span>
-                      {getPriceBadge(g["Precio Gasoleo A"], "gasoleo_a")}
+                      {getPriceBadge(g[combustibleSeleccionado])}
                     </div>
                   </td>
 
@@ -277,24 +293,17 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras }) => {
                 </div>
               </div>
 
-              {/* PRECIOS */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* PRECIO DEL COMBUSTIBLE SELECCIONADO */}
+              <div className="grid grid-cols-1 gap-3">
                 <div className="p-3 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 border border-blue-200">
-                  <span className="block text-xs text-blue-700 font-medium mb-1">Gasolina 95</span>
+                  <span className="block text-xs text-blue-700 font-medium mb-1">{getNombreCombustible(combustibleSeleccionado)}</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold text-gray-900">{g["Precio Gasolina 95 E5"]}</span>
+                    <span className="text-xl font-bold text-gray-900">
+                      {g[combustibleSeleccionado] || "N/D"}
+                    </span>
                     <span className="text-xs text-gray-600">€/L</span>
                   </div>
-                  {getPriceBadge(g["Precio Gasolina 95 E5"], "gasolina_95")}
-                </div>
-
-                <div className="p-3 rounded-lg bg-linear-to-br from-green-50 to-green-100/50 border border-green-200">
-                  <span className="block text-xs text-green-700 font-medium mb-1">Gasóleo A</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold text-gray-900">{g["Precio Gasoleo A"]}</span>
-                    <span className="text-xs text-gray-600">€/L</span>
-                  </div>
-                  {getPriceBadge(g["Precio Gasoleo A"], "gasoleo_a")}
+                  {getPriceBadge(g[combustibleSeleccionado])}
                 </div>
               </div>
             </div>

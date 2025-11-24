@@ -11,6 +11,8 @@ import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { errorHandler } from './middlewares/errorHandler.js';
+import fastifyCompress from '@fastify/compress';
+
 
 const PORT = process.env.PORT || 3001; // Usa el puerto de Render o 3001 por defecto
 const HOST = process.env.HOST || '0.0.0.0'; // Asegúrate de que escucha en 0.0.0.0
@@ -48,7 +50,10 @@ async function buildServer() {
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
   });
 
-  // 3. Rate Limiting (protección contra fuerza bruta)
+  // 3. Compresión (gzip)
+  await fastify.register(fastifyCompress, { global: true });
+
+  // 4. Rate Limiting (protección contra fuerza bruta)
   await fastify.register(fastifyRateLimit, {
     global: false, // No aplicar globalmente, lo aplicamos por ruta
     max: 100, // Límite por defecto: 100 requests
@@ -63,7 +68,7 @@ async function buildServer() {
     }
   });
 
-  // 4. Configuración de JWT
+  // 5. Configuración de JWT
   fastify.register(fastifyJwt, {
     secret: process.env.JWT_SECRET,
     sign: {
@@ -71,7 +76,7 @@ async function buildServer() {
     }
   });
 
-  // 5. Configuración de OpenAPI / Swagger
+  // 6. Configuración de OpenAPI / Swagger
   fastify.register(fastifySwagger, {
     openapi: {
       info: {
@@ -80,8 +85,7 @@ async function buildServer() {
         version: '1.0.0'
       },
       servers: [
-        { url: process.env.USUARIOS_URL || `http://localhost:${PORT}`, description: 'Desarrollo Local' },
-        { url: `http://localhost:8080`, description: 'Gateway' }
+        { url: process.env.USUARIOS_URL || `http://localhost:${PORT}`, description: 'Producción o Desarrollo Local' }
       ],
       components: {
         securitySchemes: {
@@ -117,7 +121,7 @@ async function buildServer() {
     return reply.send(fastify.swagger());
   });
 
-  // 6. Conexión a Base de Datos
+  // 7. Conexión a Base de Datos
   const isProduction = process.env.NODE_ENV === 'production';
   const connectionString = `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}${isProduction ? '?sslmode=require' : ''}`;
   const pgConfig = {
@@ -139,10 +143,10 @@ async function buildServer() {
     throw err;
   }
 
-  // 7. Registro del manejador de errores global
+  // 8. Registro del manejador de errores global
   await fastify.register(errorHandler);
 
-  // 8. Registro de rutas
+  // 9. Registro de rutas
   fastify.register(healthRoutes); // Health checks en la raíz
   fastify.register(authRoutes, { prefix: '/api/usuarios' });
   fastify.register(favoritesRoutes, { prefix: '/api/usuarios' });

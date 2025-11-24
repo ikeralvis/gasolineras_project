@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@types/node": "^24.10.1",
+    "@types/three": "^0.181.0",
     "axios": "^1.7.7",
     "leaflet": "^1.9.4",
     "react": "^19.2.0",
@@ -21,6 +22,7 @@
     "react-router-dom": "^7.9.5",
     "recharts": "^3.4.1",
     "tailwindcss": "^4.1.17",
+    "three": "^0.181.2",
     "workbox-window": "^7.0.0"
   },
   "devDependencies": {

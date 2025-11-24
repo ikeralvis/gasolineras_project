@@ -94,3 +94,22 @@ logs/
 nohup.out
 *.tmp
 *.temp
+
+# Ignorar dependencias instaladas
+node_modules/
+
+# Ignorar archivos de entorno
+.env
+
+# Ignorar logs generados por npm o yarn
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Ignorar archivos de sistema
+.DS_Store
+Thumbs.db
+
+# No ignorar package.json ni package-lock.json
+!package.json
+!package-lock.json

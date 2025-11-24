@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import GasolinerasTable from "../components/GasolinerasTable";
 import { getGasolinerasCerca } from "../api/gasolineras";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Gasolineras() {
+    const { user } = useAuth();
     const [gasolineras, setGasolineras] = useState<any[]>([]);
     const [filtered, setFiltered] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -11,9 +13,20 @@ export default function Gasolineras() {
     const [municipio, setMunicipio] = useState("");
     const [nombre, setNombre] = useState("");
     const [precioMax, setPrecioMax] = useState("");
-    const [tipoCombustible, setTipoCombustible] = useState("");
+    
+    // Estado para el tipo de combustible seleccionado
+    const [combustibleSeleccionado, setCombustibleSeleccionado] = useState<string>(
+        user?.combustible_favorito || "Precio Gasolina 95 E5"
+    );
 
     const [ordenAsc, setOrdenAsc] = useState(true);
+    
+    // Actualizar combustible seleccionado cuando cambie el usuario
+    useEffect(() => {
+        if (user?.combustible_favorito) {
+            setCombustibleSeleccionado(user.combustible_favorito);
+        }
+    }, [user]);
     
     // Estados para autocomplete
     const [showProvinciaDropdown, setShowProvinciaDropdown] = useState(false);
@@ -122,28 +135,27 @@ export default function Gasolineras() {
             const maxPrecio = Number.parseFloat(precioMax);
             if (!Number.isNaN(maxPrecio)) {
                 resultado = resultado.filter((g) => {
-                    const precio = Number.parseFloat(g["Precio Gasolina 95 E5"].replace(",", "."));
+                    const precio = Number.parseFloat(g[combustibleSeleccionado]?.replace(",", ".") || "999");
                     return !Number.isNaN(precio) && precio <= maxPrecio;
                 });
             }
         }
 
-        if (tipoCombustible.trim() !== "") {
-            resultado = resultado.filter((g) => {
-                const precio = g[tipoCombustible];
-                if (!precio) return false;
-                const precioNum = Number.parseFloat(precio.replace(",", "."));
-                return !Number.isNaN(precioNum) && precioNum > 0;
-            });
-        }
+        // Filtrar gasolineras que tengan precio para el combustible seleccionado
+        resultado = resultado.filter((g) => {
+            const precio = g[combustibleSeleccionado];
+            if (!precio) return false;
+            const precioNum = Number.parseFloat(precio.replace(",", "."));
+            return !Number.isNaN(precioNum) && precioNum > 0;
+        });
 
         setFiltered(resultado);
-    }, [provincia, municipio, nombre, precioMax, tipoCombustible, gasolineras]);
+    }, [provincia, municipio, nombre, precioMax, combustibleSeleccionado, gasolineras]);
 
     const ordenarPorPrecio = () => {
         const resultado = [...filtered].sort((a, b) => {
-            const pA = Number.parseFloat(a["Precio Gasolina 95 E5"].replace(",", "."));
-            const pB = Number.parseFloat(b["Precio Gasolina 95 E5"].replace(",", "."));
+            const pA = Number.parseFloat(a[combustibleSeleccionado]?.replace(",", ".") || "999");
+            const pB = Number.parseFloat(b[combustibleSeleccionado]?.replace(",", ".") || "999");
             return ordenAsc ? pA - pB : pB - pA;
         });
 
@@ -156,7 +168,6 @@ export default function Gasolineras() {
         setMunicipio("");
         setNombre("");
         setPrecioMax("");
-        setTipoCombustible("");
     };
     
     const seleccionarProvincia = (prov: string) => {
@@ -183,8 +194,11 @@ export default function Gasolineras() {
 
             {/* Filtros */}
             <div className="bg-white shadow-lg border border-[#D9DBF2]/70 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-lg font-semibold text-gray-900">Filtros</h3>
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h3 className="text-lg font-semibold text-gray-900">Filtros</h3>
+                        <p className="text-sm text-gray-500 mt-1">Selecciona tu tipo de combustible preferido</p>
+                    </div>
                     <button
                         onClick={limpiarFiltros}
                         className="text-sm text-[#000C74] hover:text-[#0A128C] font-medium flex items-center gap-1"
@@ -196,7 +210,31 @@ export default function Gasolineras() {
                     </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* SELECTOR DE COMBUSTIBLE - DESTACADO */}
+                <div className="mb-6 p-4 bg-gradient-to-r from-[#000C74]/5 to-[#4A52D9]/5 rounded-xl border-2 border-[#000C74]/20">
+                    <label className="block text-sm font-bold text-[#000C74] mb-3 flex items-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                        </svg>
+                        Tipo de Combustible
+                    </label>
+                    <select
+                        value={combustibleSeleccionado}
+                        onChange={(e) => setCombustibleSeleccionado(e.target.value)}
+                        className="w-full border-2 border-[#000C74]/30 focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
+                    >
+                        <option value="Precio Gasolina 95 E5">⛽ Gasolina 95 E5</option>
+                        <option value="Precio Gasolina 98 E5">⛽ Gasolina 98 E5</option>
+                        <option value="Precio Gasoleo A">🚗 Gasóleo A</option>
+                        <option value="Precio Gasoleo B">🚜 Gasóleo B</option>
+                        <option value="Precio Gasoleo Premium">💎 Gasóleo Premium</option>
+                    </select>
+                    <p className="text-xs text-gray-600 mt-2">
+                        La tabla mostrará y ordenará solo por este combustible
+                    </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {/* PROVINCIA CON AUTOCOMPLETE */}
                     <div className="relative">
                         <label htmlFor="provincia" className="block text-sm font-medium text-gray-700 mb-2">
@@ -306,29 +344,10 @@ export default function Gasolineras() {
                             className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
                         />
                     </div>
-
-                    {/* TIPO DE COMBUSTIBLE */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            ⛽ Tipo de combustible
-                        </label>
-                        <select
-                            value={tipoCombustible}
-                            onChange={(e) => setTipoCombustible(e.target.value)}
-                            className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition bg-white"
-                        >
-                            <option value="">Todos</option>
-                            <option value="Precio Gasolina 95 E5">Gasolina 95 E5</option>
-                            <option value="Precio Gasolina 98 E5">Gasolina 98 E5</option>
-                            <option value="Precio Gasoleo A">Gasóleo A</option>
-                            <option value="Precio Gasoleo B">Gasóleo B</option>
-                            <option value="Precio Gasoleo Premium">Gasóleo Premium</option>
-                        </select>
-                    </div>
                 </div>
 
                 {/* Indicador de filtros activos */}
-                {(provincia || municipio || nombre || precioMax || tipoCombustible) && (
+                {(provincia || municipio || nombre || precioMax) && (
                     <div className="mt-4 flex flex-wrap items-center gap-3">
                         <div className="flex items-center gap-2 text-sm text-gray-600">
                             <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
@@ -360,16 +379,17 @@ export default function Gasolineras() {
                                 💰 Max {precioMax}€
                             </span>
                         )}
-                        {tipoCombustible && (
-                            <span className="px-3 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
-                                ⛽ {tipoCombustible.replace("Precio ", "")}
-                            </span>
-                        )}
                     </div>
                 )}
             </div>
 
-            <div className="flex justify-end mt-6">
+            <div className="flex justify-between items-center mt-6">
+                <div className="text-sm text-gray-600 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
+                    <span className="font-semibold text-blue-900">
+                        {combustibleSeleccionado.replace("Precio ", "")}
+                    </span>
+                    {" "}- Mostrando {filtered.length} gasolineras
+                </div>
                 <button
                     className="px-6 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition shadow-md font-medium flex items-center gap-2"
                     onClick={ordenarPorPrecio}
@@ -388,10 +408,13 @@ export default function Gasolineras() {
                     </div>
                 ) : filtered.length === 0 ? (
                     <div className="text-center py-12">
-                        <p className="text-lg text-gray-600">No se encontraron gasolineras</p>
+                        <p className="text-lg text-gray-600">No se encontraron gasolineras con {combustibleSeleccionado.replace("Precio ", "")}</p>
                     </div>
                 ) : (
-                    <GasolinerasTable gasolineras={filtered} />
+                    <GasolinerasTable 
+                        gasolineras={filtered} 
+                        combustibleSeleccionado={combustibleSeleccionado}
+                    />
                 )}
             </div>
         </div>

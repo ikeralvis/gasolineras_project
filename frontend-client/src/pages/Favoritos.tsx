@@ -13,17 +13,20 @@ interface Gasolinera {
   Municipio: string;
   Provincia: string;
   'Precio Gasolina 95 E5': string;
+  'Precio Gasolina 98 E5'?: string;
   'Precio Gasoleo A': string;
-  Latitud: number;
-  Longitud: number;
+  'Precio Gasoleo B'?: string;
+  'Precio Gasoleo Premium'?: string;
+  [key: string]: string | undefined;
 }
 
 export default function Favoritos() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { favoritos, loading: favLoading } = useFavorites();
   const [gasolineras, setGasolineras] = useState<Gasolinera[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const combustibleSeleccionado = user?.combustible_favorito || "Precio Gasolina 95 E5";
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -201,7 +204,10 @@ export default function Favoritos() {
             </div>
 
             {/* Tabla de gasolineras */}
-            <GasolinerasTable gasolineras={gasolineras} />
+            <GasolinerasTable 
+              gasolineras={gasolineras} 
+              combustibleSeleccionado={combustibleSeleccionado}
+            />
           </>
         )}
       </div>

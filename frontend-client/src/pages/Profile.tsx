@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { FaUser, FaEnvelope, FaShieldAlt, FaHeart, FaTrash, FaSignOutAlt } from "react-icons/fa";
+import { FaUser, FaEnvelope, FaShieldAlt, FaHeart, FaTrash, FaSignOutAlt, FaGasPump } from "react-icons/fa";
 
 const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8080";
 
@@ -10,6 +10,7 @@ interface Usuario {
   nombre: string;
   email: string;
   is_admin: boolean;
+  combustible_favorito?: string;
 }
 
 interface Favorito {
@@ -23,6 +24,8 @@ export default function Profile() {
   const [favoritos, setFavoritos] = useState<Favorito[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [combustibleSeleccionado, setCombustibleSeleccionado] = useState<string>("");
+  const [guardandoCombustible, setGuardandoCombustible] = useState(false);
   const navigate = useNavigate();
 
   // Fetch perfil y favoritos
@@ -42,7 +45,10 @@ export default function Profile() {
     ])
       .then(([perfilData, favoritosData]) => {
         if (perfilData.error) setError(perfilData.error);
-        else setPerfil(perfilData);
+        else {
+          setPerfil(perfilData);
+          setCombustibleSeleccionado(perfilData.combustible_favorito || "Precio Gasolina 95 E5");
+        }
         if (Array.isArray(favoritosData)) setFavoritos(favoritosData);
         else if (favoritosData.error) setError(favoritosData.error);
       })
@@ -77,6 +83,50 @@ export default function Profile() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Guardar combustible favorito
+  const handleGuardarCombustible = async () => {
+    if (!combustibleSeleccionado || combustibleSeleccionado === perfil?.combustible_favorito) {
+      return;
+    }
+    
+    setGuardandoCombustible(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/usuarios/me`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ combustible_favorito: combustibleSeleccionado }),
+      });
+      
+      if (res.ok) {
+        const updatedPerfil = await res.json();
+        setPerfil(prev => prev ? { ...prev, combustible_favorito: updatedPerfil.combustible_favorito } : null);
+        alert("✅ Combustible favorito guardado correctamente");
+      } else {
+        const data = await res.json();
+        setError(data.error || "Error al guardar preferencia");
+      }
+    } catch {
+      setError("Error de red al guardar preferencia");
+    } finally {
+      setGuardandoCombustible(false);
+    }
+  };
+
+  // Obtener nombre legible del combustible
+  const getNombreCombustible = (tipo: string): string => {
+    const nombres: Record<string, string> = {
+      "Precio Gasolina 95 E5": "Gasolina 95 E5",
+      "Precio Gasolina 98 E5": "Gasolina 98 E5",
+      "Precio Gasoleo A": "Gasóleo A",
+      "Precio Gasoleo B": "Gasóleo B",
+      "Precio Gasoleo Premium": "Gasóleo Premium"
+    };
+    return nombres[tipo] || tipo;
   };
 
   // Render
@@ -154,6 +204,64 @@ export default function Profile() {
                   <p className="text-gray-800 font-medium">{favoritos.length} gasolineras</p>
                 </div>
               </div>
+            </div>
+
+            {/* Preferencias de Combustible */}
+            <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-200">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="bg-blue-500 p-3 rounded-xl">
+                  <FaGasPump className="text-white" size={20} />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">Combustible Favorito</h2>
+                  <p className="text-sm text-gray-600">Selecciona tu tipo de combustible preferido</p>
+                </div>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tipo de Combustible
+                  </label>
+                  <select
+                    value={combustibleSeleccionado}
+                    onChange={(e) => setCombustibleSeleccionado(e.target.value)}
+                    className="w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
+                  >
+                    <option value="Precio Gasolina 95 E5">⛽ Gasolina 95 E5</option>
+                    <option value="Precio Gasolina 98 E5">⛽ Gasolina 98 E5</option>
+                    <option value="Precio Gasoleo A">🚗 Gasóleo A</option>
+                    <option value="Precio Gasoleo B">🚜 Gasóleo B</option>
+                    <option value="Precio Gasoleo Premium">💎 Gasóleo Premium</option>
+                  </select>
+                </div>
+                <button
+                  onClick={handleGuardarCombustible}
+                  disabled={guardandoCombustible || combustibleSeleccionado === perfil.combustible_favorito}
+                  className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {guardandoCombustible ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <FaGasPump size={16} />
+                      Guardar Preferencia
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              {perfil.combustible_favorito && (
+                <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-semibold text-blue-700">Actual:</span>{" "}
+                    {getNombreCombustible(perfil.combustible_favorito)}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Actions */}
