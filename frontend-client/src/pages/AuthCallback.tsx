@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
 export default function AuthCallback() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -9,8 +11,10 @@ export default function AuthCallback() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const token = searchParams.get('token');
+    const success = searchParams.get('success');
     const errorParam = searchParams.get('error');
+    // Legacy: por si aún viene token en URL (compatibilidad)
+    const legacyToken = searchParams.get('token');
 
     if (errorParam) {
       setError(getErrorMessage(errorParam));
@@ -18,9 +22,33 @@ export default function AuthCallback() {
       return;
     }
 
-    if (token) {
-      // Guardar token y obtener perfil
-      loginWithToken(token)
+    // Nuevo flujo: success=true significa que el token está en cookie
+    if (success === 'true') {
+      // Obtener token desde el endpoint seguro (viene en cookie HttpOnly)
+      fetch(`${API_URL}/api/auth/token`, {
+        credentials: 'include' // Importante para enviar cookies
+      })
+        .then(res => {
+          if (!res.ok) throw new Error('No se pudo obtener token');
+          return res.json();
+        })
+        .then(data => {
+          if (data.token) {
+            return loginWithToken(data.token);
+          }
+          throw new Error('Token no recibido');
+        })
+        .then(() => {
+          navigate('/');
+        })
+        .catch((err) => {
+          console.error('Error en callback:', err);
+          setError('Error al iniciar sesión. Intenta de nuevo.');
+          setTimeout(() => navigate('/login'), 3000);
+        });
+    } else if (legacyToken) {
+      // Legacy: token en URL (menos seguro, pero por compatibilidad)
+      loginWithToken(legacyToken)
         .then(() => {
           navigate('/');
         })
@@ -30,7 +58,7 @@ export default function AuthCallback() {
           setTimeout(() => navigate('/login'), 3000);
         });
     } else {
-      setError('No se recibió token de autenticación');
+      setError('No se recibió autenticación válida');
       setTimeout(() => navigate('/login'), 3000);
     }
   }, [searchParams, navigate, loginWithToken]);

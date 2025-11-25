@@ -97,6 +97,10 @@ services:
       PORT: 8080
       USUARIOS_SERVICE_URL: http://usuarios:3001
       GASOLINERAS_SERVICE_URL: http://gasolineras:8000
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:80}
+      GATEWAY_URL: ${GATEWAY_URL:-http://localhost:8080}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
     depends_on:
       usuarios:
         condition: service_healthy

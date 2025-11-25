@@ -451,12 +451,12 @@ export async function authRoutes(fastify) {
         return reply.redirect(googleAuthUrl);
     });
 
-    // GET /google/callback - Callback de Google OAuth
+    // GET /google/callback - Callback de Google OAuth (LEGACY - ya no se usa directamente)
     fastify.get('/google/callback', {
         schema: {
             tags: ['Auth'],
-            summary: 'Callback de Google OAuth',
-            description: 'Procesa la respuesta de Google y crea/actualiza el usuario',
+            summary: 'Callback de Google OAuth (legacy)',
+            description: 'Redirige al gateway. El OAuth ahora se maneja en el gateway.',
             querystring: {
                 type: 'object',
                 properties: {
@@ -466,50 +466,44 @@ export async function authRoutes(fastify) {
             }
         }
     }, async (request, reply) => {
-        const { code, error } = request.query;
+        // Redirigir al gateway - el OAuth ahora se maneja allí
+        const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:8080';
+        return reply.redirect(`${gatewayUrl}/api/auth/google/callback?${new URLSearchParams(request.query)}`);
+    });
 
-        if (error) {
-            fastify.log.error('Google OAuth error:', error);
-            return reply.redirect(`${FRONTEND_URL}/login?error=google_auth_failed`);
+    // POST /google/internal - Endpoint interno para crear/obtener usuario de Google
+    // Solo debe ser llamado por el gateway (no expuesto públicamente)
+    fastify.post('/google/internal', {
+        schema: {
+            tags: ['Auth'],
+            summary: 'Crear/obtener usuario de Google (interno)',
+            description: 'Endpoint interno usado por el gateway para procesar OAuth',
+            body: {
+                type: 'object',
+                required: ['google_id', 'email', 'name'],
+                properties: {
+                    google_id: { type: 'string' },
+                    email: { type: 'string', format: 'email' },
+                    name: { type: 'string' }
+                }
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        token: { type: 'string' }
+                    }
+                }
+            }
         }
-
-        if (!code) {
-            return reply.redirect(`${FRONTEND_URL}/login?error=no_code`);
-        }
+    }, async (request, reply) => {
+        const { google_id, email, name } = request.body;
 
         try {
-            // 1. Intercambiar código por tokens
-            const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                    code,
-                    client_id: GOOGLE_CLIENT_ID,
-                    client_secret: GOOGLE_CLIENT_SECRET,
-                    redirect_uri: GOOGLE_REDIRECT_URI,
-                    grant_type: 'authorization_code'
-                })
-            });
-
-            const tokens = await tokenResponse.json();
-
-            if (tokens.error) {
-                fastify.log.error('Error obteniendo tokens:', tokens.error);
-                return reply.redirect(`${FRONTEND_URL}/login?error=token_error`);
-            }
-
-            // 2. Obtener información del usuario de Google
-            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-                headers: { Authorization: `Bearer ${tokens.access_token}` }
-            });
-
-            const googleUser = await userInfoResponse.json();
-            fastify.log.info('Google user info:', { email: googleUser.email, name: googleUser.name });
-
-            // 3. Buscar o crear usuario en nuestra base de datos
+            // Buscar o crear usuario
             let user;
             const existingUserQuery = 'SELECT id, nombre, email, is_admin, google_id FROM users WHERE email = $1;';
-            const existingUserResult = await fastify.pg.query(existingUserQuery, [googleUser.email.toLowerCase()]);
+            const existingUserResult = await fastify.pg.query(existingUserQuery, [email.toLowerCase()]);
 
             if (existingUserResult.rows.length > 0) {
                 // Usuario existe - actualizar google_id si no lo tiene
@@ -517,7 +511,7 @@ export async function authRoutes(fastify) {
                 if (!user.google_id) {
                     await fastify.pg.query(
                         'UPDATE users SET google_id = $1 WHERE id = $2',
-                        [googleUser.id, user.id]
+                        [google_id, user.id]
                     );
                 }
             } else {
@@ -530,26 +524,27 @@ export async function authRoutes(fastify) {
                 // Generar password hash aleatorio para usuarios de Google (no lo usarán)
                 const randomPassword = await bcrypt.hash(Math.random().toString(36), SALT_ROUNDS);
                 const insertResult = await fastify.pg.query(insertQuery, [
-                    googleUser.name || googleUser.email.split('@')[0],
-                    googleUser.email.toLowerCase(),
+                    name,
+                    email.toLowerCase(),
                     randomPassword,
-                    googleUser.id
+                    google_id
                 ]);
                 user = insertResult.rows[0];
             }
 
-            // 4. Generar JWT
+            // Generar JWT
             const token = fastify.jwt.sign(
                 { id: user.id, email: user.email, is_admin: user.is_admin, nombre: user.nombre },
                 { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
             );
 
-            // 5. Redirigir al frontend con el token
-            return reply.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
+            fastify.log.info(`✅ Usuario Google procesado: ${email}`);
+
+            return reply.code(200).send({ token });
 
         } catch (err) {
-            fastify.log.error('Error en Google OAuth callback:', err);
-            return reply.redirect(`${FRONTEND_URL}/login?error=server_error`);
+            fastify.log.error('Error en Google internal:', err);
+            return reply.code(500).send({ error: 'Error interno del servidor' });
         }
     });
 }

@@ -68,9 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Iniciar flujo de Google OAuth
+  // Iniciar flujo de Google OAuth (ahora va al gateway, no a usuarios-service)
   const loginWithGoogle = useCallback(() => {
-    window.location.href = `${API_URL}/api/usuarios/google`;
+    window.location.href = `${API_URL}/api/auth/google`;
   }, []);
 
   const register = async (nombre: string, email: string, password: string) => {

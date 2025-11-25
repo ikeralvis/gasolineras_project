@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { swaggerUI } from "@hono/swagger-ui";
+import { setCookie } from "hono/cookie";
 
 // ========================================
 // 🔧 CONFIGURACIÓN
@@ -10,6 +11,13 @@ import { swaggerUI } from "@hono/swagger-ui";
 const PORT = process.env.PORT || 8080;
 const USUARIOS_SERVICE = process.env.USUARIOS_SERVICE_URL || "http://usuarios:3001";
 const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+// Google OAuth config (el gateway maneja OAuth directamente)
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GATEWAY_URL = process.env.GATEWAY_URL || "http://localhost:8080";
+const GOOGLE_REDIRECT_URI = `${GATEWAY_URL}/api/auth/google/callback`;
 
 // ========================================
 // 🚀 APLICACIÓN HONO
@@ -187,9 +195,20 @@ app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: "*", // En producción, especifica los dominios permitidos
+    origin: (origin) => {
+      // Permitir orígenes específicos para seguridad
+      const allowedOrigins = [
+        FRONTEND_URL,
+        "http://localhost:5173",
+        "http://localhost:80",
+        "http://localhost",
+        "https://tankgo.onrender.com"
+      ];
+      return allowedOrigins.includes(origin) ? origin : FRONTEND_URL;
+    },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
+    credentials: true, // ⬅️ Importante para cookies
   })
 );
 
@@ -281,6 +300,139 @@ app.get("/health", async (c) => {
     },
     allServicesUp ? 200 : 503
   );
+});
+
+// ========================================
+// 🔐 GOOGLE OAUTH (manejado por Gateway)
+// ========================================
+
+// GET /api/auth/google - Iniciar OAuth con Google
+app.get("/api/auth/google", async (c) => {
+  if (!GOOGLE_CLIENT_ID) {
+    return c.json({ error: "Google OAuth no está configurado" }, 500);
+  }
+
+  console.log(`🔐 Iniciando OAuth con Google...`);
+  console.log(`   Redirect URI: ${GOOGLE_REDIRECT_URI}`);
+
+  const scope = encodeURIComponent("openid email profile");
+  const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+    `client_id=${GOOGLE_CLIENT_ID}` +
+    `&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}` +
+    `&response_type=code` +
+    `&scope=${scope}` +
+    `&access_type=offline` +
+    `&prompt=consent`;
+
+  return c.redirect(googleAuthUrl);
+});
+
+// GET /api/auth/google/callback - Callback de Google OAuth
+app.get("/api/auth/google/callback", async (c) => {
+  const code = c.req.query("code");
+  const error = c.req.query("error");
+
+  if (error) {
+    console.error("Google OAuth error:", error);
+    return c.redirect(`${FRONTEND_URL}/login?error=google_auth_failed`);
+  }
+
+  if (!code) {
+    return c.redirect(`${FRONTEND_URL}/login?error=no_code`);
+  }
+
+  try {
+    console.log(`🔐 Procesando callback de Google...`);
+
+    // 1. Intercambiar código por tokens
+    const tokenResponse = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        redirect_uri: GOOGLE_REDIRECT_URI,
+        grant_type: "authorization_code"
+      })
+    });
+
+    const tokens = await tokenResponse.json();
+
+    if (tokens.error) {
+      console.error("Error obteniendo tokens:", tokens.error);
+      return c.redirect(`${FRONTEND_URL}/login?error=token_error`);
+    }
+
+    // 2. Obtener información del usuario de Google
+    const userInfoResponse = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+      headers: { Authorization: `Bearer ${tokens.access_token}` }
+    });
+
+    const googleUser = await userInfoResponse.json();
+    console.log(`✅ Usuario de Google: ${googleUser.email}`);
+
+    // 3. Llamar al usuarios-service para crear/obtener usuario y generar JWT
+    const internalResponse = await fetch(`${USUARIOS_SERVICE}/api/usuarios/google/internal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        google_id: googleUser.id,
+        email: googleUser.email,
+        name: googleUser.name || googleUser.email.split("@")[0]
+      })
+    });
+
+    if (!internalResponse.ok) {
+      const errorData = await internalResponse.json();
+      console.error("Error del usuarios-service:", errorData);
+      return c.redirect(`${FRONTEND_URL}/login?error=user_creation_failed`);
+    }
+
+    const { token } = await internalResponse.json();
+
+    // 4. Establecer cookie HttpOnly segura y redirigir
+    // En producción, la cookie debe ser Secure y SameSite=Lax
+    const isProduction = GATEWAY_URL.startsWith("https");
+    
+    setCookie(c, "auth_token", token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: "Lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7 // 7 días
+    });
+
+    console.log(`✅ OAuth completado para ${googleUser.email}`);
+    
+    // 5. Redirigir al frontend - el token va en cookie, no en URL
+    return c.redirect(`${FRONTEND_URL}/auth/callback?success=true`);
+
+  } catch (err) {
+    console.error("Error en Google OAuth callback:", err);
+    return c.redirect(`${FRONTEND_URL}/login?error=server_error`);
+  }
+});
+
+// GET /api/auth/token - Obtener token desde cookie (para el frontend)
+app.get("/api/auth/token", async (c) => {
+  const token = c.req.header("cookie")?.match(/auth_token=([^;]+)/)?.[1];
+  
+  if (!token) {
+    return c.json({ error: "No authenticated" }, 401);
+  }
+
+  // Devolver el token para que el frontend lo guarde en memoria/localStorage
+  // y luego limpiar la cookie
+  setCookie(c, "auth_token", "", {
+    httpOnly: true,
+    secure: GATEWAY_URL.startsWith("https"),
+    sameSite: "Lax",
+    path: "/",
+    maxAge: 0 // Eliminar cookie
+  });
+
+  return c.json({ token });
 });
 
 // ========================================
