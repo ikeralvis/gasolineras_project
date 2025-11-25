@@ -230,10 +230,10 @@ def sync_gasolineras():
         
         documentos_historicos = []
         for g in datos_normalizados:
-            # Extraer solo precios relevantes
+            # Extraer solo precios relevantes con fecha
             doc_historico = {
                 "IDEESS": g.get("IDEESS"),
-                    "Gasolina 95 E5": g.get(PRECIO_GASOLINA_95_E5),
+                "fecha": fecha_hoy,  # ✅ Añadido campo fecha
                 "precios": {
                     "Gasolina 95 E5": g.get(PRECIO_GASOLINA_95_E5),
                     "Gasolina 98 E5": g.get("Precio Gasolina 98 E5"),
