@@ -171,7 +171,8 @@ async function cacheGasolinerasFavoritas(favoritos) {
         cache.put(`/api/gasolineras/${ideess}`, response);
       }
     } catch (error) {
-      console.log('Error cacheando favorito:', ideess);
+      console.error('Error cacheando favorito:', ideess, error);
+      throw error;
     }
   }
 }
