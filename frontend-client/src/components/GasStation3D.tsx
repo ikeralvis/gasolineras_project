@@ -237,7 +237,7 @@ export default function GasStation3D({ className = '' }: GasStation3DProps) {
         mouseX = (event.clientX / window.innerWidth - 0.5) * 2;
         mouseY = (event.clientY / window.innerHeight - 0.5) * 2;
       };
-      window.addEventListener('mousemove', onMouseMove);
+      globalThis.addEventListener('mousemove', onMouseMove);
 
       // Resize
       const onResize = () => {

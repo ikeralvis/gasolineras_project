@@ -64,7 +64,7 @@ export default function AuthCallback() {
   }, [searchParams, navigate, loginWithToken]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF]">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF]">
       <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md">
         {error ? (
           <>
