@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { authAPI } from '../services/auth';
 import type { User } from '../types/auth';
 
@@ -7,10 +7,14 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  loginWithToken: (token: string) => Promise<void>;
+  loginWithGoogle: () => void;
   register: (nombre: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
 }
+
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -49,6 +53,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Login con token (para OAuth callbacks)
+  const loginWithToken = useCallback(async (newToken: string) => {
+    try {
+      localStorage.setItem('authToken', newToken);
+      setToken(newToken);
+      const userData = await authAPI.getProfile();
+      setUser(userData);
+    } catch (error: any) {
+      console.error('❌ Error en loginWithToken:', error);
+      localStorage.removeItem('authToken');
+      setToken(null);
+      throw new Error(error.response?.data?.error || 'Error al iniciar sesión con token');
+    }
+  }, []);
+
+  // Iniciar flujo de Google OAuth
+  const loginWithGoogle = useCallback(() => {
+    window.location.href = `${API_URL}/api/usuarios/google`;
+  }, []);
+
   const register = async (nombre: string, email: string, password: string) => {
     try {
       await authAPI.register({ nombre, email, password });
@@ -73,6 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         token,
         loading,
         login,
+        loginWithToken,
+        loginWithGoogle,
         register,
         logout,
         isAuthenticated: !!user,

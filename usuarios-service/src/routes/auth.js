@@ -4,6 +4,12 @@ import { validateStrongPassword, validateEmail, sanitizeName } from '../utils/va
 
 const SALT_ROUNDS = 10;
 
+// Configuración de Google OAuth
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/usuarios/google/callback';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
+
 // Esquemas OpenAPI
 const authSchemas = {
     register: {
@@ -411,6 +417,139 @@ export async function authRoutes(fastify) {
         } catch (error) {
             fastify.log.error(error);
             return reply.code(500).send({ error: 'Error interno del servidor.' });
+        }
+    });
+
+    // ========================================
+    // 🔐 GOOGLE OAUTH 2.0
+    // ========================================
+
+    // GET /google - Redirigir a Google para autenticación
+    fastify.get('/google', {
+        schema: {
+            tags: ['Auth'],
+            summary: 'Iniciar autenticación con Google',
+            description: 'Redirige al usuario a la página de login de Google',
+            response: {
+                302: { description: 'Redirección a Google' }
+            }
+        }
+    }, async (request, reply) => {
+        if (!GOOGLE_CLIENT_ID) {
+            return reply.code(500).send({ error: 'Google OAuth no está configurado' });
+        }
+
+        const scope = encodeURIComponent('openid email profile');
+        const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+            `client_id=${GOOGLE_CLIENT_ID}` +
+            `&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}` +
+            `&response_type=code` +
+            `&scope=${scope}` +
+            `&access_type=offline` +
+            `&prompt=consent`;
+
+        return reply.redirect(googleAuthUrl);
+    });
+
+    // GET /google/callback - Callback de Google OAuth
+    fastify.get('/google/callback', {
+        schema: {
+            tags: ['Auth'],
+            summary: 'Callback de Google OAuth',
+            description: 'Procesa la respuesta de Google y crea/actualiza el usuario',
+            querystring: {
+                type: 'object',
+                properties: {
+                    code: { type: 'string' },
+                    error: { type: 'string' }
+                }
+            }
+        }
+    }, async (request, reply) => {
+        const { code, error } = request.query;
+
+        if (error) {
+            fastify.log.error('Google OAuth error:', error);
+            return reply.redirect(`${FRONTEND_URL}/login?error=google_auth_failed`);
+        }
+
+        if (!code) {
+            return reply.redirect(`${FRONTEND_URL}/login?error=no_code`);
+        }
+
+        try {
+            // 1. Intercambiar código por tokens
+            const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    code,
+                    client_id: GOOGLE_CLIENT_ID,
+                    client_secret: GOOGLE_CLIENT_SECRET,
+                    redirect_uri: GOOGLE_REDIRECT_URI,
+                    grant_type: 'authorization_code'
+                })
+            });
+
+            const tokens = await tokenResponse.json();
+
+            if (tokens.error) {
+                fastify.log.error('Error obteniendo tokens:', tokens.error);
+                return reply.redirect(`${FRONTEND_URL}/login?error=token_error`);
+            }
+
+            // 2. Obtener información del usuario de Google
+            const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+                headers: { Authorization: `Bearer ${tokens.access_token}` }
+            });
+
+            const googleUser = await userInfoResponse.json();
+            fastify.log.info('Google user info:', { email: googleUser.email, name: googleUser.name });
+
+            // 3. Buscar o crear usuario en nuestra base de datos
+            let user;
+            const existingUserQuery = 'SELECT id, nombre, email, is_admin, google_id FROM users WHERE email = $1;';
+            const existingUserResult = await fastify.pg.query(existingUserQuery, [googleUser.email.toLowerCase()]);
+
+            if (existingUserResult.rows.length > 0) {
+                // Usuario existe - actualizar google_id si no lo tiene
+                user = existingUserResult.rows[0];
+                if (!user.google_id) {
+                    await fastify.pg.query(
+                        'UPDATE users SET google_id = $1 WHERE id = $2',
+                        [googleUser.id, user.id]
+                    );
+                }
+            } else {
+                // Crear nuevo usuario
+                const insertQuery = `
+                    INSERT INTO users (nombre, email, password_hash, google_id)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id, nombre, email, is_admin;
+                `;
+                // Generar password hash aleatorio para usuarios de Google (no lo usarán)
+                const randomPassword = await bcrypt.hash(Math.random().toString(36), SALT_ROUNDS);
+                const insertResult = await fastify.pg.query(insertQuery, [
+                    googleUser.name || googleUser.email.split('@')[0],
+                    googleUser.email.toLowerCase(),
+                    randomPassword,
+                    googleUser.id
+                ]);
+                user = insertResult.rows[0];
+            }
+
+            // 4. Generar JWT
+            const token = fastify.jwt.sign(
+                { id: user.id, email: user.email, is_admin: user.is_admin, nombre: user.nombre },
+                { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+            );
+
+            // 5. Redirigir al frontend con el token
+            return reply.redirect(`${FRONTEND_URL}/auth/callback?token=${token}`);
+
+        } catch (err) {
+            fastify.log.error('Error en Google OAuth callback:', err);
+            return reply.redirect(`${FRONTEND_URL}/login?error=server_error`);
         }
     });
 }

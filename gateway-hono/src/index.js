@@ -309,6 +309,7 @@ app.all("/api/usuarios/*", async (c) => {
     const options = {
       method: c.req.method,
       headers,
+      redirect: 'manual', // ⬅️ MUY IMPORTANTE: No seguir redirecciones automáticamente
     };
 
     // Si hay body, añadirlo
@@ -317,6 +318,14 @@ app.all("/api/usuarios/*", async (c) => {
     }
 
     const response = await fetch(url, options);
+    
+    // ✅ Si es una redirección (301, 302, 303, 307, 308), pasarla al cliente
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('location');
+      console.log(`↪️ Redirigiendo a: ${location}`);
+      return c.redirect(location, response.status);
+    }
+    
     const contentType = response.headers.get("content-type");
 
     // Copiar headers, pero excluir content-length para evitar ERR_CONTENT_LENGTH_MISMATCH

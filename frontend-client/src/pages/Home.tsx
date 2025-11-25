@@ -6,16 +6,16 @@ const GasStation3D = lazy(() => import('../components/GasStation3D'));
 
 export default function Home() {
   return (
-    <div className="relative overflow-hidden">
-      {/* Fondo 3D animado - posicionado a la izquierda */}
+    <div className="relative overflow-x-hidden">
+      {/* Fondo 3D animado */}
       <Suspense fallback={
-        <div className="fixed inset-0 bg-gradient-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF]" />
+        <div className="fixed inset-0 bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF]" />
       }>
-        <GasStation3D className="transform -translate-x-[20%]" />
+        <GasStation3D />
       </Suspense>
 
       {/* Overlay con gradiente para mejorar legibilidad */}
-      <div className="fixed inset-0 bg-gradient-to-r from-white/70 via-white/40 to-transparent pointer-events-none" style={{ zIndex: 1 }} />
+      <div className="fixed inset-0 bg-linear-to-r from-white/70 via-white/40 to-transparent pointer-events-none" style={{ zIndex: 1 }} />
 
       {/* Hero Section */}
       <div className="relative min-h-screen flex items-center" style={{ zIndex: 2 }}>
@@ -79,7 +79,7 @@ export default function Home() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {/* Feature 1 */}
-            <div className="p-8 bg-gradient-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
+            <div className="p-8 bg-linear-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
               <div className="text-5xl mb-4">📊</div>
               <h3 className="text-2xl font-bold text-[#000C74] mb-3">Precios en Tiempo Real</h3>
               <p className="text-[#2C2F55]">
@@ -88,7 +88,7 @@ export default function Home() {
             </div>
 
             {/* Feature 2 */}
-            <div className="p-8 bg-gradient-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
+            <div className="p-8 bg-linear-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
               <div className="text-5xl mb-4">📍</div>
               <h3 className="text-2xl font-bold text-[#000C74] mb-3">Búsqueda por Ubicación</h3>
               <p className="text-[#2C2F55]">
@@ -97,7 +97,7 @@ export default function Home() {
             </div>
 
             {/* Feature 3 */}
-            <div className="p-8 bg-gradient-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
+            <div className="p-8 bg-linear-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
               <div className="text-5xl mb-4">💰</div>
               <h3 className="text-2xl font-bold text-[#000C74] mb-3">Comparación de Precios</h3>
               <p className="text-[#2C2F55]">
@@ -106,7 +106,7 @@ export default function Home() {
             </div>
 
             {/* Feature 4 */}
-            <div className="p-8 bg-gradient-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
+            <div className="p-8 bg-linear-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
               <div className="text-5xl mb-4">⭐</div>
               <h3 className="text-2xl font-bold text-[#000C74] mb-3">Favoritos Personalizados</h3>
               <p className="text-[#2C2F55]">
@@ -115,7 +115,7 @@ export default function Home() {
             </div>
 
             {/* Feature 5 */}
-            <div className="p-8 bg-gradient-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
+            <div className="p-8 bg-linear-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
               <div className="text-5xl mb-4">🗺️</div>
               <h3 className="text-2xl font-bold text-[#000C74] mb-3">Mapa Interactivo</h3>
               <p className="text-[#2C2F55]">
@@ -124,7 +124,7 @@ export default function Home() {
             </div>
 
             {/* Feature 6 */}
-            <div className="p-8 bg-gradient-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
+            <div className="p-8 bg-linear-to-br from-[#E8EAFE] to-white rounded-2xl shadow-lg hover:shadow-xl transition-all hover:-translate-y-2">
               <div className="text-5xl mb-4">📈</div>
               <h3 className="text-2xl font-bold text-[#000C74] mb-3">Historial de Precios</h3>
               <p className="text-[#2C2F55]">
@@ -136,7 +136,7 @@ export default function Home() {
       </section>
 
       {/* How it Works Section */}
-      <section className="relative bg-gradient-to-br from-[#000C74] to-[#0A0F3D] text-white py-20" style={{ zIndex: 2 }}>
+      <section className="relative bg-linear-to-br from-[#000C74] to-[#0A0F3D] text-white py-20" style={{ zIndex: 2 }}>
         <div className="container mx-auto px-8 lg:px-16">
           <div className="text-center mb-16">
             <h2 className="text-4xl lg:text-5xl font-bold mb-4">

@@ -1,13 +1,25 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+html, body {
+	overflow-x: hidden;
+	width: 100%;
+	margin: 0;
+	padding: 0;
+}
 
 body {
 	font-family: 'Inter', system-ui, sans-serif;
 	background: linear-gradient(120deg, #f8fafc 0%, #e2e8f0 100%);
 	color: #222;
+	min-height: 100vh;
 }
 
 input, button, textarea {
 	font-family: inherit;
+}
+
+/* Asegurar que el canvas 3D cubra todo */
+canvas {
+	display: block;
 }

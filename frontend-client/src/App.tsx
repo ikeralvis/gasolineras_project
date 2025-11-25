@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
 import Favoritos from "./pages/Favoritos";
+import AuthCallback from "./pages/AuthCallback";
 
 function App() {
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
@@ -48,6 +49,7 @@ function App() {
         <Route path="/mapa" element={<MapaGasolineras />} />
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/favoritos" element={<Favoritos />} />
       </Routes>

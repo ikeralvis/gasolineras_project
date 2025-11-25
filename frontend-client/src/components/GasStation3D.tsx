@@ -53,9 +53,10 @@ export default function GasStation3D({ className = '' }: GasStation3DProps) {
         alpha: false, // Cambiar a false para fondo opaco
         powerPreference: "high-performance"
       });
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      renderer.setSize(width, height, true);
+      // Usar el tamaño del viewport completo
+      const width = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
+      const height = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
+      renderer.setSize(width, height, false);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5)); // Limitar para rendimiento
       renderer.shadowMap.enabled = true;
       renderer.shadowMap.type = THREE.BasicShadowMap; // Más rápido que PCFSoft
@@ -241,11 +242,11 @@ export default function GasStation3D({ className = '' }: GasStation3DProps) {
       // Resize
       const onResize = () => {
         if (!camera || !renderer) return;
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const width = Math.max(document.documentElement.clientWidth, window.innerWidth || 0);
+        const height = Math.max(document.documentElement.clientHeight, window.innerHeight || 0);
         camera.aspect = width / height;
         camera.updateProjectionMatrix();
-        renderer.setSize(width, height, true);
+        renderer.setSize(width, height, false);
       };
       window.addEventListener('resize', onResize);
 
@@ -323,8 +324,30 @@ export default function GasStation3D({ className = '' }: GasStation3DProps) {
   }, []);
 
   return (
-    <div ref={containerRef} className={`fixed inset-0 ${className}`} style={{ zIndex: 0, width: '100vw', height: '100vh' }}>
-      <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '100%' }} />
+    <div 
+      ref={containerRef} 
+      className={className}
+      style={{ 
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100vw', 
+        height: '100vh',
+        zIndex: 0,
+        overflow: 'hidden'
+      }}
+    >
+      <canvas 
+        ref={canvasRef} 
+        style={{ 
+          display: 'block', 
+          width: '100vw', 
+          height: '100vh',
+          position: 'absolute',
+          top: 0,
+          left: 0
+        }} 
+      />
     </div>
   );
 }

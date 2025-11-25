@@ -207,7 +207,7 @@ export default function Profile() {
             </div>
 
             {/* Preferencias de Combustible */}
-            <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-200">
+            <div className="mb-6 p-6 bg-linear-to-r from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-200">
               <div className="flex items-center gap-3 mb-4">
                 <div className="bg-blue-500 p-3 rounded-xl">
                   <FaGasPump className="text-white" size={20} />
@@ -220,10 +220,14 @@ export default function Profile() {
               
               <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
                 <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label
+                    htmlFor="tipo-combustible"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
                     Tipo de Combustible
                   </label>
                   <select
+                    id="tipo-combustible"
                     value={combustibleSeleccionado}
                     onChange={(e) => setCombustibleSeleccionado(e.target.value)}
                     className="w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"

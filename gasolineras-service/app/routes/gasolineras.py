@@ -6,6 +6,8 @@ from typing import List, Optional
 from datetime import datetime, timezone
 from fastapi import APIRouter, Query, HTTPException, status
 from app.db.connection import get_collection, get_historico_collection
+
+PRECIO_GASOLINA_95_E5 = "Precio Gasolina 95 E5"
 from app.services.fetch_gobierno import fetch_data_gobierno
 from app.models.gasolinera import Gasolinera
 
@@ -46,9 +48,9 @@ def get_gasolineras(
         if provincia:
             query["Provincia"] = {"$regex": provincia, "$options": "i"}
         if municipio:
-            query["Municipio"] = {"$regex": municipio, "$options": "i"}
+            query[PRECIO_GASOLINA_95_E5] = {"$lte": str(precio_max)}
         if precio_max:
-            query["Precio Gasolina 95 E5"] = {"$lte": str(precio_max)}
+            query[PRECIO_GASOLINA_95_E5] = {"$lte": str(precio_max)}
         
         # Contar total
         total = collection.count_documents(query)
@@ -231,9 +233,9 @@ def sync_gasolineras():
             # Extraer solo precios relevantes
             doc_historico = {
                 "IDEESS": g.get("IDEESS"),
-                "fecha": fecha_hoy,
+                    "Gasolina 95 E5": g.get(PRECIO_GASOLINA_95_E5),
                 "precios": {
-                    "Gasolina 95 E5": g.get("Precio Gasolina 95 E5"),
+                    "Gasolina 95 E5": g.get(PRECIO_GASOLINA_95_E5),
                     "Gasolina 98 E5": g.get("Precio Gasolina 98 E5"),
                     "Gasóleo A": g.get("Precio Gasoleo A"),
                     "Gasóleo B": g.get("Precio Gasoleo B"),
