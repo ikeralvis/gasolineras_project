@@ -3,6 +3,18 @@ import GasolinerasTable from "../components/GasolinerasTable";
 import { getGasolinerasCerca } from "../api/gasolineras";
 import { useAuth } from "../contexts/AuthContext";
 
+// Marcas populares para filtro rápido
+const MARCAS_POPULARES = [
+    { nombre: "Repsol", logo: "🔴" },
+    { nombre: "Cepsa", logo: "🔵" },
+    { nombre: "BP", logo: "🟢" },
+    { nombre: "Shell", logo: "🟡" },
+    { nombre: "Galp", logo: "🟠" },
+    { nombre: "Petronor", logo: "⚫" },
+    { nombre: "Eroski", logo: "🟤" },
+    { nombre: "Costco", logo: "🔷" },
+];
+
 export default function Gasolineras() {
     const { user } = useAuth();
     const [gasolineras, setGasolineras] = useState<any[]>([]);
@@ -13,6 +25,11 @@ export default function Gasolineras() {
     const [municipio, setMunicipio] = useState("");
     const [nombre, setNombre] = useState("");
     const [precioMax, setPrecioMax] = useState("");
+    
+    // Nuevos filtros avanzados
+    const [marcasSeleccionadas, setMarcasSeleccionadas] = useState<string[]>([]);
+    const [soloConPrecio, setSoloConPrecio] = useState(true);
+    const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
     
     // Estado para el tipo de combustible seleccionado
     const [combustibleSeleccionado, setCombustibleSeleccionado] = useState<string>(
@@ -131,6 +148,15 @@ export default function Gasolineras() {
             );
         }
 
+        // Filtro por marcas seleccionadas
+        if (marcasSeleccionadas.length > 0) {
+            resultado = resultado.filter((g) =>
+                marcasSeleccionadas.some(marca =>
+                    g["Rótulo"].toLowerCase().includes(marca.toLowerCase())
+                )
+            );
+        }
+
         if (precioMax.trim() !== "") {
             const maxPrecio = Number.parseFloat(precioMax);
             if (!Number.isNaN(maxPrecio)) {
@@ -142,15 +168,17 @@ export default function Gasolineras() {
         }
 
         // Filtrar gasolineras que tengan precio para el combustible seleccionado
-        resultado = resultado.filter((g) => {
-            const precio = g[combustibleSeleccionado];
-            if (!precio) return false;
-            const precioNum = Number.parseFloat(precio.replace(",", "."));
-            return !Number.isNaN(precioNum) && precioNum > 0;
-        });
+        if (soloConPrecio) {
+            resultado = resultado.filter((g) => {
+                const precio = g[combustibleSeleccionado];
+                if (!precio) return false;
+                const precioNum = Number.parseFloat(precio.replace(",", "."));
+                return !Number.isNaN(precioNum) && precioNum > 0;
+            });
+        }
 
         setFiltered(resultado);
-    }, [provincia, municipio, nombre, precioMax, combustibleSeleccionado, gasolineras]);
+    }, [provincia, municipio, nombre, precioMax, combustibleSeleccionado, gasolineras, marcasSeleccionadas, soloConPrecio]);
 
     const ordenarPorPrecio = () => {
         const resultado = [...filtered].sort((a, b) => {
@@ -168,6 +196,16 @@ export default function Gasolineras() {
         setMunicipio("");
         setNombre("");
         setPrecioMax("");
+        setMarcasSeleccionadas([]);
+        setSoloConPrecio(true);
+    };
+    
+    const toggleMarca = (marca: string) => {
+        setMarcasSeleccionadas(prev =>
+            prev.includes(marca)
+                ? prev.filter(m => m !== marca)
+                : [...prev, marca]
+        );
     };
     
     const seleccionarProvincia = (prov: string) => {
@@ -211,14 +249,15 @@ export default function Gasolineras() {
                 </div>
 
                 {/* SELECTOR DE COMBUSTIBLE - DESTACADO */}
-                <div className="mb-6 p-4 bg-gradient-to-r from-[#000C74]/5 to-[#4A52D9]/5 rounded-xl border-2 border-[#000C74]/20">
-                    <label className="block text-sm font-bold text-[#000C74] mb-3 flex items-center gap-2">
+                <div className="mb-6 p-4 bg-linear-to-r from-[#000C74]/5 to-[#4A52D9]/5 rounded-xl border-2 border-[#000C74]/20">
+                    <label htmlFor="combustible-select" className="text-sm font-bold text-[#000C74] mb-3 flex items-center gap-2">
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                         </svg>
                         Tipo de Combustible
                     </label>
                     <select
+                        id="combustible-select"
                         value={combustibleSeleccionado}
                         onChange={(e) => setCombustibleSeleccionado(e.target.value)}
                         className="w-full border-2 border-[#000C74]/30 focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
@@ -319,7 +358,7 @@ export default function Gasolineras() {
                     </div>
 
                     <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                        <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-2">
                             🏢 Marca / Nombre
                         </label>
                         <input
@@ -345,6 +384,67 @@ export default function Gasolineras() {
                         />
                     </div>
                 </div>
+
+                {/* Botón para mostrar filtros avanzados */}
+                <button
+                    type="button"
+                    onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
+                    className="mt-4 flex items-center gap-2 text-sm font-medium text-[#000C74] hover:text-[#0A128C] transition"
+                >
+                    <svg 
+                        className={`w-4 h-4 transition-transform ${mostrarFiltrosAvanzados ? 'rotate-180' : ''}`} 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                    >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                    {mostrarFiltrosAvanzados ? 'Ocultar filtros avanzados' : 'Mostrar filtros avanzados'}
+                </button>
+
+                {/* Filtros avanzados */}
+                {mostrarFiltrosAvanzados && (
+                    <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                        {/* Filtro por marcas */}
+                        <div className="mb-4">
+                            <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                                Filtrar por marca
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {MARCAS_POPULARES.map((marca) => (
+                                    <button
+                                        key={marca.nombre}
+                                        type="button"
+                                        onClick={() => toggleMarca(marca.nombre)}
+                                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                                            marcasSeleccionadas.includes(marca.nombre)
+                                                ? 'bg-[#000C74] text-white shadow-md'
+                                                : 'bg-white border border-gray-300 text-gray-700 hover:border-[#000C74] hover:text-[#000C74]'
+                                        }`}
+                                    >
+                                        {marca.logo} {marca.nombre}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Opciones adicionales */}
+                        <div className="flex flex-wrap gap-4">
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={soloConPrecio}
+                                    onChange={(e) => setSoloConPrecio(e.target.checked)}
+                                    className="w-4 h-4 text-[#000C74] rounded border-gray-300 focus:ring-[#000C74]"
+                                />
+                                <span className="text-sm text-gray-700">Solo con precio disponible</span>
+                            </label>
+                        </div>
+                    </div>
+                )}
 
                 {/* Indicador de filtros activos */}
                 {(provincia || municipio || nombre || precioMax) && (

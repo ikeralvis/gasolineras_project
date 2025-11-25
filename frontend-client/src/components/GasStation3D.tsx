@@ -291,7 +291,7 @@ export default function GasStation3D({ className = '' }: GasStation3DProps) {
 
       // Cleanup
       return () => {
-        window.removeEventListener('mousemove', onMouseMove);
+        globalThis.removeEventListener('mousemove', onMouseMove);
         window.removeEventListener('resize', onResize);
         if (animationFrameRef.current) {
           cancelAnimationFrame(animationFrameRef.current);
@@ -304,7 +304,9 @@ export default function GasStation3D({ className = '' }: GasStation3DProps) {
             if (object.geometry) object.geometry.dispose();
             if (object.material) {
               if (Array.isArray(object.material)) {
-                object.material.forEach((mat: any) => mat.dispose());
+                for (const mat of object.material) {
+                  mat.dispose();
+                }
               } else {
                 object.material.dispose();
               }

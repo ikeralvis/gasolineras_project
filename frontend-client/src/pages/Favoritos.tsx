@@ -107,7 +107,10 @@ export default function Favoritos() {
                 <p className="text-gray-600 mt-1">
                   {gasolineras.length === 0 
                     ? 'No tienes gasolineras favoritas aún'
-                    : `${gasolineras.length} gasolinera${gasolineras.length !== 1 ? 's' : ''} guardada${gasolineras.length !== 1 ? 's' : ''}`
+                    : (() => {
+                        const plural = gasolineras.length > 1 ? 's' : '';
+                        return `${gasolineras.length} gasolinera${plural} guardada${plural}`;
+                      })()
                   }
                 </p>
               </div>
