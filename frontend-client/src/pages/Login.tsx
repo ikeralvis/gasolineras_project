@@ -180,13 +180,14 @@ export default function Login() {
               <GoogleLogin
                 onSuccess={handleGoogleSuccess}
                 onError={handleGoogleError}
-                useOneTap
+                useOneTap={false}
                 theme="outline"
                 size="large"
                 text="continue_with"
                 shape="rectangular"
                 locale="es"
                 width="350"
+                ux_mode="popup"
               />
             )}
           </div>

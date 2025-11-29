@@ -198,8 +198,13 @@ app.use(
         "http://localhost:5173",
         "http://localhost:80",
         "http://localhost",
-        "https://tankgo.onrender.com"
+        "https://tankgo.onrender.com",
+        // Añadir cualquier subdominio de onrender.com
       ];
+      // También permitir cualquier origen *.onrender.com
+      if (origin && origin.endsWith('.onrender.com')) {
+        return origin;
+      }
       return allowedOrigins.includes(origin) ? origin : FRONTEND_URL;
     },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -207,6 +212,13 @@ app.use(
     credentials: true, // ⬅️ Importante para cookies
   })
 );
+
+// Headers adicionales para permitir popups de Google OAuth
+app.use("*", async (c, next) => {
+  await next();
+  // Permitir popups de Google Sign-In
+  c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+});
 
 // ========================================
 // � RUTAS DE DOCUMENTACIÓN (AGREGADA)
@@ -377,10 +389,11 @@ app.all("/api/usuarios/*", async (c) => {
     
     console.log(`🔄 Proxy usuarios: ${c.req.method} ${url}`);
 
-    // Obtener headers y excluir host
+    // Obtener headers y excluir host y accept-encoding (evitar problemas de compresión)
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
-      if (key.toLowerCase() !== "host") {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
         headers[key] = value;
       }
     }
@@ -407,23 +420,15 @@ app.all("/api/usuarios/*", async (c) => {
     
     const contentType = response.headers.get("content-type");
 
-    // Copiar headers, pero excluir content-length para evitar ERR_CONTENT_LENGTH_MISMATCH
-    const responseHeaders = {};
-    for (const [key, value] of response.headers) {
-      if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {
-        responseHeaders[key] = value;
-      }
-    }
-
-    // Si es JSON, parsearlo
+    // Si es JSON, parsearlo y devolverlo (evita problemas de encoding)
     if (contentType?.includes("application/json")) {
       const data = await response.json();
-      return c.json(data, response.status, responseHeaders);
+      return c.json(data, response.status);
     }
 
     // Si es texto u otro formato
     const text = await response.text();
-    return c.text(text, response.status, responseHeaders);
+    return c.text(text, response.status);
   } catch (error) {
     console.error("Error en proxy de usuarios:", error);
     return c.json(
@@ -451,9 +456,11 @@ app.all("/api/gasolineras/*", async (c) => {
     
     console.log(`🔄 Proxy gasolineras: ${c.req.method} ${url}`);
 
+    // Excluir host y accept-encoding para evitar problemas de compresión
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
-      if (key.toLowerCase() !== "host") {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
         headers[key] = value;
       }
     }
@@ -470,21 +477,13 @@ app.all("/api/gasolineras/*", async (c) => {
     const response = await fetch(url, options);
     const contentType = response.headers.get("content-type");
 
-    // Copiar headers, pero excluir content-length para evitar ERR_CONTENT_LENGTH_MISMATCH
-    const responseHeaders = {};
-    for (const [key, value] of response.headers) {
-      if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {
-        responseHeaders[key] = value;
-      }
-    }
-
     if (contentType?.includes("application/json")) {
       const data = await response.json();
-      return c.json(data, response.status, responseHeaders);
+      return c.json(data, response.status);
     }
 
     const text = await response.text();
-    return c.text(text, response.status, responseHeaders);
+    return c.text(text, response.status);
   } catch (error) {
     console.error("Error en proxy de gasolineras:", error);
     return c.json(
