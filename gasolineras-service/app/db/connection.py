@@ -3,6 +3,7 @@ Gestión de conexión a MongoDB
 """
 import os
 import logging
+import certifi
 from typing import Any
 from pymongo import MongoClient
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
@@ -23,16 +24,14 @@ MONGO_URI_ENV = os.getenv("MONGO_URI")
 if MONGO_URI_ENV:
     # 🔥 Usamos Atlas en Render/Producción
     MONGO_URI = MONGO_URI_ENV
+    IS_ATLAS = True
 else:
     # 🐳 Modo local con Docker (igual que antes)
+    IS_ATLAS = False
     if MONGO_USER and MONGO_PASS:
         MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}"
     else:
         MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
-
-# Configuración de TLS
-USE_TLS = os.getenv("USE_TLS", "false").lower() == "true" or "mongodb+srv://" in MONGO_URI or ENVIRONMENT == "production"
-ALLOW_INVALID_CERTS = os.getenv("TLS_ALLOW_INVALID_CERTS", "false").lower() == "true"
 
 # Cliente global
 _client = None
@@ -47,19 +46,25 @@ def get_mongo_client():
         try:
             # Configuración base de conexión
             connection_params: dict[str, Any] = {
-                "serverSelectionTimeoutMS": 5000,
+                "serverSelectionTimeoutMS": 10000,
+                "connectTimeoutMS": 10000,
                 "maxPoolSize": 10,
-                "minPoolSize": 1
+                "minPoolSize": 1,
+                "retryWrites": True,
+                "w": "majority"
             }
             
-            # Solo agregar parámetros TLS si está habilitado
-            if USE_TLS:
+            # Para MongoDB Atlas, usar certificados de certifi
+            if IS_ATLAS or "mongodb+srv://" in MONGO_URI or "mongodb.net" in MONGO_URI:
                 connection_params["tls"] = True
-                if ALLOW_INVALID_CERTS:
-                    connection_params["tlsAllowInvalidCertificates"] = True
+                connection_params["tlsCAFile"] = certifi.where()
+                logger.info(f"🔐 Usando certificados de certifi: {certifi.where()}")
             
             _client = MongoClient(MONGO_URI, **connection_params)
-            logger.info(f"✅ Conectado a MongoDB (TLS: {USE_TLS})")
+            
+            # Test de conexión
+            _client.admin.command('ping')
+            logger.info(f"✅ Conectado a MongoDB (Atlas: {IS_ATLAS})")
         except Exception as e:
             logger.error(f"❌ Error al conectar con MongoDB: {e}")
             raise

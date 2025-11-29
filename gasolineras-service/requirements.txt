@@ -5,7 +5,13 @@ fastapi==0.115.12
 uvicorn[standard]==0.34.0
 
 # MongoDB - Driver oficial
-pymongo==4.10.1
+pymongo[srv]==4.10.1
+
+# Certificados SSL actualizados (necesario para Atlas)
+certifi>=2024.0.0
+
+# DNS para mongodb+srv://
+dnspython>=2.4.0
 
 # Pydantic - Validación de datos
 pydantic==2.10.5
