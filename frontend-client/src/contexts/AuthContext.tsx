@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { authAPI } from '../services/auth';
 import type { User } from '../types/auth';
 
@@ -8,7 +8,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   loginWithToken: (token: string) => Promise<void>;
-  loginWithGoogle: () => void;
+  loginWithGoogleCredential: (credential: string) => Promise<void>;
   register: (nombre: string, email: string, password: string) => Promise<void>;
   logout: () => void;
   isAuthenticated: boolean;
@@ -47,30 +47,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { token: newToken, user: userData } = await authAPI.login({ email, password });
       setToken(newToken);
       setUser(userData);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Error en login:', error);
-      throw new Error(error.response?.data?.error || 'Error al iniciar sesión');
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      throw new Error(axiosError.response?.data?.error || 'Error al iniciar sesión');
     }
   };
 
-  // Login con token (para OAuth callbacks)
+  // Login con token (para OAuth callbacks legacy)
   const loginWithToken = useCallback(async (newToken: string) => {
     try {
       localStorage.setItem('authToken', newToken);
       setToken(newToken);
       const userData = await authAPI.getProfile();
       setUser(userData);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Error en loginWithToken:', error);
       localStorage.removeItem('authToken');
       setToken(null);
-      throw new Error(error.response?.data?.error || 'Error al iniciar sesión con token');
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      throw new Error(axiosError.response?.data?.error || 'Error al iniciar sesión con token');
     }
   }, []);
 
-  // Iniciar flujo de Google OAuth (ahora va al gateway, no a usuarios-service)
-  const loginWithGoogle = useCallback(() => {
-    globalThis.location.href = `${API_URL}/api/auth/google`;
+  // 🆕 Login con credencial de Google (ID Token de @react-oauth/google)
+  const loginWithGoogleCredential = useCallback(async (credential: string) => {
+    try {
+      // Enviar el ID token de Google al backend para verificar y obtener JWT
+      const response = await fetch(`${API_URL}/api/auth/google/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credential }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Error al verificar credencial de Google');
+      }
+
+      const { token: newToken } = await response.json();
+      localStorage.setItem('authToken', newToken);
+      setToken(newToken);
+      
+      const userData = await authAPI.getProfile();
+      setUser(userData);
+    } catch (error: unknown) {
+      console.error('❌ Error en loginWithGoogleCredential:', error);
+      localStorage.removeItem('authToken');
+      setToken(null);
+      if (error instanceof Error) {
+        throw error;
+      }
+      throw new Error('Error al iniciar sesión con Google');
+    }
   }, []);
 
   const register = async (nombre: string, email: string, password: string) => {
@@ -78,32 +107,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await authAPI.register({ nombre, email, password });
       // Después de registrarse, hacer login automáticamente
       await login(email, password);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('❌ Error en registro:', error);
-      throw new Error(error.response?.data?.error || 'Error al registrarse');
+      const axiosError = error as { response?: { data?: { error?: string } } };
+      throw new Error(axiosError.response?.data?.error || 'Error al registrarse');
     }
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     authAPI.logout();
     setUser(null);
     setToken(null);
-  };
+  }, []);
+
+  const contextValue = useMemo(() => ({
+    user,
+    token,
+    loading,
+    login,
+    loginWithToken,
+    loginWithGoogleCredential,
+    register,
+    logout,
+    isAuthenticated: !!user,
+  }), [user, token, loading, login, loginWithToken, loginWithGoogleCredential, register, logout]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        loading,
-        login,
-        loginWithToken,
-        loginWithGoogle,
-        register,
-        logout,
-        isAuthenticated: !!user,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

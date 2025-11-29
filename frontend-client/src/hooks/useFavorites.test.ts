@@ -17,7 +17,7 @@ const createAuthMock = (overrides = {}) => ({
   loading: false,
   login: vi.fn(),
   loginWithToken: vi.fn(),
-  loginWithGoogle: vi.fn(),
+  loginWithGoogleCredential: vi.fn(),
   logout: vi.fn(),
   register: vi.fn(),
   ...overrides,

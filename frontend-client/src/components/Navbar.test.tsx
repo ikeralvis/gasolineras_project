@@ -24,7 +24,7 @@ describe('Navbar', () => {
       loading: false,
       login: vi.fn(),
       loginWithToken: vi.fn(),
-      loginWithGoogle: vi.fn(),
+      loginWithGoogleCredential: vi.fn(),
       logout: vi.fn(),
       register: vi.fn(),
     });
@@ -43,7 +43,7 @@ describe('Navbar', () => {
       loading: false,
       login: vi.fn(),
       loginWithToken: vi.fn(),
-      loginWithGoogle: vi.fn(),
+      loginWithGoogleCredential: vi.fn(),
       logout: vi.fn(),
       register: vi.fn(),
     });
@@ -61,7 +61,7 @@ describe('Navbar', () => {
       loading: false,
       login: vi.fn(),
       loginWithToken: vi.fn(),
-      loginWithGoogle: vi.fn(),
+      loginWithGoogleCredential: vi.fn(),
       logout: vi.fn(),
       register: vi.fn(),
     });
@@ -82,7 +82,7 @@ describe('Navbar', () => {
       loading: false,
       login: vi.fn(),
       loginWithToken: vi.fn(),
-      loginWithGoogle: vi.fn(),
+      loginWithGoogleCredential: vi.fn(),
       logout: mockLogout,
       register: vi.fn(),
     });

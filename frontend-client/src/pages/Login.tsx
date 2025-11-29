@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
 import { useAuth } from '../contexts/AuthContext';
-import { FaEnvelope, FaLock, FaGasPump, FaEye, FaEyeSlash, FaGoogle } from 'react-icons/fa';
+import { FaEnvelope, FaLock, FaGasPump, FaEye, FaEyeSlash } from 'react-icons/fa';
 
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { login, loginWithGoogle } = useAuth();
+  const { login, loginWithGoogleCredential } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(searchParams.get('error') ? 'Error de autenticación. Intenta de nuevo.' : '');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,11 +23,38 @@ export default function Login() {
     try {
       await login(email, password);
       navigate('/gasolineras'); // Redirigir al iniciar sesión
-    } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al iniciar sesión';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
+  };
+
+  // Handler para éxito de Google OAuth
+  const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    if (!credentialResponse.credential) {
+      setError('No se recibió credencial de Google');
+      return;
+    }
+
+    setGoogleLoading(true);
+    setError('');
+
+    try {
+      await loginWithGoogleCredential(credentialResponse.credential);
+      navigate('/gasolineras');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al iniciar sesión con Google';
+      setError(errorMessage);
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
+  // Handler para error de Google OAuth
+  const handleGoogleError = () => {
+    setError('Error al iniciar sesión con Google. Intenta de nuevo.');
   };
 
   return (
@@ -140,15 +169,27 @@ export default function Login() {
             </div>
           </div>
 
-          {/* Botón de Google */}
-          <button
-            type="button"
-            onClick={loginWithGoogle}
-            className="w-full flex items-center justify-center gap-3 py-3.5 px-4 border-2 border-gray-300 rounded-xl font-semibold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all"
-          >
-            <FaGoogle className="w-5 h-5 text-red-500" />
-            Continuar con Google
-          </button>
+          {/* Botón de Google OAuth */}
+          <div className="flex justify-center">
+            {googleLoading ? (
+              <div className="flex items-center justify-center gap-3 py-3.5 px-4 text-gray-700">
+                <div className="w-5 h-5 border-2 border-[#000C74] border-t-transparent rounded-full animate-spin"></div>
+                <span>Iniciando con Google...</span>
+              </div>
+            ) : (
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={handleGoogleError}
+                useOneTap
+                theme="outline"
+                size="large"
+                text="continue_with"
+                shape="rectangular"
+                locale="es"
+                width="350"
+              />
+            )}
+          </div>
 
           {/* Divider */}
           <div className="relative my-6">

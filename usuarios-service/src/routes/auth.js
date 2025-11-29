@@ -4,12 +4,6 @@ import { validateStrongPassword, validateEmail, sanitizeName } from '../utils/va
 
 const SALT_ROUNDS = 10;
 
-// Configuración de Google OAuth
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:3001/api/usuarios/google/callback';
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
-
 // Esquemas OpenAPI
 const authSchemas = {
     register: {
@@ -424,55 +418,10 @@ export async function authRoutes(fastify) {
     // 🔐 GOOGLE OAUTH 2.0
     // ========================================
 
-    // GET /google - Redirigir a Google para autenticación
-    fastify.get('/google', {
-        schema: {
-            tags: ['Auth'],
-            summary: 'Iniciar autenticación con Google',
-            description: 'Redirige al usuario a la página de login de Google',
-            response: {
-                302: { description: 'Redirección a Google' }
-            }
-        }
-    }, async (request, reply) => {
-        if (!GOOGLE_CLIENT_ID) {
-            return reply.code(500).send({ error: 'Google OAuth no está configurado' });
-        }
-
-        const scope = encodeURIComponent('openid email profile');
-        const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
-            `client_id=${GOOGLE_CLIENT_ID}` +
-            `&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}` +
-            `&response_type=code` +
-            `&scope=${scope}` +
-            `&access_type=offline` +
-            `&prompt=consent`;
-
-        return reply.redirect(googleAuthUrl);
-    });
-
-    // GET /google/callback - Callback de Google OAuth (LEGACY - ya no se usa directamente)
-    fastify.get('/google/callback', {
-        schema: {
-            tags: ['Auth'],
-            summary: 'Callback de Google OAuth (legacy)',
-            description: 'Redirige al gateway. El OAuth ahora se maneja en el gateway.',
-            querystring: {
-                type: 'object',
-                properties: {
-                    code: { type: 'string' },
-                    error: { type: 'string' }
-                }
-            }
-        }
-    }, async (request, reply) => {
-        // Redirigir al gateway - el OAuth ahora se maneja allí
-        const gatewayUrl = process.env.GATEWAY_URL || 'http://localhost:8080';
-        return reply.redirect(`${gatewayUrl}/api/auth/google/callback?${new URLSearchParams(request.query)}`);
-    });
-
     // POST /google/internal - Endpoint interno para crear/obtener usuario de Google
     // Solo debe ser llamado por el gateway (no expuesto públicamente)
+    // El frontend usa @react-oauth/google y envía el credential al gateway,
+    // que verifica con Google y luego llama a este endpoint
     fastify.post('/google/internal', {
         schema: {
             tags: ['Auth'],

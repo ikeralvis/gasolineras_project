@@ -1,8 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import './index.css';
+
+// Google OAuth Client ID (configurar en Google Cloud Console)
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 // PWA registration (vite-plugin-pwa provides `virtual:pwa-register`)
 // Load the virtual module dynamically and catch failures so the app
 // still runs if the plugin isn't installed yet (useful during setup).
@@ -27,8 +31,10 @@ if (import.meta.env.PROD) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <BrowserRouter>
         <App />
-    </BrowserRouter>
+      </BrowserRouter>
+    </GoogleOAuthProvider>
   </React.StrictMode>
 );
