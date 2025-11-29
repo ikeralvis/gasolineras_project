@@ -3,7 +3,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { FaUser, FaEnvelope, FaShieldAlt, FaHeart, FaTrash, FaSignOutAlt, FaGasPump } from "react-icons/fa";
 
-const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:8080";
+const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
 
 interface Usuario {
   id: number;

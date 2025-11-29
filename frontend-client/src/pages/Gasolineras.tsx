@@ -67,7 +67,7 @@ export default function Gasolineras() {
       // Función para cargar todas las gasolineras (fallback)
       const cargarTodasLasGasolineras = async () => {
         console.log("🔄 Cargando todas las gasolineras...");
-        const res = await fetch("http://localhost:8080/api/gasolineras");
+        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/gasolineras`);
         const data = await res.json();
         console.log("� Respuesta del servidor:", data);
         

@@ -5,7 +5,7 @@ import { useFavorites } from '../hooks/useFavorites';
 import { useAuth } from '../contexts/AuthContext';
 import GasolinerasTable from '../components/GasolinerasTable';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 interface Gasolinera {
   IDEESS: string;

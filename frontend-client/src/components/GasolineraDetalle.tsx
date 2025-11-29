@@ -5,6 +5,9 @@ import L from "leaflet";
 import HistorialPrecios from "./HistorialPrecios";
 import FavoritoButton from "./FavoritoButton";
 
+// API URL
+const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
 // Importar logos
 import repsol from "../assets/logos/repsol.svg";
 import cepsa from "../assets/logos/cepsa.jpg";
@@ -61,12 +64,12 @@ export default function GasolineraDetalle() {
   const [ordenCercanas, setOrdenCercanas] = useState<"distancia" | "precio">("distancia");
 
   useEffect(() => {
-    fetch(`http://localhost:8080/api/gasolineras/${id}`)
+    fetch(`${API_URL}/api/gasolineras/${id}`)
       .then(res => res.json())
       .then(data => setGasolinera(data))
       .catch(err => console.error(err));
 
-    fetch(`http://localhost:8080/api/gasolineras/${id}/cercanas`)
+    fetch(`${API_URL}/api/gasolineras/${id}/cercanas`)
       .then(res => res.json())
       .then(data => setCercanas(data.gasolineras_cercanas ?? []))
       .catch(err => console.error(err));

@@ -95,7 +95,7 @@ export default function MapaGasolineras() {
             console.warn("⚠️ No se pudo obtener ubicación:", error.message);
             
             // Si no se concede ubicación, cargar todas (fallback)
-            const res = await fetch("http://localhost:8080/api/gasolineras?limit=500");
+            const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/gasolineras?limit=500`);
             const data = await res.json();
             setGasolineras(data.gasolineras || []);
             setLoading(false);
