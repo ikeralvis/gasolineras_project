@@ -107,9 +107,9 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v10a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
-            Estadísticas de Precios
+            {t('gasStations.statistics')}
             <span className="text-xs font-normal text-gray-600">
-              ({estadisticas.total_gasolineras.toLocaleString()} gasolineras)
+              ({estadisticas.total_gasolineras.toLocaleString()} {t('nav.gasStations').toLowerCase()})
             </span>
           </h3>
           
@@ -119,23 +119,23 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
               <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span className="font-semibold text-sm text-gray-900">Gasolina 95 E5</span>
+                  <span className="font-semibold text-sm text-gray-900">{t('fuel.gasoline95')}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
-                    <span className="text-gray-500 block">Mínimo</span>
+                    <span className="text-gray-500 block">{t('gasStations.minimum')}</span>
                     <span className="font-bold text-green-600">
                       {estadisticas.combustibles.gasolina_95.min.toFixed(3)} €
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block">Media</span>
+                    <span className="text-gray-500 block">{t('gasStations.average')}</span>
                     <span className="font-bold text-[#000C74]">
                       {estadisticas.combustibles.gasolina_95.media.toFixed(3)} €
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block">Máximo</span>
+                    <span className="text-gray-500 block">{t('gasStations.maximum')}</span>
                     <span className="font-bold text-red-600">
                       {estadisticas.combustibles.gasolina_95.max.toFixed(3)} €
                     </span>
@@ -149,23 +149,23 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
               <div className="bg-white rounded-lg p-3 shadow-sm border border-green-100">
                 <div className="flex items-center gap-2 mb-2">
                   <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="font-semibold text-sm text-gray-900">Gasóleo A</span>
+                  <span className="font-semibold text-sm text-gray-900">{t('fuel.dieselA')}</span>
                 </div>
                 <div className="grid grid-cols-3 gap-2 text-xs">
                   <div>
-                    <span className="text-gray-500 block">Mínimo</span>
+                    <span className="text-gray-500 block">{t('gasStations.minimum')}</span>
                     <span className="font-bold text-green-600">
                       {estadisticas.combustibles.gasoleo_a.min.toFixed(3)} €
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block">Media</span>
+                    <span className="text-gray-500 block">{t('gasStations.average')}</span>
                     <span className="font-bold text-[#000C74]">
                       {estadisticas.combustibles.gasoleo_a.media.toFixed(3)} €
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block">Máximo</span>
+                    <span className="text-gray-500 block">{t('gasStations.maximum')}</span>
                     <span className="font-bold text-red-600">
                       {estadisticas.combustibles.gasoleo_a.max.toFixed(3)} €
                     </span>
@@ -182,10 +182,10 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
         <table className="w-full border-collapse">
           <thead>
             <tr className="text-sm text-[#000C74]/70 border-b-2 border-[#E4E6FF]">
-              <th className="py-4 text-left font-semibold">Marca</th>
-              <th className="py-4 text-left font-semibold">Ubicación</th>
+              <th className="py-4 text-left font-semibold">{t('table.brand')}</th>
+              <th className="py-4 text-left font-semibold">{t('table.location')}</th>
               <th className="py-4 text-left font-semibold">{getNombreCombustible(combustibleSeleccionado)}</th>
-              <th className="py-4 text-center font-semibold w-16">Fav</th>
+              <th className="py-4 text-center font-semibold w-16">{t('table.favorite')}</th>
               <th className="py-4 text-left font-semibold"></th>
             </tr>
           </thead>
@@ -316,7 +316,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
       {/* PAGINACIÓN */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-8 pt-6 border-t border-gray-200">
         <div className="text-sm text-gray-600">
-          Mostrando <span className="font-semibold">{(page - 1) * rowsPerPage + 1}</span> - <span className="font-semibold">{Math.min(page * rowsPerPage, gasolineras.length)}</span> de <span className="font-semibold">{gasolineras.length}</span> gasolineras
+          {t('common.showing')} <span className="font-semibold">{(page - 1) * rowsPerPage + 1}</span> - <span className="font-semibold">{Math.min(page * rowsPerPage, gasolineras.length)}</span> {t('common.of')} <span className="font-semibold">{gasolineras.length}</span> {t('nav.gasStations').toLowerCase()}
         </div>
 
         <div className="flex items-center gap-2">
@@ -328,7 +328,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Anterior
+            {t('common.previous')}
           </button>
 
           <div className="px-4 py-2 text-sm font-semibold text-[#000C74] bg-[#E4E6FF] rounded-lg">
@@ -340,7 +340,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
             disabled={page === totalPages}
             className="px-4 py-2 text-sm font-medium text-[#000C74] border border-[#C8CAEE] rounded-lg hover:bg-[#F8F9FF] transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
           >
-            Siguiente
+            {t('common.next')}
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
             </svg>
