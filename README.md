@@ -33,6 +33,7 @@ TankGo es una plataforma modular para consultar, gestionar y visualizar informac
 - ❤️ **Favoritos** - Guarda tus gasolineras preferidas
 - 📱 **PWA** - Instálala en tu móvil como app nativa
 - 🔐 **Autenticación** - Login tradicional y Google OAuth
+- 🌍 **Multiidioma (i18n)** - Interfaz disponible en Español, English y Euskera
 
 ---
 
@@ -327,6 +328,79 @@ TankGo es una Progressive Web App que puedes instalar:
 - ✅ Funciona offline (datos cacheados)
 - ✅ Shortcuts de inicio rápido
 - ✅ Iconos optimizados
+
+---
+
+## 🌍 Internacionalización (i18n)
+
+TankGo está completamente traducido a **3 idiomas**:
+
+| Idioma | Código | Bandera | Cobertura |
+|--------|--------|---------|-----------|
+| **Español** | `es` | 🇪🇸 | 100% (idioma por defecto) |
+| **English** | `en` | 🇬🇧 | 100% |
+| **Euskera** | `eu` | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2d/Flag_of_the_Basque_Country.svg" width="20"/> | 100% |
+
+### 📝 Secciones Traducidas
+
+Toda la interfaz está traducida, incluyendo:
+
+- ✅ **Página principal** - Hero section, características, pasos
+- ✅ **Navegación** - Menú, links, acciones
+- ✅ **Autenticación** - Login, registro, validaciones
+- ✅ **Gasolineras** - Listado, filtros, ordenación, estadísticas
+- ✅ **Mapa** - Controles, tooltips, ubicación
+- ✅ **Favoritos** - Lista, estados vacíos, acciones
+- ✅ **Perfil** - Información, preferencias, configuración
+- ✅ **Detalle de gasolinera** - Precios, ubicación, gasolineras cercanas
+- ✅ **Historial de precios** - Gráficas, leyendas, estadísticas
+- ✅ **Mensajes del sistema** - Errores, éxitos, validaciones
+- ✅ **Tablas** - Cabeceras, paginación, ordenación
+- ✅ **Filtros avanzados** - Labels, placeholders, opciones
+
+### 🔧 Implementación Técnica
+
+```javascript
+// Stack i18n
+- react-i18next: ^15.3.5
+- i18next: ^25.7.0
+- i18next-browser-languagedetector: ^8.2.0
+
+// Archivos de traducción
+frontend-client/src/i18n/
+├── index.ts                 # Configuración i18n
+└── locales/
+    ├── es.json             # Español (95+ claves)
+    ├── en.json             # English (95+ claves)
+    └── eu.json             # Euskera (95+ claves)
+```
+
+### 🎯 Uso en Componentes
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+function MiComponente() {
+  const { t } = useTranslation();
+  
+  return (
+    <div>
+      <h1>{t('home.title')}</h1>
+      <p>{t('home.description')}</p>
+      <button>{t('common.save')}</button>
+    </div>
+  );
+}
+```
+
+### 🔀 Cambio de Idioma
+
+El selector de idioma está disponible en la barra de navegación con:
+- 🇪🇸 Bandera de España (Español)
+- 🇬🇧 Bandera de Reino Unido (English)
+- <img src="https://upload.wikimedia.org/wikipedia/commons/2/2d/Flag_of_the_Basque_Country.svg" width="16"/> Ikurriña (Euskera)
+
+La preferencia de idioma se guarda en **localStorage** y persiste entre sesiones.
 
 ---
 

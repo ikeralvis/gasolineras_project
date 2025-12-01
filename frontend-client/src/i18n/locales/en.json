@@ -152,7 +152,8 @@
     "savedOn": "Saved on",
     "deleteConfirm": "Are you sure you want to delete your account? This action is irreversible.",
     "accountDeleted": "Account deleted successfully",
-    "updateSuccess": "✅ Favorite fuel saved successfully"
+    "updateSuccess": "✅ Favorite fuel saved successfully",
+    "language": "Language"
   },
   "auth": {
     "welcomeBack": "Welcome back!",

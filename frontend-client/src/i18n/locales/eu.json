@@ -152,7 +152,8 @@
     "savedOn": "Gordeta",
     "deleteConfirm": "Ziur zaude zure kontua ezabatu nahi duzula? Ekintza hau ezin da desegin.",
     "accountDeleted": "Kontua behar bezala ezabatu da",
-    "updateSuccess": "✅ Gogoko erregaia behar bezala gorde da"
+    "updateSuccess": "✅ Gogoko erregaia behar bezala gorde da",
+    "language": "Hizkuntza"
   },
   "auth": {
     "welcomeBack": "Ongi etorri berriro!",

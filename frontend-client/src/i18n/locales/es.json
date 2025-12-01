@@ -152,7 +152,8 @@
     "savedOn": "Guardado",
     "deleteConfirm": "¿Seguro que quieres eliminar tu cuenta? Esta acción es irreversible.",
     "accountDeleted": "Cuenta eliminada correctamente",
-    "updateSuccess": "✅ Combustible favorito guardado correctamente"
+    "updateSuccess": "✅ Combustible favorito guardado correctamente",
+    "language": "Idioma"
   },
   "auth": {
     "welcomeBack": "¡Bienvenido de nuevo!",
