@@ -13,10 +13,17 @@ ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 RUN npm install -g pnpm
 
 # Copiar archivos de dependencias
-COPY package.json pnpm-lock.yaml ./
+# Nota: pnpm-lock.yaml debe estar en el repo para builds reproducibles
+COPY package.json ./
+COPY pnpm-lock.yaml* ./
 
 # Instalar dependencias
-RUN pnpm install --frozen-lockfile
+# Si existe pnpm-lock.yaml usa --frozen-lockfile, sino instala normalmente
+RUN if [ -f pnpm-lock.yaml ]; then \
+      pnpm install --frozen-lockfile; \
+    else \
+      pnpm install; \
+    fi
 
 # Copiar código fuente
 COPY . .

@@ -10,7 +10,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 # package-lock.json
-pnpm-lock.yaml
+# pnpm-lock.yaml  # COMENTADO: Este archivo debe estar en Git para builds reproducibles
 
 # Variables de entorno (SOLO archivos con secretos reales)
 .env
@@ -113,3 +113,4 @@ Thumbs.db
 # No ignorar package.json ni package-lock.json
 !package.json
 !package-lock.json
+!pnpm-lock.yaml
