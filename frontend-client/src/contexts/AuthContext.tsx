@@ -14,11 +14,15 @@ interface AuthContextType {
   isAuthenticated: boolean;
 }
 
+interface AuthProviderProps {
+  readonly children: ReactNode;
+}
+
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('authToken'));
   const [loading, setLoading] = useState(true);

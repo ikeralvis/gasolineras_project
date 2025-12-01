@@ -23,3 +23,103 @@ input, button, textarea {
 canvas {
 	display: block;
 }
+
+/* Marcador de ubicación del usuario - Estilo Google Maps */
+.user-location-marker {
+	background: transparent !important;
+	border: none !important;
+}
+
+.user-location-dot {
+	position: relative;
+	width: 40px;
+	height: 40px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+/* Círculo azul principal - punto de ubicación */
+.user-location-center {
+	position: absolute;
+	width: 18px;
+	height: 18px;
+	background: #4285F4;
+	border: 3px solid white;
+	border-radius: 50%;
+	box-shadow: 0 2px 6px rgba(66, 133, 244, 0.5);
+	z-index: 2;
+}
+
+/* Anillo de pulso animado */
+.user-location-pulse {
+	position: absolute;
+	width: 40px;
+	height: 40px;
+	background: rgba(66, 133, 244, 0.25);
+	border-radius: 50%;
+	animation: location-pulse 2s ease-out infinite;
+	z-index: 1;
+}
+
+@keyframes location-pulse {
+	0% {
+		transform: scale(0.5);
+		opacity: 0.8;
+	}
+	100% {
+		transform: scale(1.2);
+		opacity: 0;
+	}
+}
+
+/* Iconos del mapa - mantener aspect ratio */
+.leaflet-marker-icon {
+	object-fit: contain !important;
+	background-color: white;
+	border-radius: 8px;
+	padding: 2px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* PWA - Mejoras para móvil */
+@media (max-width: 640px) {
+	.leaflet-control-zoom {
+		margin-bottom: 80px !important;
+	}
+	
+	/* Safe area para notch */
+	body {
+		padding-top: env(safe-area-inset-top);
+		padding-bottom: env(safe-area-inset-bottom);
+	}
+}
+
+/* Touch improvements para móvil */
+@media (pointer: coarse) {
+	button, a, input, select {
+		min-height: 44px;
+	}
+}
+
+/* Focus visible para accesibilidad */
+:focus-visible {
+	outline: 2px solid #000C74;
+	outline-offset: 2px;
+}
+
+/* Skip link para accesibilidad */
+.skip-link {
+	position: absolute;
+	top: -40px;
+	left: 0;
+	background: #000C74;
+	color: white;
+	padding: 8px 16px;
+	z-index: 100;
+	transition: top 0.2s;
+}
+
+.skip-link:focus {
+	top: 0;
+}

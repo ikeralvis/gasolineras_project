@@ -40,20 +40,20 @@ TankGo es una plataforma modular para consultar, gestionar y visualizar informac
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         CLIENTE                                  │
+│                         CLIENTE                                 │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │           Frontend (React + Vite + TailwindCSS)          │    │
-│  │                    PWA Ready                              │    │
+│  │           Frontend (React + Vite + TailwindCSS)         │    │
+│  │                    PWA Ready                            │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      API GATEWAY (Hono)                          │
+│                      API GATEWAY (Hono)                         │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │  • Proxy reverso          • OAuth Handler                │    │
-│  │  • Agregación OpenAPI     • CORS                         │    │
-│  │  • Health checks          • Rate limiting                │    │
+│  │  • Proxy reverso          • OAuth Handler               │    │
+│  │  • Agregación OpenAPI     • CORS                        │    │
+│  │  • Health checks          • Rate limiting               │    │
 │  └─────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
                     │                       │
@@ -71,7 +71,6 @@ TankGo es una plataforma modular para consultar, gestionar y visualizar informac
             ▼                              ▼
     ┌──────────────┐              ┌──────────────┐
     │  PostgreSQL  │              │   MongoDB    │
-    │   (Neon)     │              │   (Atlas)    │
     └──────────────┘              └──────────────┘
 ```
 
@@ -92,44 +91,117 @@ TankGo es una plataforma modular para consultar, gestionar y visualizar informac
 
 ## 🚀 Inicio Rápido
 
-### Requisitos
+### 📋 Requisitos Previos
 
-- [Docker](https://docs.docker.com/get-docker/) y Docker Compose
-- [Git](https://git-scm.com/)
+| Software | Versión Mínima | Descripción |
+|----------|----------------|-------------|
+| [Docker Desktop](https://docs.docker.com/get-docker/) | 20.10+ | Contenedores y Docker Compose |
+| [Git](https://git-scm.com/) | 2.0+ | Control de versiones |
 
-### 1️⃣ Clonar el repositorio
+> ⚠️ **Importante**: Docker Desktop incluye Docker Compose. No necesitas instalarlo por separado.
+
+### 🐳 Instalación con Docker Compose (Recomendado)
+
+Todo el proyecto está diseñado para ejecutarse con Docker Compose. **No necesitas instalar Node.js, Python, PostgreSQL o MongoDB en tu máquina**.
+
+> 🏠 **Desarrollo Local**: Al usar Docker Compose, todas las bases de datos (PostgreSQL y MongoDB) se ejecutan localmente en contenedores. No se conecta a servicios externos como Neon o MongoDB Atlas.
+
+#### 1️⃣ Clonar el repositorio
 
 ```bash
 git clone https://github.com/ikeralvis/gasolineras_project.git
 cd gasolineras_project
 ```
 
-### 2️⃣ Configurar variables de entorno
+#### 2️⃣ Configurar variables de entorno
 
-```bash
+```powershell
+# Windows (PowerShell)
+Copy-Item .env.example .env
+
+# Linux/Mac
 cp .env.example .env
-# Editar .env con tus configuraciones
 ```
 
-### 3️⃣ Levantar servicios
+**Configuración mínima requerida en `.env`:**
+
+```env
+# JWT Secret - OBLIGATORIO generar uno seguro
+JWT_SECRET=genera-un-secreto-seguro-de-32-caracteres
+
+# Google OAuth (opcional, solo si quieres login con Google)
+GOOGLE_CLIENT_ID=tu-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=tu-client-secret
+```
+
+> 💡 **Tip**: Para generar un JWT_SECRET seguro, ejecuta:
+> ```powershell
+> # Windows PowerShell
+> .\generate-jwt-secret.ps1
+> ```
+
+#### 3️⃣ Levantar todos los servicios
 
 ```bash
 docker-compose up -d --build
 ```
 
-### 4️⃣ Verificar servicios
+Este comando:
+- 📦 Descarga las imágenes necesarias (MongoDB, PostgreSQL)
+- 🔨 Compila todos los servicios
+- 🚀 Inicia los contenedores en orden correcto
+- 🔗 Configura la red entre servicios
+
+#### 4️⃣ Verificar estado de los servicios
 
 ```bash
 docker-compose ps
 ```
 
-### 5️⃣ Acceder a la aplicación
+Deberías ver todos los servicios en estado `healthy` o `running`:
 
-| Servicio | URL |
-|----------|-----|
-| 🌐 **Frontend** | http://localhost |
-| 📖 **API Docs** | http://localhost:8080/docs |
-| 🏥 **Health** | http://localhost:8080/health |
+```
+NAME                  STATUS              PORTS
+frontend-client       Running             0.0.0.0:80->80/tcp
+gateway-hono          Running (healthy)   0.0.0.0:8080->8080/tcp
+gasolineras-service   Running (healthy)   0.0.0.0:8000->8000/tcp
+usuarios-service      Running (healthy)   0.0.0.0:3001->3001/tcp
+postgres              Running (healthy)   0.0.0.0:5432->5432/tcp
+mon                   Running             0.0.0.0:27017->27017/tcp
+```
+
+#### 5️⃣ Acceder a la aplicación
+
+| Servicio | URL | Descripción |
+|----------|-----|-------------|
+| 🌐 **Frontend** | http://localhost | Aplicación web principal |
+| 📖 **API Docs** | http://localhost:8080/docs | Documentación Swagger |
+| 🏥 **Health Check** | http://localhost:8080/health | Estado de todos los servicios |
+| 🔧 **Gateway** | http://localhost:8080 | API Gateway |
+| 👤 **Usuarios API** | http://localhost:3001 | Servicio de usuarios (interno) |
+| ⛽ **Gasolineras API** | http://localhost:8000 | Servicio de gasolineras (interno) |
+
+#### 6️⃣ Comandos útiles de Docker
+
+```bash
+# Ver logs de todos los servicios
+docker-compose logs -f
+
+# Ver logs de un servicio específico
+docker-compose logs -f gateway
+
+# Reiniciar un servicio
+docker-compose restart gateway
+
+# Detener todos los servicios
+docker-compose down
+
+# Detener y eliminar volúmenes (¡borra datos!)
+docker-compose down -v
+
+# Reconstruir un servicio específico
+docker-compose up -d --build gateway
+```
 
 ---
 
@@ -178,26 +250,66 @@ GET  /count                        # Total
 
 ## 🔧 Configuración
 
-### Variables de Entorno Principales
+### Variables de Entorno
+
+El archivo `.env.example` contiene todas las variables necesarias. Copia a `.env` y configura:
+
+#### 🔌 Puertos de Servicios
 
 ```env
-# Base de datos
-MONGO_URI=mongodb://...
-DB_HOST=postgres
-DB_USER=user
-DB_PASSWORD=pass
+FRONTEND_PORT=80        # Frontend React
+GATEWAY_PORT=8080       # API Gateway Hono
+USUARIOS_PORT=3001      # Servicio de usuarios
+GASOLINERAS_PORT=8000   # Servicio de gasolineras
+POSTGRES_PORT=5432      # Base de datos PostgreSQL
+MONGO_PORT=27017        # Base de datos MongoDB
+```
 
-# Autenticación
-JWT_SECRET=your-secret-key
+#### 🗄️ Bases de Datos
+
+```env
+# PostgreSQL (usuarios)
+DB_USER=postgres
+DB_PASSWORD=admin
+DB_NAME=usuarios_db
+
+# MongoDB (gasolineras)
+MONGO_INITDB_ROOT_USERNAME=user_gasolineras
+MONGO_INITDB_ROOT_PASSWORD=secret_mongo_pwd
+MONGO_DB_NAME=db_gasolineras
+```
+
+#### 🔐 Autenticación
+
+```env
+# JWT - OBLIGATORIO cambiar en producción
+JWT_SECRET=tu-secreto-jwt-seguro-de-32-caracteres-minimo
 JWT_EXPIRES_IN=7d
 
-# Google OAuth
+# Seguridad entre servicios
+INTERNAL_API_SECRET=secreto-interno-para-comunicacion-servicios
+```
+
+#### 🔑 Google OAuth (Opcional)
+
+Para habilitar login con Google:
+
+1. Ve a [Google Cloud Console](https://console.cloud.google.com/)
+2. Crea un proyecto y habilita Google+ API
+3. Configura OAuth 2.0 credentials
+4. Añade las URLs de redirect autorizadas
+
+```env
 GOOGLE_CLIENT_ID=xxx.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=xxx
+```
 
-# URLs
-FRONTEND_URL=http://localhost
+#### 🌐 URLs
+
+```env
+FRONTEND_URL=http://localhost:80
 GATEWAY_URL=http://localhost:8080
+ALLOWED_ORIGINS=http://localhost:80,http://localhost:5173
 ```
 
 ---
@@ -289,19 +401,33 @@ gasolineras_project/
 
 ## 🚀 Despliegue
 
-### Docker (Local)
+### 🏠 Local (Docker Compose)
 
 ```bash
 docker-compose up -d --build
 ```
 
-### Render (Producción)
+Con Docker Compose todo se ejecuta localmente:
+- ✅ PostgreSQL y MongoDB en contenedores locales
+- ✅ Sin dependencias de servicios en la nube
+- ✅ Datos persistidos en volúmenes Docker
 
-Cada servicio tiene su propio Dockerfile y se despliega automáticamente con GitHub.
+### ☁️ Producción (Render)
 
-**URLs de producción:**
-- Frontend: https://tankgo.onrender.com
-- Gateway: https://gateway-gzzi.onrender.com
+En producción, cada servicio está desplegado en [Render](https://render.com/) con bases de datos gestionadas:
+
+| Servicio | URL de Producción | Base de Datos |
+|----------|-------------------|---------------|
+| 🌐 **Frontend** | https://tankgo.onrender.com | - |
+| 🔧 **Gateway** | https://gateway-gzzi.onrender.com | - |
+| 👤 **Usuarios** | https://usuarios-service.onrender.com | [Neon](https://neon.tech/) (PostgreSQL) |
+| ⛽ **Gasolineras** | https://gasolineras-service.onrender.com | [MongoDB Atlas](https://www.mongodb.com/atlas) |
+
+**Características de producción:**
+- 🔐 HTTPS habilitado en todos los servicios
+- 📊 Bases de datos gestionadas con backups automáticos
+- 🔄 Despliegue automático con GitHub (CI/CD)
+- 📈 Escalado automático según demanda
 
 ---
 

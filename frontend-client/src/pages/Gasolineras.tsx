@@ -29,6 +29,9 @@ export default function Gasolineras() {
     // Nuevos filtros avanzados
     const [marcasSeleccionadas, setMarcasSeleccionadas] = useState<string[]>([]);
     const [soloConPrecio, setSoloConPrecio] = useState(true);
+    
+    // Estado para colapsar/expandir filtros (colapsado por defecto en móvil)
+    const [filtrosAbiertos, setFiltrosAbiertos] = useState(window.innerWidth >= 768);
     const [mostrarFiltrosAvanzados, setMostrarFiltrosAvanzados] = useState(false);
     
     // Estado para el tipo de combustible seleccionado
@@ -37,6 +40,9 @@ export default function Gasolineras() {
     );
 
     const [ordenAsc, setOrdenAsc] = useState(true);
+    
+    // Indica si los datos están ordenados por cercanía
+    const [ordenadoPorCercania, setOrdenadoPorCercania] = useState(false);
     
     // Actualizar combustible seleccionado cuando cambie el usuario
     useEffect(() => {
@@ -50,12 +56,12 @@ export default function Gasolineras() {
     const [showMunicipioDropdown, setShowMunicipioDropdown] = useState(false);
     
     // Listas únicas para autocomplete
-    const provinciasUnicas = [...new Set(gasolineras.map(g => g.Provincia))].sort();
+    const provinciasUnicas = [...new Set(gasolineras.map(g => g.Provincia))].sort((a, b) => a.localeCompare(b));
     const municipiosUnicas = [...new Set(
         gasolineras
             .filter(g => !provincia || g.Provincia.toLowerCase().includes(provincia.toLowerCase()))
             .map(g => g.Municipio)
-    )].sort();
+    )].sort((a, b) => a.localeCompare(b));
 
 
     useEffect(() => {
@@ -69,13 +75,14 @@ export default function Gasolineras() {
         console.log("🔄 Cargando todas las gasolineras...");
         const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/gasolineras`);
         const data = await res.json();
-        console.log("� Respuesta del servidor:", data);
+        console.log("📦 Respuesta del servidor:", data);
         
         const gasolinerasData = data.gasolineras || [];
-        console.log("� Total gasolineras cargadas:", gasolinerasData.length);
+        console.log("📊 Total gasolineras cargadas:", gasolinerasData.length);
         
         setGasolineras(gasolinerasData);
         setFiltered(gasolinerasData);
+        setOrdenadoPorCercania(false);
         setLoading(false);
       };
 
@@ -91,12 +98,14 @@ export default function Gasolineras() {
           clearTimeout(geoTimeout);
           const lat = pos.coords.latitude;
           const lon = pos.coords.longitude;
-          console.log("� Ubicación detectada:", lat, lon);
+          console.log("📍 Ubicación detectada:", lat, lon);
 
           const cerca = await getGasolinerasCerca(lat, lon, 50);
-          console.log("� Gasolineras cercanas recibidas:", cerca.length);
+          console.log("✅ Gasolineras cercanas recibidas:", cerca.length);
+          // Las gasolineras ya vienen ordenadas por distancia desde el backend
           setGasolineras(cerca);
           setFiltered(cerca);
+          setOrdenadoPorCercania(true);
           setLoading(false);
         },
         async (error) => {
@@ -189,6 +198,7 @@ export default function Gasolineras() {
 
         setFiltered(resultado);
         setOrdenAsc(!ordenAsc);
+        setOrdenadoPorCercania(false);
     };
 
     const limpiarFiltros = () => {
@@ -218,11 +228,37 @@ export default function Gasolineras() {
         setShowMunicipioDropdown(false);
     };
 
+    const renderTableContent = () => {
+        if (loading) {
+            return (
+                <div className="text-center py-12">
+                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-[#000C74] border-t-transparent mb-4"></div>
+                    <p className="text-lg text-gray-600">Cargando gasolineras...</p>
+                </div>
+            );
+        }
+        
+        if (filtered.length === 0) {
+            return (
+                <div className="text-center py-12">
+                    <p className="text-lg text-gray-600">No se encontraron gasolineras con {combustibleSeleccionado.replace("Precio ", "")}</p>
+                </div>
+            );
+        }
+        
+        return (
+            <GasolinerasTable 
+                gasolineras={filtered} 
+                combustibleSeleccionado={combustibleSeleccionado}
+            />
+        );
+    };
+
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-12">
-            <div className="mb-8">
-                <h1 className="text-4xl font-bold text-[#000C74] mb-2">
+        <div className="max-w-7xl mx-auto px-4 py-8 md:py-12">
+            <div className="mb-6">
+                <h1 className="text-3xl md:text-4xl font-bold text-[#000C74] mb-2">
                     Gasolineras
                 </h1>
                 <p className="text-gray-600">
@@ -230,292 +266,308 @@ export default function Gasolineras() {
                 </p>
             </div>
 
-            {/* Filtros */}
-            <div className="bg-white shadow-lg border border-[#D9DBF2]/70 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-6">
-                    <div>
-                        <h3 className="text-lg font-semibold text-gray-900">Filtros</h3>
-                        <p className="text-sm text-gray-500 mt-1">Selecciona tu tipo de combustible preferido</p>
-                    </div>
-                    <button
-                        onClick={limpiarFiltros}
-                        className="text-sm text-[#000C74] hover:text-[#0A128C] font-medium flex items-center gap-1"
-                    >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Limpiar filtros
-                    </button>
-                </div>
-
-                {/* SELECTOR DE COMBUSTIBLE - DESTACADO */}
-                <div className="mb-6 p-4 bg-linear-to-r from-[#000C74]/5 to-[#4A52D9]/5 rounded-xl border-2 border-[#000C74]/20">
-                    <label htmlFor="combustible-select" className="text-sm font-bold text-[#000C74] mb-3 flex items-center gap-2">
-                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                        </svg>
-                        Tipo de Combustible
-                    </label>
-                    <select
-                        id="combustible-select"
-                        value={combustibleSeleccionado}
-                        onChange={(e) => setCombustibleSeleccionado(e.target.value)}
-                        className="w-full border-2 border-[#000C74]/30 focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
-                    >
-                        <option value="Precio Gasolina 95 E5">⛽ Gasolina 95 E5</option>
-                        <option value="Precio Gasolina 98 E5">⛽ Gasolina 98 E5</option>
-                        <option value="Precio Gasoleo A">🚗 Gasóleo A</option>
-                        <option value="Precio Gasoleo B">🚜 Gasóleo B</option>
-                        <option value="Precio Gasoleo Premium">💎 Gasóleo Premium</option>
-                    </select>
-                    <p className="text-xs text-gray-600 mt-2">
-                        La tabla mostrará y ordenará solo por este combustible
-                    </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    {/* PROVINCIA CON AUTOCOMPLETE */}
-                    <div className="relative">
-                        <label htmlFor="provincia" className="block text-sm font-medium text-gray-700 mb-2">
-                            🏙️ Provincia
-                        </label>
-                        <input
-                            id="provincia"
-                            type="text"
-                            placeholder="Ej: Madrid"
-                            value={provincia}
-                            onChange={(e) => {
-                                setProvincia(e.target.value);
-                                setShowProvinciaDropdown(true);
-                            }}
-                            onFocus={() => setShowProvinciaDropdown(true)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
-                        />
-                        
-                        {/* Dropdown de provincias */}
-                        {showProvinciaDropdown && provincia && (
-                            <div 
-                                className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {provinciasUnicas
-                                    .filter(p => p.toLowerCase().includes(provincia.toLowerCase()))
-                                    .slice(0, 10)
-                                    .map((prov) => (
-                                        <button
-                                            key={prov}
-                                            type="button"
-                                            onClick={() => seleccionarProvincia(prov)}
-                                            className="w-full text-left px-4 py-2.5 hover:bg-[#F8F9FF] transition-colors text-sm"
-                                        >
-                                            {prov}
-                                        </button>
-                                    ))}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* MUNICIPIO CON AUTOCOMPLETE */}
-                    <div className="relative">
-                        <label htmlFor="municipio" className="block text-sm font-medium text-gray-700 mb-2">
-                            📍 Municipio
-                        </label>
-                        <input
-                            type="text"
-                            placeholder="Ej: Alcalá de Henares"
-                            value={municipio}
-                            onChange={(e) => {
-                                setMunicipio(e.target.value);
-                                setShowMunicipioDropdown(true);
-                            }}
-                            onFocus={() => setShowMunicipioDropdown(true)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
-                        />
-                        
-                        {/* Dropdown de municipios */}
-                        {showMunicipioDropdown && municipio && (
-                            <div 
-                                className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto"
-                                onClick={(e) => e.stopPropagation()}
-                            >
-                                {municipiosUnicas
-                                    .filter(m => m.toLowerCase().includes(municipio.toLowerCase()))
-                                    .slice(0, 10)
-                                    .map((muni) => (
-                                        <button
-                                            key={muni}
-                                            type="button"
-                                            onClick={() => seleccionarMunicipio(muni)}
-                                            className="w-full text-left px-4 py-2.5 hover:bg-[#F8F9FF] transition-colors text-sm"
-                                        >
-                                            {muni}
-                                        </button>
-                                    ))}
-                            </div>
-                        )}
-                    </div>
-
-                    <div>
-                        <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-2">
-                            🏢 Marca / Nombre
-                        </label>
-                        <input
-                            type="text"
-                            placeholder="Ej: Repsol"
-                            value={nombre}
-                            onChange={(e) => setNombre(e.target.value)}
-                            className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                            💰 Precio máx (€/L)
-                        </label>
-                        <input
-                            type="number"
-                            step="0.01"
-                            placeholder="Ej: 1.50"
-                            value={precioMax}
-                            onChange={(e) => setPrecioMax(e.target.value)}
-                            className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
-                        />
-                    </div>
-                </div>
-
-                {/* Botón para mostrar filtros avanzados */}
+            {/* Panel de Filtros con Acordeón */}
+            <div className="bg-white shadow-lg border border-[#D9DBF2]/70 rounded-2xl overflow-hidden">
+                {/* Cabecera del acordeón - siempre visible */}
                 <button
                     type="button"
-                    onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
-                    className="mt-4 flex items-center gap-2 text-sm font-medium text-[#000C74] hover:text-[#0A128C] transition"
+                    onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}
+                    className="w-full flex items-center justify-between p-4 md:p-6 hover:bg-gray-50 transition-colors"
+                    aria-expanded={filtrosAbiertos}
+                    aria-controls="panel-filtros"
                 >
-                    <svg 
-                        className={`w-4 h-4 transition-transform ${mostrarFiltrosAvanzados ? 'rotate-180' : ''}`} 
-                        fill="none" 
-                        stroke="currentColor" 
-                        viewBox="0 0 24 24"
-                    >
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
-                    {mostrarFiltrosAvanzados ? 'Ocultar filtros avanzados' : 'Mostrar filtros avanzados'}
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 bg-[#000C74]/10 rounded-lg">
+                            <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                            </svg>
+                        </div>
+                        <div className="text-left">
+                            <h3 className="text-lg font-semibold text-gray-900">Filtros</h3>
+                            <p className="text-sm text-gray-500 hidden md:block">Personaliza tu búsqueda</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        {/* Badge de filtros activos */}
+                        {(provincia || municipio || nombre || precioMax || marcasSeleccionadas.length > 0) && (
+                            <span className="px-2 py-1 bg-[#000C74] text-white text-xs font-medium rounded-full">
+                                {[provincia, municipio, nombre, precioMax].filter(Boolean).length + marcasSeleccionadas.length} activos
+                            </span>
+                        )}
+                        <svg 
+                            className={`w-5 h-5 text-gray-500 transition-transform duration-200 ${filtrosAbiertos ? 'rotate-180' : ''}`} 
+                            fill="none" 
+                            stroke="currentColor" 
+                            viewBox="0 0 24 24"
+                        >
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                    </div>
                 </button>
 
-                {/* Filtros avanzados */}
-                {mostrarFiltrosAvanzados && (
-                    <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                        {/* Filtro por marcas */}
-                        <div className="mb-4">
-                            <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                {/* Contenido del acordeón */}
+                <div 
+                    id="panel-filtros"
+                    className={`transition-all duration-300 ease-in-out overflow-hidden ${filtrosAbiertos ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}
+                >
+                    <div className="p-4 md:p-6 pt-0 border-t border-gray-100">
+                        <div className="flex items-center justify-end mb-4">
+                            <button
+                                onClick={limpiarFiltros}
+                                className="text-sm text-[#000C74] hover:text-[#0A128C] font-medium flex items-center gap-1"
+                            >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                                 </svg>
-                                Filtrar por marca
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                                {MARCAS_POPULARES.map((marca) => (
-                                    <button
-                                        key={marca.nombre}
-                                        type="button"
-                                        onClick={() => toggleMarca(marca.nombre)}
-                                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
-                                            marcasSeleccionadas.includes(marca.nombre)
-                                                ? 'bg-[#000C74] text-white shadow-md'
-                                                : 'bg-white border border-gray-300 text-gray-700 hover:border-[#000C74] hover:text-[#000C74]'
-                                        }`}
-                                    >
-                                        {marca.logo} {marca.nombre}
-                                    </button>
-                                ))}
+                                Limpiar filtros
+                            </button>
+                        </div>
+
+                        {/* SELECTOR DE COMBUSTIBLE - DESTACADO */}
+                        <div className="mb-6 p-4 bg-linear-to-r from-[#000C74]/5 to-[#4A52D9]/5 rounded-xl border-2 border-[#000C74]/20">
+                            <label htmlFor="combustible-select" className="text-sm font-bold text-[#000C74] mb-3 flex items-center gap-2">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                </svg>
+                                Tipo de Combustible
+                            </label>
+                            <select
+                                id="combustible-select"
+                                value={combustibleSeleccionado}
+                                onChange={(e) => setCombustibleSeleccionado(e.target.value)}
+                                className="w-full border-2 border-[#000C74]/30 focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
+                            >
+                                <option value="Precio Gasolina 95 E5">⛽ Gasolina 95 E5</option>
+                                <option value="Precio Gasolina 98 E5">⛽ Gasolina 98 E5</option>
+                                <option value="Precio Gasoleo A">🚗 Gasóleo A</option>
+                                <option value="Precio Gasoleo B">🚜 Gasóleo B</option>
+                                <option value="Precio Gasoleo Premium">💎 Gasóleo Premium</option>
+                            </select>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                            {/* PROVINCIA CON AUTOCOMPLETE */}
+                            <div className="relative">
+                                <label htmlFor="provincia" className="block text-sm font-medium text-gray-700 mb-2">
+                                    🏙️ Provincia
+                                </label>
+                                <input
+                                    id="provincia"
+                                    type="text"
+                                    placeholder="Ej: Madrid"
+                                    value={provincia}
+                                    onChange={(e) => {
+                                        setProvincia(e.target.value);
+                                        setShowProvinciaDropdown(true);
+                                    }}
+                                    onFocus={() => setShowProvinciaDropdown(true)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
+                                    autoComplete="off"
+                                    list="provincias-list"
+                                />
+                                <datalist id="provincias-list">
+                                    {provinciasUnicas.slice(0, 10).map((prov) => (
+                                        <option key={prov} value={prov} />
+                                    ))}
+                                </datalist>
+                                
+                                {/* Dropdown de provincias */}
+                                {showProvinciaDropdown && provincia && (
+                                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                                        {provinciasUnicas
+                                            .filter(p => p.toLowerCase().includes(provincia.toLowerCase()))
+                                            .slice(0, 10)
+                                            .map((prov) => (
+                                                <button
+                                                    key={prov}
+                                                    type="button"
+                                                    onClick={() => seleccionarProvincia(prov)}
+                                                    className="w-full text-left px-4 py-2.5 hover:bg-[#F8F9FF] transition-colors text-sm"
+                                                >
+                                                    {prov}
+                                                </button>
+                                            ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* MUNICIPIO CON AUTOCOMPLETE */}
+                            <div className="relative">
+                                <label htmlFor="municipio" className="block text-sm font-medium text-gray-700 mb-2">
+                                    📍 Municipio
+                                </label>
+                                <input
+                                    id="municipio"
+                                    type="text"
+                                    placeholder="Ej: Alcalá de Henares"
+                                    value={municipio}
+                                    onChange={(e) => {
+                                        setMunicipio(e.target.value);
+                                        setShowMunicipioDropdown(true);
+                                    }}
+                                    onFocus={() => setShowMunicipioDropdown(true)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
+                                    autoComplete="off"
+                                    list="municipios-list"
+                                />
+                                <datalist id="municipios-list">
+                                    {municipiosUnicas.slice(0, 10).map((muni) => (
+                                        <option key={muni} value={muni} />
+                                    ))}
+                                </datalist>
+                                
+                                {/* Dropdown de municipios */}
+                                {showMunicipioDropdown && municipio && (
+                                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                                        {municipiosUnicas
+                                            .filter(m => m.toLowerCase().includes(municipio.toLowerCase()))
+                                            .slice(0, 10)
+                                            .map((muni) => (
+                                                <button
+                                                    key={muni}
+                                                    type="button"
+                                                    onClick={() => seleccionarMunicipio(muni)}
+                                                    className="w-full text-left px-4 py-2.5 hover:bg-[#F8F9FF] transition-colors text-sm"
+                                                >
+                                                    {muni}
+                                                </button>
+                                            ))}
+                                    </div>
+                                )}
+                            </div>
+
+                            <div>
+                                <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-2">
+                                    🏢 Marca / Nombre
+                                </label>
+                                <input
+                                    id="nombre"
+                                    type="text"
+                                    placeholder="Ej: Repsol"
+                                    value={nombre}
+                                    onChange={(e) => setNombre(e.target.value)}
+                                    className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
+                                />
+                            </div>
+
+                            <div>
+                                <label htmlFor="precioMax" className="block text-sm font-medium text-gray-700 mb-2">
+                                    💰 Precio máx (€/L)
+                                </label>
+                                <input
+                                    id="precioMax"
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="Ej: 1.50"
+                                    value={precioMax}
+                                    onChange={(e) => setPrecioMax(e.target.value)}
+                                    className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-2.5 outline-none transition"
+                                />
                             </div>
                         </div>
 
-                        {/* Opciones adicionales */}
-                        <div className="flex flex-wrap gap-4">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={soloConPrecio}
-                                    onChange={(e) => setSoloConPrecio(e.target.checked)}
-                                    className="w-4 h-4 text-[#000C74] rounded border-gray-300 focus:ring-[#000C74]"
-                                />
-                                <span className="text-sm text-gray-700">Solo con precio disponible</span>
-                            </label>
-                        </div>
-                    </div>
-                )}
-
-                {/* Indicador de filtros activos */}
-                {(provincia || municipio || nombre || precioMax) && (
-                    <div className="mt-4 flex flex-wrap items-center gap-3">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        {/* Botón para mostrar filtros avanzados */}
+                        <button
+                            type="button"
+                            onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
+                            className="mt-4 flex items-center gap-2 text-sm font-medium text-[#000C74] hover:text-[#0A128C] transition"
+                            aria-expanded={mostrarFiltrosAvanzados}
+                        >
+                            <svg 
+                                className={`w-4 h-4 transition-transform ${mostrarFiltrosAvanzados ? 'rotate-180' : ''}`} 
+                                fill="none" 
+                                stroke="currentColor" 
+                                viewBox="0 0 24 24"
+                            >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                             </svg>
-                            <span className="font-medium">
-                                {filtered.length} de {gasolineras.length} gasolineras
-                            </span>
-                        </div>
-                        
-                        {/* Badges de filtros activos */}
-                        {provincia && (
-                            <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">
-                                📍 {provincia}
-                            </span>
-                        )}
-                        {municipio && (
-                            <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
-                                🏘️ {municipio}
-                            </span>
-                        )}
-                        {nombre && (
-                            <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-medium">
-                                🏢 {nombre}
-                            </span>
-                        )}
-                        {precioMax && (
-                            <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
-                                💰 Max {precioMax}€
-                            </span>
+                            {mostrarFiltrosAvanzados ? 'Ocultar filtros avanzados' : 'Mostrar filtros avanzados'}
+                        </button>
+
+                        {/* Filtros avanzados */}
+                        {mostrarFiltrosAvanzados && (
+                            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                                {/* Filtro por marcas */}
+                                <div className="mb-4">
+                                    <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                        </svg>
+                                        Filtrar por marca
+                                    </p>
+                                    <fieldset className="flex flex-wrap gap-2">
+                                        <legend className="sr-only">Filtrar por marcas</legend>
+                                        {MARCAS_POPULARES.map((marca) => (
+                                            <button
+                                                key={marca.nombre}
+                                                type="button"
+                                                onClick={() => toggleMarca(marca.nombre)}
+                                                aria-pressed={marcasSeleccionadas.includes(marca.nombre)}
+                                                className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                                                    marcasSeleccionadas.includes(marca.nombre)
+                                                        ? 'bg-[#000C74] text-white shadow-md'
+                                                        : 'bg-white border border-gray-300 text-gray-700 hover:border-[#000C74] hover:text-[#000C74]'
+                                                }`}
+                                            >
+                                                {marca.logo} {marca.nombre}
+                                            </button>
+                                        ))}
+                                    </fieldset>
+                                </div>
+
+                                {/* Opciones adicionales */}
+                                <div className="flex flex-wrap gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={soloConPrecio}
+                                            onChange={(e) => setSoloConPrecio(e.target.checked)}
+                                            className="w-4 h-4 text-[#000C74] rounded border-gray-300 focus:ring-[#000C74]"
+                                        />
+                                        <span className="text-sm text-gray-700">Solo con precio disponible</span>
+                                    </label>
+                                </div>
+                            </div>
                         )}
                     </div>
-                )}
-            </div>
-
-            <div className="flex justify-between items-center mt-6">
-                <div className="text-sm text-gray-600 bg-blue-50 px-4 py-2 rounded-lg border border-blue-200">
-                    <span className="font-semibold text-blue-900">
-                        {combustibleSeleccionado.replace("Precio ", "")}
-                    </span>
-                    {" "}- Mostrando {filtered.length} gasolineras
                 </div>
-                <button
-                    className="px-6 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition shadow-md font-medium flex items-center gap-2"
-                    onClick={ordenarPorPrecio}
-                >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                    </svg>
-                    Ordenar por precio {ordenAsc ? "↑" : "↓"}
-                </button>
             </div>
 
-            <div className="mt-10">
-                {loading ? (
-                    <div className="text-center py-12">
-                        <p className="text-lg text-gray-600">Cargando gasolineras...</p>
+            {/* Barra de información y ordenación - Rediseñada con mejor separación */}
+            <div className="bg-white shadow-md border border-gray-200 rounded-xl p-4 mt-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-sm font-semibold text-[#000C74] bg-[#000C74]/10 px-3 py-2 rounded-lg">
+                            ⛽ {combustibleSeleccionado.replace("Precio ", "")}
+                        </span>
+                        <span className="text-sm text-gray-600 font-medium">
+                            {filtered.length} gasolineras encontradas
+                        </span>
+                        {ordenadoPorCercania && (
+                            <span className="text-xs text-green-700 bg-green-100 px-2.5 py-1.5 rounded-full flex items-center gap-1.5 font-medium">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                                </svg>
+                                Ordenadas por cercanía
+                            </span>
+                        )}
                     </div>
-                ) : filtered.length === 0 ? (
-                    <div className="text-center py-12">
-                        <p className="text-lg text-gray-600">No se encontraron gasolineras con {combustibleSeleccionado.replace("Precio ", "")}</p>
-                    </div>
-                ) : (
-                    <GasolinerasTable 
-                        gasolineras={filtered} 
-                        combustibleSeleccionado={combustibleSeleccionado}
-                    />
-                )}
+                    <button
+                        className="w-full sm:w-auto px-5 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition shadow-md font-medium flex items-center justify-center gap-2 text-sm"
+                        onClick={ordenarPorPrecio}
+                    >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                        </svg>
+                        Ordenar por precio {ordenAsc ? "↑" : "↓"}
+                    </button>
+                </div>
+            </div>
+
+            <div className="mt-8">
+                {renderTableContent()}
             </div>
         </div>
 

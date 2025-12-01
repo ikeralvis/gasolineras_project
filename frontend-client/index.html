@@ -4,16 +4,33 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/logo.png" />
     <link rel="apple-touch-icon" href="/pwa-192x192.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Encuentra las gasolineras más baratas de España" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="description" content="Encuentra las gasolineras más baratas de España. Compara precios de combustible en tiempo real." />
     <meta name="theme-color" content="#000C74" />
+    
+    <!-- PWA iOS -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="TankGo" />
+    <link rel="apple-touch-startup-image" href="/pwa-512x512.png" />
+    
+    <!-- Open Graph / Social -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="TankGo - Encuentra el mejor precio" />
+    <meta property="og:description" content="Encuentra las gasolineras más baratas de España. Compara precios de combustible en tiempo real." />
+    <meta property="og:image" content="/pwa-512x512.png" />
+    
+    <!-- Preconnect para rendimiento -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
+    
     <title>TankGo - Encuentra el mejor precio</title>
     <link rel="manifest" href="/manifest.webmanifest" />
   </head>
   <body>
+    <!-- Skip link para accesibilidad -->
+    <a href="#main-content" class="skip-link">Saltar al contenido principal</a>
+    
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>

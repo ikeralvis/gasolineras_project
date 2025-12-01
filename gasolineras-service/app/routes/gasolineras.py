@@ -2,7 +2,9 @@
 Rutas de la API de Gasolineras - VERSIÓN DEBUG
 """
 import logging
-from typing import List, Optional
+import os
+import httpx
+from typing import List, Optional, Set
 from datetime import datetime, timezone
 from fastapi import APIRouter, Query, HTTPException, status
 from app.db.connection import get_collection, get_historico_collection
@@ -12,6 +14,10 @@ from app.services.fetch_gobierno import fetch_data_gobierno
 from app.models.gasolinera import Gasolinera
 
 logger = logging.getLogger(__name__)
+
+# URL del servicio de usuarios para obtener favoritas
+USUARIOS_SERVICE_URL = os.getenv("USUARIOS_SERVICE_URL", "http://usuarios:3001")
+INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "dev-internal-secret-change-in-production")
 
 router = APIRouter(prefix="/gasolineras", tags=["Gasolineras"])
 
@@ -225,39 +231,64 @@ def sync_gasolineras():
 
         logger.info(f"✅ Insertadas {inserted_count} gasolineras nuevas")
         
-        # Guardar snapshot en histórico (solo si no existe ya hoy)
+        # ========================================
+        # 📊 HISTÓRICO - Solo gasolineras favoritas
+        # ========================================
+        # Obtener lista de IDEESS favoritos desde usuarios-service
+        favoritas_ids: Set[str] = set()
+        try:
+            response = httpx.get(
+                f"{USUARIOS_SERVICE_URL}/api/usuarios/favoritos/all-ideess",
+                headers={"X-Internal-Secret": INTERNAL_API_SECRET},
+                timeout=10.0
+            )
+            if response.status_code == 200:
+                data = response.json()
+                favoritas_ids = set(data.get("ideess", []))
+                logger.info(f"📌 Obtenidos {len(favoritas_ids)} IDEESS favoritos para histórico")
+            else:
+                logger.warning(f"⚠️ No se pudieron obtener favoritos: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"⚠️ Error obteniendo favoritos (continuando sin histórico): {e}")
+        
+        # Guardar snapshot en histórico SOLO de favoritas
         fecha_hoy = fecha_sync.replace(hour=0, minute=0, second=0, microsecond=0)
         
         documentos_historicos = []
         for g in datos_normalizados:
-            # Extraer solo precios relevantes con fecha
-            doc_historico = {
-                "IDEESS": g.get("IDEESS"),
-                "fecha": fecha_hoy,  # ✅ Añadido campo fecha
-                "precios": {
-                    "Gasolina 95 E5": g.get(PRECIO_GASOLINA_95_E5),
-                    "Gasolina 98 E5": g.get("Precio Gasolina 98 E5"),
-                    "Gasóleo A": g.get("Precio Gasoleo A"),
-                    "Gasóleo B": g.get("Precio Gasoleo B"),
-                    "Gasóleo Premium": g.get("Precio Gasóleo Premium"),
+            ideess = g.get("IDEESS")
+            # Solo guardar si está en favoritos (o si no hay favoritos, no guardar nada)
+            if ideess and ideess in favoritas_ids:
+                # Formato comprimido para ahorrar espacio
+                doc_historico = {
+                    "IDEESS": ideess,
+                    "fecha": fecha_hoy,
+                    "p95": g.get(PRECIO_GASOLINA_95_E5),
+                    "p98": g.get("Precio Gasolina 98 E5"),
+                    "pA": g.get("Precio Gasoleo A"),
+                    "pB": g.get("Precio Gasoleo B"),
+                    "pP": g.get("Precio Gasóleo Premium"),
                 }
-            }
-            documentos_historicos.append(doc_historico)
+                documentos_historicos.append(doc_historico)
         
         # Eliminar registros del mismo día si existen (evitar duplicados)
         historico_collection.delete_many({"fecha": fecha_hoy})
         
         # Insertar nuevos registros históricos
+        historico_count = 0
         if documentos_historicos:
             historico_result = historico_collection.insert_many(documentos_historicos)
             historico_count = len(historico_result.inserted_ids)
-            logger.info(f"📊 Guardados {historico_count} registros en histórico para {fecha_hoy.date()}")
+            logger.info(f"📊 Guardados {historico_count} registros en histórico (solo favoritas) para {fecha_hoy.date()}")
+        else:
+            logger.info("📊 No hay favoritas para guardar en histórico")
         
         return {
             "mensaje": "Datos sincronizados correctamente 🚀",
             "registros_eliminados": deleted_count,
             "registros_insertados": inserted_count,
-            "registros_historicos": len(documentos_historicos),
+            "registros_historicos": historico_count,
+            "favoritas_totales": len(favoritas_ids),
             "fecha_snapshot": fecha_hoy.isoformat(),
             "total": inserted_count
         }

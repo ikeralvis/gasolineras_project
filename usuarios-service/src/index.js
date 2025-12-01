@@ -10,6 +10,7 @@ import fastifySwaggerUI from '@fastify/swagger-ui';
 import fastifyHelmet from '@fastify/helmet';
 import fastifyCors from '@fastify/cors';
 import fastifyRateLimit from '@fastify/rate-limit';
+import fastifyCookie from '@fastify/cookie';
 import { errorHandler } from './middlewares/errorHandler.js';
 import fastifyCompress from '@fastify/compress';
 
@@ -73,7 +74,18 @@ async function buildServer() {
     secret: process.env.JWT_SECRET,
     sign: {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
+    },
+    // Buscar token en cookie si no hay header Authorization
+    cookie: {
+      cookieName: 'authToken',
+      signed: false
     }
+  });
+
+  // 5.1 Plugin de Cookies (para httpOnly auth cookies)
+  await fastify.register(fastifyCookie, {
+    secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET,
+    parseOptions: {}
   });
 
   // 6. Configuración de OpenAPI / Swagger

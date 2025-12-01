@@ -26,16 +26,30 @@ interface Gasolinera {
   ["Precio Gasoleo A"]: string;
 }
 
+// Crear icono con aspect ratio preservado
 function createIcon(imageUrl: string) {
   return new L.Icon({
     iconUrl: imageUrl,
-    iconSize: [44, 44],
-    iconAnchor: [19, 38],
-    popupAnchor: [0, -28],
-    className: "transition-transform"
-
+    iconSize: [40, 40],
+    iconAnchor: [20, 40],
+    popupAnchor: [0, -35],
+    className: "rounded-lg shadow-md object-contain bg-white p-1"
   });
 }
+
+// Icono circular para la ubicación del usuario (estilo Google Maps)
+const userLocationIcon = L.divIcon({
+  html: `
+    <div class="user-location-dot">
+      <div class="user-location-pulse"></div>
+      <div class="user-location-center"></div>
+    </div>
+  `,
+  className: 'user-location-marker',
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
+  popupAnchor: [0, -20]
+});
 
 function getBrandIcon(rotulo: string) {
   const name = rotulo.toLowerCase();
@@ -111,6 +125,16 @@ export default function MapaGasolineras() {
     cargarGasolineras();
   }, []);
 
+  const getStatusMessage = () => {
+    if (loading) {
+      return "Cargando ubicación...";
+    }
+    if (locationGranted) {
+      return `${gasolineras.length} gasolineras cerca de ti`;
+    }
+    return `Mostrando ${gasolineras.length} gasolineras`;
+  };
+
   return (
     <div className="w-full h-[calc(100vh-64px)] flex flex-col">
       
@@ -120,12 +144,7 @@ export default function MapaGasolineras() {
           <div>
             <h2 className="text-lg font-semibold">Mapa de Gasolineras</h2>
             <p className="text-white/80 text-sm">
-              {loading 
-                ? "Cargando ubicación..." 
-                : locationGranted 
-                  ? `${gasolineras.length} gasolineras cerca de ti` 
-                  : `Mostrando ${gasolineras.length} gasolineras`
-              }
+              {getStatusMessage()}
             </p>
           </div>
           
@@ -161,18 +180,11 @@ export default function MapaGasolineras() {
           
           <MapUpdater center={userLocation} />
 
-          {/* Marcador de ubicación del usuario */}
+          {/* Marcador de ubicación del usuario - Estilo Google Maps */}
           {locationGranted && (
             <Marker
               position={userLocation}
-              icon={new L.Icon({
-                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png",
-                shadowUrl: "https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png",
-                iconSize: [25, 41],
-                iconAnchor: [12, 41],
-                popupAnchor: [1, -34],
-                shadowSize: [41, 41]
-              })}
+              icon={userLocationIcon}
             >
               <Popup>
                 <div className="p-2 text-center">

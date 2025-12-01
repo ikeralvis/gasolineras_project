@@ -11,9 +11,26 @@ const PORT = process.env.PORT || 8080;
 const USUARIOS_SERVICE = process.env.USUARIOS_SERVICE_URL || "http://usuarios:3001";
 const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 // Google OAuth config
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+
+// 🔐 Secret compartido para comunicación interna entre servicios
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+if (!INTERNAL_API_SECRET) {
+  console.warn("⚠️  WARNING: INTERNAL_API_SECRET no configurado. Usando valor por defecto (inseguro en producción)");
+}
+const INTERNAL_SECRET = INTERNAL_API_SECRET || "dev-internal-secret-change-in-production";
+
+// Configuración de cookies
+const COOKIE_CONFIG = {
+  httpOnly: true,
+  secure: IS_PRODUCTION,
+  sameSite: IS_PRODUCTION ? "None" : "Lax",
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60 // 7 días en segundos
+};
 
 // ========================================
 // 🚀 APLICACIÓN HONO
@@ -347,9 +364,13 @@ app.post("/api/auth/google/verify", async (c) => {
     console.log(`✅ Usuario de Google verificado: ${googleUser.email}`);
 
     // Llamar al usuarios-service para crear/obtener usuario y generar JWT
+    // 🔐 Usando secret interno para proteger endpoint
     const internalResponse = await fetch(`${USUARIOS_SERVICE}/api/usuarios/google/internal`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { 
+        "Content-Type": "application/json",
+        "X-Internal-Secret": INTERNAL_SECRET
+      },
       body: JSON.stringify({
         google_id: googleUser.sub,
         email: googleUser.email,
@@ -366,7 +387,11 @@ app.post("/api/auth/google/verify", async (c) => {
     const { token } = await internalResponse.json();
     console.log(`✅ JWT generado para ${googleUser.email}`);
 
-    return c.json({ token });
+    // 🍪 Establecer token en cookie httpOnly (más seguro que localStorage)
+    c.header('Set-Cookie', `authToken=${token}; HttpOnly; ${COOKIE_CONFIG.secure ? 'Secure;' : ''} SameSite=${COOKIE_CONFIG.sameSite}; Path=${COOKIE_CONFIG.path}; Max-Age=${COOKIE_CONFIG.maxAge}`);
+    
+    // También devolver token en body para compatibilidad con frontend actual
+    return c.json({ token, cookieSet: true });
 
   } catch (err) {
     console.error("Error verificando token de Google:", err);

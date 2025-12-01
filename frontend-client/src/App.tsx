@@ -41,16 +41,18 @@ function App() {
   return (
     <AuthProvider>
       <Navbar />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/gasolineras" element={<Gasolineras />} />
-        <Route path="/gasolinera/:id" element={<GasolineraDetalle />} />
-        <Route path="/mapa" element={<MapaGasolineras />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/favoritos" element={<Favoritos />} />
-      </Routes>
+      <main id="main-content">
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/gasolineras" element={<Gasolineras />} />
+          <Route path="/gasolinera/:id" element={<GasolineraDetalle />} />
+          <Route path="/mapa" element={<MapaGasolineras />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/favoritos" element={<Favoritos />} />
+        </Routes>
+      </main>
     </AuthProvider>
   );
 }

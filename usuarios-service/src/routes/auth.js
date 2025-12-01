@@ -217,7 +217,18 @@ export async function authRoutes(fastify) {
                 { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
             );
 
-            return reply.code(200).send({ token });
+            // 🍪 Establecer cookie httpOnly para mayor seguridad
+            const isProduction = process.env.NODE_ENV === 'production';
+            reply.setCookie('authToken', token, {
+                httpOnly: true,
+                secure: isProduction,
+                sameSite: isProduction ? 'none' : 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60 // 7 días
+            });
+
+            // Devolver token también en body para compatibilidad
+            return reply.code(200).send({ token, cookieSet: true });
 
         } catch (error) {
             fastify.log.error(error);
@@ -419,14 +430,12 @@ export async function authRoutes(fastify) {
     // ========================================
 
     // POST /google/internal - Endpoint interno para crear/obtener usuario de Google
-    // Solo debe ser llamado por el gateway (no expuesto públicamente)
-    // El frontend usa @react-oauth/google y envía el credential al gateway,
-    // que verifica con Google y luego llama a este endpoint
+    // 🔒 PROTEGIDO: Solo puede ser llamado por el gateway con secret válido
     fastify.post('/google/internal', {
         schema: {
             tags: ['Auth'],
             summary: 'Crear/obtener usuario de Google (interno)',
-            description: 'Endpoint interno usado por el gateway para procesar OAuth',
+            description: 'Endpoint interno usado por el gateway para procesar OAuth. Requiere X-Internal-Secret header.',
             body: {
                 type: 'object',
                 required: ['google_id', 'email', 'name'],
@@ -442,7 +451,23 @@ export async function authRoutes(fastify) {
                     properties: {
                         token: { type: 'string' }
                     }
+                },
+                403: {
+                    type: 'object',
+                    properties: {
+                        error: { type: 'string' }
+                    }
                 }
+            }
+        },
+        // 🔐 Validar secret interno ANTES de procesar la petición
+        onRequest: async (request, reply) => {
+            const internalSecret = request.headers['x-internal-secret'];
+            const expectedSecret = process.env.INTERNAL_API_SECRET || 'dev-internal-secret-change-in-production';
+            
+            if (!internalSecret || internalSecret !== expectedSecret) {
+                fastify.log.warn('⚠️ Intento de acceso a /google/internal sin secret válido');
+                return reply.code(403).send({ error: 'Forbidden: Invalid internal secret' });
             }
         }
     }, async (request, reply) => {

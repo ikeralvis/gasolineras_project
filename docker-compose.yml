@@ -48,6 +48,8 @@ services:
       MONGO_HOST: mongo
       MONGO_PORT: 27017
       PORT: 8000 # Puerto interno del contenedor
+      USUARIOS_SERVICE_URL: http://usuarios:3001
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
     depends_on:
       mongo:
         condition: service_started
@@ -76,6 +78,7 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,6 +104,8 @@ services:
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:8080}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
+      NODE_ENV: ${NODE_ENV:-development}
     depends_on:
       usuarios:
         condition: service_healthy

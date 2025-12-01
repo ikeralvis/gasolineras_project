@@ -95,6 +95,18 @@ def get_historico_collection():
         # Crear índices para optimizar consultas
         _collection_historico.create_index([("IDEESS", 1), ("fecha", -1)])
         _collection_historico.create_index([("fecha", -1)])
+        # 🔐 TTL Index: Auto-eliminar documentos después de 30 días
+        # Esto evita que MongoDB Atlas se llene
+        try:
+            _collection_historico.create_index(
+                "fecha",
+                expireAfterSeconds=30 * 24 * 60 * 60,  # 30 días
+                name="ttl_30_dias"
+            )
+            logger.info("✅ TTL Index de 30 días creado/verificado en precios_historicos")
+        except Exception as e:
+            # El índice ya existe o hay otro problema
+            logger.warning(f"⚠️ TTL Index: {e}")
     return _collection_historico
 
 def test_db_connection():
