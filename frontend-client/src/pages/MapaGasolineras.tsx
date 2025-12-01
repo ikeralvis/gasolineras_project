@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { getGasolinerasCerca } from "../api/gasolineras";
 
 import repsol from "../assets/logos/repsol.svg";
@@ -79,6 +80,7 @@ function MapUpdater({ center }: { center: [number, number] }) {
 }
 
 export default function MapaGasolineras() {
+  const { t } = useTranslation();
   const [gasolineras, setGasolineras] = useState<Gasolinera[]>([]);
   const [userLocation, setUserLocation] = useState<[number, number]>([40.4168, -3.7038]); // Madrid por defecto
   const [loading, setLoading] = useState(true);
@@ -127,35 +129,37 @@ export default function MapaGasolineras() {
 
   const getStatusMessage = () => {
     if (loading) {
-      return "Cargando ubicación...";
+      return t('map.loadingLocation');
     }
     if (locationGranted) {
-      return `${gasolineras.length} gasolineras cerca de ti`;
+      return t('map.nearbyStations', { count: gasolineras.length });
     }
-    return `Mostrando ${gasolineras.length} gasolineras`;
+    return t('map.showingStations', { count: gasolineras.length });
   };
 
   return (
     <div className="w-full h-[calc(100vh-64px)] flex flex-col">
       
       {/* ENCABEZADO MAPA */}
-      <div className="p-4 bg-[#000C74] text-white shadow z-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Mapa de Gasolineras</h2>
-            <p className="text-white/80 text-sm">
-              {getStatusMessage()}
-            </p>
-          </div>
-          
-          {locationGranted && (
-            <div className="flex items-center gap-2 bg-green-500/20 px-3 py-2 rounded-lg border border-green-400">
-              <svg className="w-5 h-5 text-green-300" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-              </svg>
-              <span className="text-sm font-medium text-green-300">Ubicación detectada</span>
+      <div className="bg-[#000C74] text-white shadow z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">{t('map.title')}</h2>
+              <p className="text-white/80 text-sm">
+                {getStatusMessage()}
+              </p>
             </div>
-          )}
+            
+            {locationGranted && (
+              <div className="flex items-center gap-2 bg-green-500/20 px-3 py-2 rounded-lg border border-green-400">
+                <svg className="w-5 h-5 text-green-300" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                </svg>
+                <span className="text-sm font-medium text-green-300">{t('map.locationDetected')}</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -163,7 +167,7 @@ export default function MapaGasolineras() {
         <div className="flex-1 flex items-center justify-center bg-gray-50">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#000C74] border-t-transparent mb-4"></div>
-            <p className="text-gray-600 font-medium">Cargando mapa...</p>
+            <p className="text-gray-600 font-medium">{t('map.loadingMap')}</p>
           </div>
         </div>
       ) : (
@@ -188,7 +192,7 @@ export default function MapaGasolineras() {
             >
               <Popup>
                 <div className="p-2 text-center">
-                  <p className="font-semibold text-[#000C74]">📍 Tu ubicación</p>
+                  <p className="font-semibold text-[#000C74]">📍 {t('map.yourLocation')}</p>
                 </div>
               </Popup>
             </Marker>

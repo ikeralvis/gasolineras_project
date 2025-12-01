@@ -5,6 +5,9 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import './index.css';
 
+// Inicializar i18n (debe importarse antes de renderizar)
+import './i18n';
+
 // Google OAuth Client ID (configurar en Google Cloud Console)
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 // PWA registration (vite-plugin-pwa provides `virtual:pwa-register`)

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { FaHeart, FaMapMarkerAlt, FaRoute } from 'react-icons/fa';
 import { useFavorites } from '../hooks/useFavorites';
 import { useAuth } from '../contexts/AuthContext';
@@ -21,6 +22,7 @@ interface Gasolinera {
 }
 
 export default function Favoritos() {
+  const { t } = useTranslation();
   const { isAuthenticated, user } = useAuth();
   const { favoritos, loading: favLoading } = useFavorites();
   const [gasolineras, setGasolineras] = useState<Gasolinera[]>([]);
@@ -74,7 +76,7 @@ export default function Favoritos() {
       <div className="min-h-screen bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF] flex items-center justify-center">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-[#000C74] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-600 font-medium">Cargando favoritos...</p>
+          <p className="text-gray-600 font-medium">{t('favorites.loadingFavorites')}</p>
         </div>
       </div>
     );
@@ -102,15 +104,12 @@ export default function Favoritos() {
               </div>
               <div>
                 <h1 className="text-4xl font-bold text-[#000C74]">
-                  Mis Favoritos
+                  {t('favorites.title')}
                 </h1>
                 <p className="text-gray-600 mt-1">
                   {gasolineras.length === 0 
-                    ? 'No tienes gasolineras favoritas aún'
-                    : (() => {
-                        const plural = gasolineras.length > 1 ? 's' : '';
-                        return `${gasolineras.length} gasolinera${plural} guardada${plural}`;
-                      })()
+                    ? t('favorites.noFavorites')
+                    : t('favorites.stationSaved', { count: gasolineras.length })
                   }
                 </p>
               </div>
@@ -121,7 +120,7 @@ export default function Favoritos() {
               className="px-6 py-3 bg-[#000C74] text-white rounded-xl hover:bg-[#001A8A] transition font-medium flex items-center gap-2 shadow-lg"
             >
               <FaRoute />
-              Explorar Gasolineras
+              {t('favorites.exploreStations')}
             </button>
           </div>
         </div>
@@ -134,18 +133,17 @@ export default function Favoritos() {
                 <FaHeart className="text-gray-400 w-12 h-12" />
               </div>
               <h2 className="text-2xl font-bold text-gray-800 mb-3">
-                No tienes favoritos guardados
+                {t('favorites.noFavorites')}
               </h2>
               <p className="text-gray-600 mb-6">
-                Empieza a guardar tus gasolineras favoritas haciendo clic en el icono de corazón ❤️ 
-                en cualquier gasolinera de la lista.
+                {t('favorites.noFavoritesDescription')}
               </p>
               <button
                 onClick={() => navigate('/gasolineras')}
                 className="px-8 py-4 bg-linear-to-r from-[#000C74] to-[#4A52D9] text-white rounded-xl font-bold hover:shadow-lg hover:scale-105 transition-all inline-flex items-center gap-2"
               >
                 <FaMapMarkerAlt />
-                Buscar Gasolineras
+                {t('favorites.searchStations')}
               </button>
             </div>
           </div>
@@ -156,7 +154,7 @@ export default function Favoritos() {
               <div className="bg-white rounded-xl p-6 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">Precio Medio G95</p>
+                    <p className="text-sm text-gray-600 font-medium">{t('favorites.averagePrice95')}</p>
                     <p className="text-2xl font-bold text-[#000C74] mt-1">
                       {(gasolineras.reduce((acc, g) => {
                         const precio = Number.parseFloat(g['Precio Gasolina 95 E5'].replace(',', '.'));
@@ -175,7 +173,7 @@ export default function Favoritos() {
               <div className="bg-white rounded-xl p-6 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">Precio Medio Diésel</p>
+                    <p className="text-sm text-gray-600 font-medium">{t('favorites.averagePriceDiesel')}</p>
                     <p className="text-2xl font-bold text-[#000C74] mt-1">
                       {(gasolineras.reduce((acc, g) => {
                         const precio = Number.parseFloat(g['Precio Gasoleo A'].replace(',', '.'));
@@ -194,7 +192,7 @@ export default function Favoritos() {
               <div className="bg-white rounded-xl p-6 shadow-lg">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">Total Favoritos</p>
+                    <p className="text-sm text-gray-600 font-medium">{t('favorites.totalFavorites')}</p>
                     <p className="text-2xl font-bold text-[#000C74] mt-1">
                       {gasolineras.length}
                     </p>

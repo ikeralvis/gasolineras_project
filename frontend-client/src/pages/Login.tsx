@@ -1,17 +1,19 @@
 import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { GoogleLogin } from '@react-oauth/google';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { FaEnvelope, FaLock, FaGasPump, FaEye, FaEyeSlash } from 'react-icons/fa';
 
 export default function Login() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login, loginWithGoogleCredential } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(searchParams.get('error') ? 'Error de autenticación. Intenta de nuevo.' : '');
+  const [error, setError] = useState(searchParams.get('error') ? t('auth.authError') : '');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
 
@@ -34,7 +36,7 @@ export default function Login() {
   // Handler para éxito de Google OAuth
   const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
     if (!credentialResponse.credential) {
-      setError('No se recibió credencial de Google');
+      setError(t('auth.googleCredentialError'));
       return;
     }
 
@@ -45,7 +47,7 @@ export default function Login() {
       await loginWithGoogleCredential(credentialResponse.credential);
       navigate('/gasolineras');
     } catch (err: unknown) {
-      const errorMessage = err instanceof Error ? err.message : 'Error al iniciar sesión con Google';
+      const errorMessage = err instanceof Error ? err.message : t('auth.googleLoginError');
       setError(errorMessage);
     } finally {
       setGoogleLoading(false);
@@ -54,7 +56,7 @@ export default function Login() {
 
   // Handler para error de Google OAuth
   const handleGoogleError = () => {
-    setError('Error al iniciar sesión con Google. Intenta de nuevo.');
+    setError(t('auth.googleLoginError'));
   };
 
   return (
@@ -68,10 +70,10 @@ export default function Login() {
             </div>
           </div>
           <h1 className="text-3xl font-bold text-center mb-2">
-            ¡Bienvenido de nuevo!
+            {t('auth.welcomeBack')}
           </h1>
           <p className="text-white/80 text-center text-sm">
-            Encuentra las mejores gasolineras cerca de ti
+            {t('auth.findBestStations')}
           </p>
         </div>
 
@@ -95,7 +97,7 @@ export default function Login() {
             {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                Correo Electrónico
+                {t('auth.email')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -108,7 +110,7 @@ export default function Login() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#000C74] focus:border-transparent outline-none transition bg-gray-50 hover:bg-white"
-                  placeholder="tu@email.com"
+                  placeholder={t('auth.emailPlaceholder')}
                 />
               </div>
             </div>
@@ -116,7 +118,7 @@ export default function Login() {
             {/* Contraseña */}
             <div>
               <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                Contraseña
+                {t('auth.password')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -151,10 +153,10 @@ export default function Login() {
               {loading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Iniciando sesión...</span>
+                  <span>{t('auth.loggingIn')}</span>
                 </>
               ) : (
-                <>Iniciar Sesión</>
+                <>{t('auth.loginButton')}</>
               )}
             </button>
           </form>
@@ -165,7 +167,7 @@ export default function Login() {
               <div className="w-full border-t border-gray-300"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">O continúa con</span>
+              <span className="px-2 bg-white text-gray-500">{t('auth.orContinueWith')}</span>
             </div>
           </div>
 
@@ -174,7 +176,7 @@ export default function Login() {
             {googleLoading ? (
               <div className="flex items-center justify-center gap-3 py-3.5 px-4 text-gray-700">
                 <div className="w-5 h-5 border-2 border-[#000C74] border-t-transparent rounded-full animate-spin"></div>
-                <span>Iniciando con Google...</span>
+                <span>{t('auth.loginWithGoogle')}</span>
               </div>
             ) : (
               <GoogleLogin
@@ -198,7 +200,7 @@ export default function Login() {
               <div className="w-full border-t border-gray-300"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">¿Nuevo aquí?</span>
+              <span className="px-2 bg-white text-gray-500">{t('auth.newHere')}</span>
             </div>
           </div>
 
@@ -208,7 +210,7 @@ export default function Login() {
               to="/register"
               className="inline-block w-full py-3 px-4 border-2 border-[#000C74] text-[#000C74] rounded-xl font-semibold hover:bg-[#000C74] hover:text-white transition-all"
             >
-              Crear una cuenta nueva
+              {t('auth.createNewAccount')}
             </Link>
           </div>
         </div>

@@ -1,0 +1,245 @@
+{
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "close": "Cerrar",
+    "search": "Buscar",
+    "filter": "Filtrar",
+    "sort": "Ordenar",
+    "reset": "Resetear",
+    "noResults": "No se encontraron resultados",
+    "seeMore": "Ver más",
+    "seeLess": "Ver menos",
+    "viewDetails": "Ver detalles",
+    "next": "Siguiente",
+    "previous": "Anterior",
+    "showing": "Mostrando",
+    "of": "de",
+    "total": "Total"
+  },
+  "nav": {
+    "home": "Inicio",
+    "gasStations": "Gasolineras",
+    "map": "Mapa",
+    "favorites": "Favoritos",
+    "login": "Iniciar Sesión",
+    "register": "Registrarse",
+    "logout": "Cerrar Sesión",
+    "profile": "Mi Perfil"
+  },
+  "home": {
+    "title": "TankGo",
+    "subtitle": "Plataforma Inteligente de Precios de Carburantes",
+    "description": "Datos actualizados en tiempo real, visualización avanzada y análisis automático para ayudarte a encontrar la mejor opción en cada repostaje.",
+    "exploreStations": "Explorar Gasolineras",
+    "viewMap": "Ver Mapa",
+    "features": {
+      "title": "Funcionalidades Principales",
+      "subtitle": "Todo lo que necesitas para ahorrar en cada repostaje",
+      "realtime": {
+        "title": "Precios en Tiempo Real",
+        "description": "Accede a información actualizada de todas las gasolineras de España. Datos oficiales del Ministerio directamente en tu pantalla."
+      },
+      "location": {
+        "title": "Búsqueda por Ubicación",
+        "description": "Encuentra las estaciones más cercanas a ti. Filtra por provincia, localidad o visualiza en el mapa interactivo."
+      },
+      "compare": {
+        "title": "Comparación de Precios",
+        "description": "Compara precios de diferentes combustibles: Gasolina 95, 98, Diésel, Diésel Premium y más. Ordena por precio para encontrar la mejor oferta."
+      },
+      "favorites": {
+        "title": "Favoritos Personalizados",
+        "description": "Guarda tus gasolineras favoritas y accede rápidamente a ellas. Configura tu combustible preferido para ver solo lo que te interesa."
+      },
+      "map": {
+        "title": "Mapa Interactivo",
+        "description": "Visualiza todas las gasolineras en un mapa. Explora por zonas, encuentra rutas y planifica tus paradas de forma inteligente."
+      },
+      "history": {
+        "title": "Historial de Precios",
+        "description": "Consulta la evolución histórica de precios. Identifica tendencias y decide el mejor momento para repostar."
+      }
+    },
+    "howItWorks": {
+      "title": "¿Cómo Funciona?",
+      "subtitle": "Tres simples pasos para empezar a ahorrar",
+      "step1": {
+        "title": "Regístrate Gratis",
+        "description": "Crea tu cuenta en segundos. Sin costes, sin compromiso."
+      },
+      "step2": {
+        "title": "Busca y Compara",
+        "description": "Explora gasolineras, filtra por ubicación y compara precios al instante."
+      },
+      "step3": {
+        "title": "Ahorra Dinero",
+        "description": "Elige la mejor opción y ahorra en cada repostaje. ¡Así de simple!"
+      }
+    },
+    "cta": {
+      "title": "¿Listo para Empezar a Ahorrar?",
+      "subtitle": "Únete a miles de usuarios que ya están optimizando sus gastos en combustible",
+      "button": "Crear Cuenta Gratis"
+    }
+  },
+  "gasStations": {
+    "title": "Gasolineras",
+    "subtitle": "Encuentra las mejores opciones cerca de ti",
+    "loadingStations": "Cargando gasolineras...",
+    "noStationsWithFuel": "No se encontraron gasolineras con {{fuel}}",
+    "filtersActive": "activos",
+    "clearFilters": "Limpiar filtros",
+    "customizeSearch": "Personaliza tu búsqueda",
+    "provincePlaceholder": "Ej: Madrid",
+    "municipalityPlaceholder": "Ej: Alcalá de Henares",
+    "brandPlaceholder": "Ej: Repsol",
+    "maxPricePlaceholder": "Ej: 1.50",
+    "maxPrice": "Precio máx (€/L)",
+    "filterByBrand": "Filtrar por marca",
+    "showAdvancedFilters": "Mostrar filtros avanzados",
+    "hideAdvancedFilters": "Ocultar filtros avanzados",
+    "onlyWithPrice": "Solo con precio disponible",
+    "sortByPrice": "Ordenar por precio",
+    "orderedByProximity": "Ordenadas por cercanía",
+    "foundStations": "gasolineras encontradas",
+    "statistics": "Estadísticas de Precios",
+    "minimum": "Mínimo",
+    "average": "Media",
+    "maximum": "Máximo",
+    "brand": "Marca",
+    "location": "Ubicación",
+    "favorite": "Fav",
+    "actions": "Acciones"
+  },
+  "favorites": {
+    "title": "Mis Favoritos",
+    "subtitle": "Tus gasolineras guardadas",
+    "loadingFavorites": "Cargando favoritos...",
+    "noFavorites": "No tienes favoritos guardados",
+    "noFavoritesDescription": "Empieza a guardar tus gasolineras favoritas haciendo clic en el icono de corazón ❤️ en cualquier gasolinera de la lista.",
+    "searchStations": "Buscar Gasolineras",
+    "stationSaved_one": "{{count}} gasolinera guardada",
+    "stationSaved_other": "{{count}} gasolineras guardadas",
+    "exploreStations": "Explorar Gasolineras",
+    "averagePrice95": "Precio Medio G95",
+    "averagePriceDiesel": "Precio Medio Diésel",
+    "totalFavorites": "Total Favoritos"
+  },
+  "profile": {
+    "title": "Mi Perfil",
+    "accountInfo": "Información de la Cuenta",
+    "name": "Nombre",
+    "email": "Email",
+    "role": "Rol",
+    "admin": "Administrador",
+    "user": "Usuario",
+    "favorites": "Favoritos",
+    "stations": "gasolineras",
+    "favoriteFuel": "Combustible Favorito",
+    "favoriteFuelDescription": "Selecciona tu tipo de combustible preferido",
+    "fuelType": "Tipo de Combustible",
+    "savePreference": "Guardar Preferencia",
+    "saving": "Guardando...",
+    "current": "Actual",
+    "logout": "Cerrar Sesión",
+    "deleteAccount": "Eliminar Cuenta",
+    "myFavorites": "Mis Favoritos",
+    "noFavorites": "No tienes favoritos guardados todavía.",
+    "exploreAndSave": "Explora gasolineras y guarda tus favoritas",
+    "savedOn": "Guardado",
+    "deleteConfirm": "¿Seguro que quieres eliminar tu cuenta? Esta acción es irreversible.",
+    "accountDeleted": "Cuenta eliminada correctamente",
+    "updateSuccess": "✅ Combustible favorito guardado correctamente"
+  },
+  "auth": {
+    "welcomeBack": "¡Bienvenido de nuevo!",
+    "findBestStations": "Encuentra las mejores gasolineras cerca de ti",
+    "joinUs": "Únete a nosotros",
+    "createAccountDescription": "Crea tu cuenta y descubre los mejores precios",
+    "email": "Correo Electrónico",
+    "emailPlaceholder": "tu@email.com",
+    "password": "Contraseña",
+    "confirmPassword": "Confirmar Contraseña",
+    "fullName": "Nombre Completo",
+    "fullNamePlaceholder": "Juan Pérez",
+    "loginButton": "Iniciar Sesión",
+    "loggingIn": "Iniciando sesión...",
+    "registerButton": "Crear Cuenta",
+    "creatingAccount": "Creando cuenta...",
+    "orContinueWith": "O continúa con",
+    "loginWithGoogle": "Iniciando con Google...",
+    "newHere": "¿Nuevo aquí?",
+    "createNewAccount": "Crear una cuenta nueva",
+    "alreadyHaveAccount": "¿Ya tienes cuenta?",
+    "loginHere": "Iniciar Sesión",
+    "passwordRequirements": "Requisitos de contraseña:",
+    "minChars": "Mínimo 8 caracteres",
+    "uppercase": "Una letra mayúscula",
+    "lowercase": "Una letra minúscula",
+    "number": "Un número",
+    "specialChar": "Un carácter especial (!@#$%...)",
+    "passwordsMatch": "Las contraseñas coinciden",
+    "passwordsDontMatch": "Las contraseñas no coinciden",
+    "passwordRequirementsNotMet": "La contraseña no cumple con todos los requisitos",
+    "authError": "Error de autenticación. Intenta de nuevo.",
+    "googleCredentialError": "No se recibió credencial de Google",
+    "googleLoginError": "Error al iniciar sesión con Google. Intenta de nuevo."
+  },
+  "fuel": {
+    "gasoline95": "Gasolina 95 E5",
+    "gasoline98": "Gasolina 98 E5",
+    "dieselA": "Gasóleo A",
+    "dieselB": "Gasóleo B",
+    "dieselPremium": "Gasóleo Premium"
+  },
+  "table": {
+    "brand": "Marca",
+    "location": "Ubicación",
+    "price": "Precio",
+    "favorite": "Fav",
+    "viewDetails": "Ver detalles"
+  },
+  "map": {
+    "title": "Mapa de Gasolineras",
+    "loadingLocation": "Cargando ubicación...",
+    "nearbyStations": "{{count}} gasolineras cerca de ti",
+    "showingStations": "Mostrando {{count}} gasolineras",
+    "locationDetected": "Ubicación detectada",
+    "yourLocation": "Tu ubicación",
+    "loadingMap": "Cargando mapa..."
+  },
+  "detail": {
+    "back": "Volver",
+    "howToGet": "Cómo llegar",
+    "share": "Compartir",
+    "fuelPrices": "Precios de Combustible",
+    "lowPrice": "¡PRECIO BAJO!",
+    "location": "Ubicación",
+    "loadingDetails": "Cargando detalles...",
+    "nearbyStations": "Gasolineras cercanas ({{count}})",
+    "sortByDistance": "Por distancia",
+    "sortByPrice": "Por precio"
+  },
+  "history": {
+    "title": "Historial de Precios",
+    "loadingHistory": "Cargando historial...",
+    "noData": "No hay datos históricos disponibles para este período.",
+    "noDataDescription": "El historial se construye con cada sincronización. Vuelve más tarde para ver la evolución de precios.",
+    "days": "días",
+    "records": "Registros",
+    "averageGasoline95": "Gasolina 95 Promedio",
+    "averageDieselA": "Gasóleo A Promedio",
+    "period": "Período",
+    "priceLabel": "Precio (€/L)",
+    "dateLabel": "Fecha"
+  },
+  "filter": {
+    "province": "Provincia",
+    "municipality": "Municipio",
+    "brandName": "Marca / Nombre",
+    "fuelType": "Tipo de Combustible"
+  }
+}

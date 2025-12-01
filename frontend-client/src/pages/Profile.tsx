@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { FaUser, FaEnvelope, FaShieldAlt, FaHeart, FaTrash, FaSignOutAlt, FaGasPump } from "react-icons/fa";
@@ -19,6 +20,7 @@ interface Favorito {
 }
 
 export default function Profile() {
+  const { t } = useTranslation();
   const { token, logout } = useAuth();
   const [perfil, setPerfil] = useState<Usuario | null>(null);
   const [favoritos, setFavoritos] = useState<Favorito[]>([]);
@@ -64,7 +66,7 @@ export default function Profile() {
 
   // Eliminar cuenta
   const handleDelete = async () => {
-    if (!globalThis.confirm("¿Seguro que quieres eliminar tu cuenta? Esta acción es irreversible.")) return;
+    if (!globalThis.confirm(t('profile.deleteConfirm'))) return;
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/api/usuarios/me`, {
@@ -105,7 +107,7 @@ export default function Profile() {
       if (res.ok) {
         const updatedPerfil = await res.json();
         setPerfil(prev => prev ? { ...prev, combustible_favorito: updatedPerfil.combustible_favorito } : null);
-        alert("✅ Combustible favorito guardado correctamente");
+        alert(t('profile.updateSuccess'));
       } else {
         const data = await res.json();
         setError(data.error || "Error al guardar preferencia");
@@ -171,37 +173,37 @@ export default function Profile() {
           <div className="p-8">
             {/* Info Card */}
             <div className="mb-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Información de la Cuenta</h2>
+              <h2 className="text-xl font-bold text-gray-800 mb-4">{t('profile.accountInfo')}</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-gray-50 p-4 rounded-xl">
                   <div className="flex items-center gap-2 text-gray-600 mb-1">
                     <FaUser size={14} />
-                    <span className="text-sm font-semibold">Nombre</span>
+                    <span className="text-sm font-semibold">{t('profile.name')}</span>
                   </div>
                   <p className="text-gray-800 font-medium">{perfil.nombre}</p>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl">
                   <div className="flex items-center gap-2 text-gray-600 mb-1">
                     <FaEnvelope size={14} />
-                    <span className="text-sm font-semibold">Email</span>
+                    <span className="text-sm font-semibold">{t('profile.email')}</span>
                   </div>
                   <p className="text-gray-800 font-medium">{perfil.email}</p>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl">
                   <div className="flex items-center gap-2 text-gray-600 mb-1">
                     <FaShieldAlt size={14} />
-                    <span className="text-sm font-semibold">Rol</span>
+                    <span className="text-sm font-semibold">{t('profile.role')}</span>
                   </div>
                   <p className="text-gray-800 font-medium">
-                    {perfil.is_admin ? "Administrador" : "Usuario"}
+                    {perfil.is_admin ? t('profile.admin') : t('profile.user')}
                   </p>
                 </div>
                 <div className="bg-gray-50 p-4 rounded-xl">
                   <div className="flex items-center gap-2 text-gray-600 mb-1">
                     <FaHeart size={14} />
-                    <span className="text-sm font-semibold">Favoritos</span>
+                    <span className="text-sm font-semibold">{t('profile.favorites')}</span>
                   </div>
-                  <p className="text-gray-800 font-medium">{favoritos.length} gasolineras</p>
+                  <p className="text-gray-800 font-medium">{favoritos.length} {t('profile.stations')}</p>
                 </div>
               </div>
             </div>
@@ -213,8 +215,8 @@ export default function Profile() {
                   <FaGasPump className="text-white" size={20} />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800">Combustible Favorito</h2>
-                  <p className="text-sm text-gray-600">Selecciona tu tipo de combustible preferido</p>
+                  <h2 className="text-xl font-bold text-gray-800">{t('profile.favoriteFuel')}</h2>
+                  <p className="text-sm text-gray-600">{t('profile.favoriteFuelDescription')}</p>
                 </div>
               </div>
               
@@ -224,7 +226,7 @@ export default function Profile() {
                     htmlFor="tipo-combustible"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
-                    Tipo de Combustible
+                    {t('profile.fuelType')}
                   </label>
                   <select
                     id="tipo-combustible"
@@ -232,11 +234,11 @@ export default function Profile() {
                     onChange={(e) => setCombustibleSeleccionado(e.target.value)}
                     className="w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
                   >
-                    <option value="Precio Gasolina 95 E5">⛽ Gasolina 95 E5</option>
-                    <option value="Precio Gasolina 98 E5">⛽ Gasolina 98 E5</option>
-                    <option value="Precio Gasoleo A">🚗 Gasóleo A</option>
-                    <option value="Precio Gasoleo B">🚜 Gasóleo B</option>
-                    <option value="Precio Gasoleo Premium">💎 Gasóleo Premium</option>
+                    <option value="Precio Gasolina 95 E5">⛽ {t('fuel.gasoline95')}</option>
+                    <option value="Precio Gasolina 98 E5">⛽ {t('fuel.gasoline98')}</option>
+                    <option value="Precio Gasoleo A">🚗 {t('fuel.dieselA')}</option>
+                    <option value="Precio Gasoleo B">🚜 {t('fuel.dieselB')}</option>
+                    <option value="Precio Gasoleo Premium">💎 {t('fuel.dieselPremium')}</option>
                   </select>
                 </div>
                 <button
@@ -247,12 +249,12 @@ export default function Profile() {
                   {guardandoCombustible ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Guardando...
+                      {t('profile.saving')}
                     </>
                   ) : (
                     <>
                       <FaGasPump size={16} />
-                      Guardar Preferencia
+                      {t('profile.savePreference')}
                     </>
                   )}
                 </button>
@@ -261,7 +263,7 @@ export default function Profile() {
               {perfil.combustible_favorito && (
                 <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
                   <p className="text-sm text-gray-600">
-                    <span className="font-semibold text-blue-700">Actual:</span>{" "}
+                    <span className="font-semibold text-blue-700">{t('profile.current')}:</span>{" "}
                     {getNombreCombustible(perfil.combustible_favorito)}
                   </p>
                 </div>
@@ -275,14 +277,14 @@ export default function Profile() {
                 className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-xl font-semibold hover:bg-gray-700 transition-all"
               >
                 <FaSignOutAlt />
-                Cerrar Sesión
+                {t('profile.logout')}
               </button>
               <button
                 onClick={handleDelete}
                 className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-all"
               >
                 <FaTrash />
-                Eliminar Cuenta
+                {t('profile.deleteAccount')}
               </button>
             </div>
           </div>
@@ -293,15 +295,15 @@ export default function Profile() {
           <div className="bg-linear-to-r from-[#000C74] to-[#4A52D9] p-6 text-white">
             <h2 className="text-2xl font-bold flex items-center gap-2">
               <FaHeart />
-              Mis Favoritos
+              {t('profile.myFavorites')}
             </h2>
           </div>
           <div className="p-8">
             {favoritos.length === 0 ? (
               <div className="text-center py-12">
                 <FaHeart className="mx-auto text-gray-300 mb-4" size={48} />
-                <p className="text-gray-500">No tienes favoritos guardados todavía.</p>
-                <p className="text-sm text-gray-400 mt-2">Explora gasolineras y guarda tus favoritas</p>
+                <p className="text-gray-500">{t('profile.noFavorites')}</p>
+                <p className="text-sm text-gray-400 mt-2">{t('profile.exploreAndSave')}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -314,7 +316,7 @@ export default function Profile() {
                       <div>
                         <p className="font-bold text-gray-800">ID: {fav.ideess}</p>
                         <p className="text-xs text-gray-500 mt-1">
-                          Guardado: {new Date(fav.created_at).toLocaleDateString('es-ES')}
+                          {t('profile.savedOn')}: {new Date(fav.created_at).toLocaleDateString('es-ES')}
                         </p>
                       </div>
                       <FaHeart className="text-red-500" size={20} />

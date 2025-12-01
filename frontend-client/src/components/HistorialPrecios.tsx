@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { getHistorialPrecios } from "../api/gasolineras";
 
@@ -39,6 +40,7 @@ const formatearFecha = (isoString: string): string => {
 };
 
 export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosProps>) {
+  const { t } = useTranslation();
   const [datos, setDatos] = useState<DatosGrafico[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -86,12 +88,12 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          📊 Historial de Precios
+          📊 {t('history.title')}
         </h2>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-4 border-[#000C74] border-t-transparent mb-2"></div>
-            <p className="text-gray-500 text-sm">Cargando historial...</p>
+            <p className="text-gray-500 text-sm">{t('history.loadingHistory')}</p>
           </div>
         </div>
       </div>
@@ -102,14 +104,14 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
         <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          📊 Historial de Precios
+          📊 {t('history.title')}
         </h2>
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-yellow-800 text-sm">
-            ℹ️ No hay datos históricos disponibles para este período.
+            ℹ️ {t('history.noData')}
           </p>
           <p className="text-yellow-600 text-xs mt-2">
-            El historial se construye con cada sincronización. Vuelve más tarde para ver la evolución de precios.
+            {t('history.noDataDescription')}
           </p>
         </div>
       </div>
@@ -120,7 +122,7 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2 mb-4 md:mb-0">
-          📊 Historial de Precios
+          📊 {t('history.title')}
         </h2>
         
         {/* Selector de período */}
@@ -135,7 +137,7 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"
               }`}
             >
-              {d} días
+              {d} {t('history.days')}
             </button>
           ))}
         </div>
@@ -144,11 +146,11 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
       {/* Leyenda interactiva */}
       <div className="flex flex-wrap gap-3 mb-6">
         {[
-          { key: "gasolina95" as const, label: "Gasolina 95 E5", color: "#22c55e" },
-          { key: "gasolina98" as const, label: "Gasolina 98 E5", color: "#10b981" },
-          { key: "gasoleoA" as const, label: "Gasóleo A", color: "#3b82f6" },
-          { key: "gasoleoB" as const, label: "Gasóleo B", color: "#6366f1" },
-          { key: "gasoleoPremium" as const, label: "Gasóleo Premium", color: "#8b5cf6" },
+          { key: "gasolina95" as const, label: t('fuel.gasoline95'), color: "#22c55e" },
+          { key: "gasolina98" as const, label: t('fuel.gasoline98'), color: "#10b981" },
+          { key: "gasoleoA" as const, label: t('fuel.dieselA'), color: "#3b82f6" },
+          { key: "gasoleoB" as const, label: t('fuel.dieselB'), color: "#6366f1" },
+          { key: "gasoleoPremium" as const, label: t('fuel.dieselPremium'), color: "#8b5cf6" },
         ].map(({ key, label, color }) => (
           <button
             key={key}
@@ -181,7 +183,7 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
             tick={{ fontSize: 12, fill: "#6b7280" }}
             tickLine={{ stroke: "#e5e7eb" }}
             domain={["auto", "auto"]}
-            label={{ value: "Precio (€/L)", angle: -90, position: "insideLeft", style: { fontSize: 12, fill: "#6b7280" } }}
+            label={{ value: t('history.priceLabel'), angle: -90, position: "insideLeft", style: { fontSize: 12, fill: "#6b7280" } }}
           />
           <Tooltip
             contentStyle={{
@@ -191,7 +193,7 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
               padding: "12px",
             }}
             formatter={(value: number) => [`${value.toFixed(3)} €/L`, ""]}
-            labelFormatter={(label: string) => `Fecha: ${label}`}
+            labelFormatter={(label: string) => `${t('history.dateLabel')}: ${label}`}
           />
           <Legend
             wrapperStyle={{ fontSize: "14px", paddingTop: "20px" }}
@@ -266,12 +268,12 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
         {datos.length > 0 && (
           <>
             <div className="text-center">
-              <p className="text-xs text-gray-500 mb-1">Registros</p>
+              <p className="text-xs text-gray-500 mb-1">{t('history.records')}</p>
               <p className="text-xl font-bold text-gray-800">{datos.length}</p>
             </div>
             {combustibleVisible.gasolina95 && datos.some(d => d.gasolina95) && (
               <div className="text-center">
-                <p className="text-xs text-gray-500 mb-1">Gasolina 95 Promedio</p>
+                <p className="text-xs text-gray-500 mb-1">{t('history.averageGasoline95')}</p>
                 <p className="text-xl font-bold text-green-600">
                   {(datos.reduce((sum, d) => sum + (d.gasolina95 || 0), 0) / datos.filter(d => d.gasolina95).length).toFixed(3)} €
                 </p>
@@ -279,15 +281,15 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
             )}
             {combustibleVisible.gasoleoA && datos.some(d => d.gasoleoA) && (
               <div className="text-center">
-                <p className="text-xs text-gray-500 mb-1">Gasóleo A Promedio</p>
+                <p className="text-xs text-gray-500 mb-1">{t('history.averageDieselA')}</p>
                 <p className="text-xl font-bold text-blue-600">
                   {(datos.reduce((sum, d) => sum + (d.gasoleoA || 0), 0) / datos.filter(d => d.gasoleoA).length).toFixed(3)} €
                 </p>
               </div>
             )}
             <div className="text-center">
-              <p className="text-xs text-gray-500 mb-1">Período</p>
-              <p className="text-xl font-bold text-gray-800">{dias} días</p>
+              <p className="text-xs text-gray-500 mb-1">{t('history.period')}</p>
+              <p className="text-xl font-bold text-gray-800">{dias} {t('history.days')}</p>
             </div>
           </>
         )}

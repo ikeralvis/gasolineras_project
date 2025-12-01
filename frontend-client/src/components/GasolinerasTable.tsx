@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from 'react-i18next';
 import FavoritoButton from "./FavoritoButton";
 import { useEstadisticas } from "../hooks/useEstadisticas";
 import { getPriceBadgeFromStats } from "../api/estadisticas";
@@ -32,6 +33,7 @@ interface Props {
 }
 
 const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionado }) => {
+  const { t } = useTranslation();
   const [page, setPage] = useState(1);
   const navigate = useNavigate();
   const { estadisticas, loading: loadingStats } = useEstadisticas();
@@ -245,7 +247,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                   {/* ACCIÓN */}
                   <td className="py-4">
                     <button className="text-[#000C74] opacity-0 group-hover:opacity-100 transition-opacity font-medium text-sm flex items-center gap-1">
-                      Ver detalles
+                      {t('table.viewDetails')}
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>

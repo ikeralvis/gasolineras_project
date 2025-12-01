@@ -1,0 +1,245 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "search": "Search",
+    "filter": "Filter",
+    "sort": "Sort",
+    "reset": "Reset",
+    "noResults": "No results found",
+    "seeMore": "See more",
+    "seeLess": "See less",
+    "viewDetails": "View details",
+    "next": "Next",
+    "previous": "Previous",
+    "showing": "Showing",
+    "of": "of",
+    "total": "Total"
+  },
+  "nav": {
+    "home": "Home",
+    "gasStations": "Gas Stations",
+    "map": "Map",
+    "favorites": "Favorites",
+    "login": "Login",
+    "register": "Register",
+    "logout": "Logout",
+    "profile": "My Profile"
+  },
+  "home": {
+    "title": "TankGo",
+    "subtitle": "Smart Fuel Prices Platform",
+    "description": "Real-time updated data, advanced visualization and automatic analysis to help you find the best option for every refuel.",
+    "exploreStations": "Explore Gas Stations",
+    "viewMap": "View Map",
+    "features": {
+      "title": "Key Features",
+      "subtitle": "Everything you need to save on every refuel",
+      "realtime": {
+        "title": "Real-Time Prices",
+        "description": "Access updated information from all gas stations in Spain. Official government data directly on your screen."
+      },
+      "location": {
+        "title": "Location Search",
+        "description": "Find the nearest stations. Filter by province, locality or view on the interactive map."
+      },
+      "compare": {
+        "title": "Price Comparison",
+        "description": "Compare prices for different fuels: Gasoline 95, 98, Diesel, Premium Diesel and more. Sort by price to find the best deal."
+      },
+      "favorites": {
+        "title": "Personalized Favorites",
+        "description": "Save your favorite gas stations and access them quickly. Set your preferred fuel to see only what interests you."
+      },
+      "map": {
+        "title": "Interactive Map",
+        "description": "Visualize all gas stations on a map. Explore by areas, find routes and plan your stops intelligently."
+      },
+      "history": {
+        "title": "Price History",
+        "description": "Check historical price evolution. Identify trends and decide the best time to refuel."
+      }
+    },
+    "howItWorks": {
+      "title": "How It Works?",
+      "subtitle": "Three simple steps to start saving",
+      "step1": {
+        "title": "Register Free",
+        "description": "Create your account in seconds. No cost, no commitment."
+      },
+      "step2": {
+        "title": "Search and Compare",
+        "description": "Explore gas stations, filter by location and compare prices instantly."
+      },
+      "step3": {
+        "title": "Save Money",
+        "description": "Choose the best option and save on every refuel. It's that simple!"
+      }
+    },
+    "cta": {
+      "title": "Ready to Start Saving?",
+      "subtitle": "Join thousands of users who are already optimizing their fuel expenses",
+      "button": "Create Free Account"
+    }
+  },
+  "gasStations": {
+    "title": "Gas Stations",
+    "subtitle": "Find the best options near you",
+    "loadingStations": "Loading gas stations...",
+    "noStationsWithFuel": "No gas stations found with {{fuel}}",
+    "filtersActive": "active",
+    "clearFilters": "Clear filters",
+    "customizeSearch": "Customize your search",
+    "provincePlaceholder": "E.g.: Madrid",
+    "municipalityPlaceholder": "E.g.: Alcalá de Henares",
+    "brandPlaceholder": "E.g.: Repsol",
+    "maxPricePlaceholder": "E.g.: 1.50",
+    "maxPrice": "Max price (€/L)",
+    "filterByBrand": "Filter by brand",
+    "showAdvancedFilters": "Show advanced filters",
+    "hideAdvancedFilters": "Hide advanced filters",
+    "onlyWithPrice": "Only with price available",
+    "sortByPrice": "Sort by price",
+    "orderedByProximity": "Ordered by proximity",
+    "foundStations": "gas stations found",
+    "statistics": "Price Statistics",
+    "minimum": "Minimum",
+    "average": "Average",
+    "maximum": "Maximum",
+    "brand": "Brand",
+    "location": "Location",
+    "favorite": "Fav",
+    "actions": "Actions"
+  },
+  "favorites": {
+    "title": "My Favorites",
+    "subtitle": "Your saved gas stations",
+    "loadingFavorites": "Loading favorites...",
+    "noFavorites": "No favorites saved",
+    "noFavoritesDescription": "Start saving your favorite gas stations by clicking the heart icon ❤️ on any gas station in the list.",
+    "searchStations": "Search Gas Stations",
+    "stationSaved_one": "{{count}} station saved",
+    "stationSaved_other": "{{count}} stations saved",
+    "exploreStations": "Explore Gas Stations",
+    "averagePrice95": "Avg Price G95",
+    "averagePriceDiesel": "Avg Price Diesel",
+    "totalFavorites": "Total Favorites"
+  },
+  "profile": {
+    "title": "My Profile",
+    "accountInfo": "Account Information",
+    "name": "Name",
+    "email": "Email",
+    "role": "Role",
+    "admin": "Administrator",
+    "user": "User",
+    "favorites": "Favorites",
+    "stations": "stations",
+    "favoriteFuel": "Favorite Fuel",
+    "favoriteFuelDescription": "Select your preferred fuel type",
+    "fuelType": "Fuel Type",
+    "savePreference": "Save Preference",
+    "saving": "Saving...",
+    "current": "Current",
+    "logout": "Logout",
+    "deleteAccount": "Delete Account",
+    "myFavorites": "My Favorites",
+    "noFavorites": "You don't have any favorites saved yet.",
+    "exploreAndSave": "Explore gas stations and save your favorites",
+    "savedOn": "Saved on",
+    "deleteConfirm": "Are you sure you want to delete your account? This action is irreversible.",
+    "accountDeleted": "Account deleted successfully",
+    "updateSuccess": "✅ Favorite fuel saved successfully"
+  },
+  "auth": {
+    "welcomeBack": "Welcome back!",
+    "findBestStations": "Find the best gas stations near you",
+    "joinUs": "Join us",
+    "createAccountDescription": "Create your account and discover the best prices",
+    "email": "Email",
+    "emailPlaceholder": "your@email.com",
+    "password": "Password",
+    "confirmPassword": "Confirm Password",
+    "fullName": "Full Name",
+    "fullNamePlaceholder": "John Doe",
+    "loginButton": "Login",
+    "loggingIn": "Logging in...",
+    "registerButton": "Create Account",
+    "creatingAccount": "Creating account...",
+    "orContinueWith": "Or continue with",
+    "loginWithGoogle": "Logging with Google...",
+    "newHere": "New here?",
+    "createNewAccount": "Create a new account",
+    "alreadyHaveAccount": "Already have an account?",
+    "loginHere": "Login",
+    "passwordRequirements": "Password requirements:",
+    "minChars": "Minimum 8 characters",
+    "uppercase": "One uppercase letter",
+    "lowercase": "One lowercase letter",
+    "number": "One number",
+    "specialChar": "One special character (!@#$%...)",
+    "passwordsMatch": "Passwords match",
+    "passwordsDontMatch": "Passwords don't match",
+    "passwordRequirementsNotMet": "Password doesn't meet all requirements",
+    "authError": "Authentication error. Try again.",
+    "googleCredentialError": "Google credential not received",
+    "googleLoginError": "Error logging in with Google. Try again."
+  },
+  "fuel": {
+    "gasoline95": "Gasoline 95 E5",
+    "gasoline98": "Gasoline 98 E5",
+    "dieselA": "Diesel A",
+    "dieselB": "Diesel B",
+    "dieselPremium": "Premium Diesel"
+  },
+  "table": {
+    "brand": "Brand",
+    "location": "Location",
+    "price": "Price",
+    "favorite": "Fav",
+    "viewDetails": "View details"
+  },
+  "map": {
+    "title": "Gas Stations Map",
+    "loadingLocation": "Loading location...",
+    "nearbyStations": "{{count}} stations near you",
+    "showingStations": "Showing {{count}} stations",
+    "locationDetected": "Location detected",
+    "yourLocation": "Your location",
+    "loadingMap": "Loading map..."
+  },
+  "detail": {
+    "back": "Back",
+    "howToGet": "Get Directions",
+    "share": "Share",
+    "fuelPrices": "Fuel Prices",
+    "lowPrice": "LOW PRICE!",
+    "location": "Location",
+    "loadingDetails": "Loading details...",
+    "nearbyStations": "Nearby Stations ({{count}})",
+    "sortByDistance": "By distance",
+    "sortByPrice": "By price"
+  },
+  "history": {
+    "title": "Price History",
+    "loadingHistory": "Loading history...",
+    "noData": "No historical data available for this period.",
+    "noDataDescription": "History is built with each sync. Come back later to see price evolution.",
+    "days": "days",
+    "records": "Records",
+    "averageGasoline95": "Gasoline 95 Average",
+    "averageDieselA": "Diesel A Average",
+    "period": "Period",
+    "priceLabel": "Price (€/L)",
+    "dateLabel": "Date"
+  },
+  "filter": {
+    "province": "Province",
+    "municipality": "Municipality",
+    "brandName": "Brand / Name",
+    "fuelType": "Fuel Type"
+  }
+}

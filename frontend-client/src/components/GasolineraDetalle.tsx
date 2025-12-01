@@ -1,5 +1,6 @@
 import { useParams, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import HistorialPrecios from "./HistorialPrecios";
@@ -58,6 +59,7 @@ const esPrecioBajo = (precio: string, tipo: "gasolina" | "diesel"): boolean => {
 export default function GasolineraDetalle() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [gasolinera, setGasolinera] = useState<Gasolinera | null>(null);
   const [cercanas, setCercanas] = useState<Gasolinera[]>([]);
@@ -80,7 +82,7 @@ export default function GasolineraDetalle() {
       <div className="flex items-center justify-center h-screen">
         <div className="text-center">
           <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#000C74] border-t-transparent mb-4"></div>
-          <p className="text-gray-600 font-medium">Cargando detalles...</p>
+          <p className="text-gray-600 font-medium">{t('detail.loadingDetails')}</p>
         </div>
       </div>
     );
@@ -126,7 +128,7 @@ export default function GasolineraDetalle() {
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
-          Volver
+          {t('detail.back')}
         </button>
 
         {/* CARD PRINCIPAL CON LOGO */}
@@ -173,7 +175,7 @@ export default function GasolineraDetalle() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
                 </svg>
-                Cómo llegar
+                {t('detail.howToGet')}
               </a>
               
               <button
@@ -182,14 +184,14 @@ export default function GasolineraDetalle() {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
                 </svg>
-                Compartir
+                {t('detail.share')}
               </button>
             </div>
           </div>
 
           {/* PRECIOS DE COMBUSTIBLES */}
           <div className="mt-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">Precios de Combustible</h2>
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('detail.fuelPrices')}</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {combustibles.map((combustible) => (
                 <div 
@@ -208,7 +210,7 @@ export default function GasolineraDetalle() {
                     </div>
                     {combustible.precio && esPrecioBajo(combustible.precio, combustible.tipo) && (
                       <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
-                        ¡PRECIO BAJO!
+                        {t('detail.lowPrice')}
                       </span>
                     )}
                   </div>
@@ -225,7 +227,7 @@ export default function GasolineraDetalle() {
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
               </svg>
-              Ubicación
+              {t('detail.location')}
             </h2>
             <p className="text-white/80 text-sm mt-1">
               {gasolinera.Latitud.toFixed(6)}, {gasolinera.Longitud.toFixed(6)}
@@ -262,7 +264,7 @@ export default function GasolineraDetalle() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
-                Gasolineras cercanas ({cercanas.length})
+                {t('detail.nearbyStations', { count: cercanas.length })}
               </h2>
               
               {/* SELECTOR DE ORDEN */}
@@ -275,7 +277,7 @@ export default function GasolineraDetalle() {
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  Por distancia
+                  {t('detail.sortByDistance')}
                 </button>
                 <button
                   onClick={() => setOrdenCercanas("precio")}
@@ -285,7 +287,7 @@ export default function GasolineraDetalle() {
                       : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
-                  Por precio
+                  {t('detail.sortByPrice')}
                 </button>
               </div>
             </div>

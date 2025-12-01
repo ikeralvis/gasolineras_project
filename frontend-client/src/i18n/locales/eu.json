@@ -1,0 +1,245 @@
+{
+  "common": {
+    "loading": "Kargatzen...",
+    "error": "Errorea",
+    "save": "Gorde",
+    "cancel": "Ezeztatu",
+    "close": "Itxi",
+    "search": "Bilatu",
+    "filter": "Iragazi",
+    "sort": "Ordenatu",
+    "reset": "Berrezarri",
+    "noResults": "Ez da emaitzarik aurkitu",
+    "seeMore": "Ikusi gehiago",
+    "seeLess": "Ikusi gutxiago",
+    "viewDetails": "Xehetasunak ikusi",
+    "next": "Hurrengoa",
+    "previous": "Aurrekoa",
+    "showing": "Erakusten",
+    "of": "/-tik",
+    "total": "Guztira"
+  },
+  "nav": {
+    "home": "Hasiera",
+    "gasStations": "Gasolindegiak",
+    "map": "Mapa",
+    "favorites": "Gogokoak",
+    "login": "Hasi saioa",
+    "register": "Erregistratu",
+    "logout": "Saioa itxi",
+    "profile": "Nire profila"
+  },
+  "home": {
+    "title": "TankGo",
+    "subtitle": "Erregai Prezioen Plataforma Adimentsua",
+    "description": "Denbora errealeko datu eguneratuak, bistaratze aurreratua eta analisi automatikoa errepostatzeko aukera onena aurkitzen laguntzeko.",
+    "exploreStations": "Gasolindegiak arakatu",
+    "viewMap": "Mapa ikusi",
+    "features": {
+      "title": "Funtzionaltasun Nagusiak",
+      "subtitle": "Errepostatzeko behar duzun guztia",
+      "realtime": {
+        "title": "Denbora Errealeko Prezioak",
+        "description": "Sartu Espainiako gasolindegia guztien informazio eguneratua. Gobernuko datu ofizialak zure pantailan."
+      },
+      "location": {
+        "title": "Kokapenaren arabera Bilatu",
+        "description": "Aurkitu hurbileneko gasolindegiak. Iragazi probintziz, herriz edo ikusi mapa interaktiboan."
+      },
+      "compare": {
+        "title": "Prezioen Konparaketa",
+        "description": "Konparatu erregai desberdinen prezioak: Gasolina 95, 98, Gasolioa, Gasolio Premium eta gehiago. Ordenatu prezioaren arabera eskaintza onena aurkitzeko."
+      },
+      "favorites": {
+        "title": "Gogoko Pertsonalizatuak",
+        "description": "Gorde zure gogokoenen gasolindegiak eta sartu azkar. Konfiguratu zure gogoko erregaia soilik interesatzen zaizuna ikusteko."
+      },
+      "map": {
+        "title": "Mapa Interaktiboa",
+        "description": "Ikusi gasolindegia guztiak mapan. Arakatu eremuak, aurkitu ibilbideak eta planifikatu zure geldialdiak adimentsu."
+      },
+      "history": {
+        "title": "Prezioen Historia",
+        "description": "Kontsultatu prezioen bilakaera historikoa. Identifikatu joerak eta erabaki errepostatzeko unea."
+      }
+    },
+    "howItWorks": {
+      "title": "Nola funtzionatzen du?",
+      "subtitle": "Hiru pauso sinple aurreztea hasteko",
+      "step1": {
+        "title": "Erregistratu Doan",
+        "description": "Sortu zure kontua segundotan. Kosturik gabe, konpromisorik gabe."
+      },
+      "step2": {
+        "title": "Bilatu eta Konparatu",
+        "description": "Arakatu gasolindegiak, iragazi kokapenaren arabera eta konparatu prezioak berehalakoan."
+      },
+      "step3": {
+        "title": "Aurreztu Dirua",
+        "description": "Aukeratu aukera onena eta aurreztu errepostaldi bakoitzean. Hain erraza da!"
+      }
+    },
+    "cta": {
+      "title": "Prest zaude Aurrezten Hasteko?",
+      "subtitle": "Batu erregai gastuak optimizatzen ari diren erabiltzaile milakaei",
+      "button": "Sortu Kontu Doakoa"
+    }
+  },
+  "gasStations": {
+    "title": "Gasolindegiak",
+    "subtitle": "Aurkitu zure inguruko aukera onenak",
+    "loadingStations": "Gasolindegiak kargatzen...",
+    "noStationsWithFuel": "Ez da {{fuel}} gasolindegirik aurkitu",
+    "filtersActive": "aktibo",
+    "clearFilters": "Iragazkiak garbitu",
+    "customizeSearch": "Pertsonalizatu zure bilaketa",
+    "provincePlaceholder": "Adib.: Bizkaia",
+    "municipalityPlaceholder": "Adib.: Bilbao",
+    "brandPlaceholder": "Adib.: Repsol",
+    "maxPricePlaceholder": "Adib.: 1.50",
+    "maxPrice": "Gehienezko prezioa (€/L)",
+    "filterByBrand": "Iragazi markaren arabera",
+    "showAdvancedFilters": "Erakutsi iragazki aurreratuak",
+    "hideAdvancedFilters": "Ezkutatu iragazki aurreratuak",
+    "onlyWithPrice": "Prezioa daukaten bakarrik",
+    "sortByPrice": "Ordenatu prezioaren arabera",
+    "orderedByProximity": "Hurbiltasunaren arabera ordenatuta",
+    "foundStations": "gasolindegia aurkitu dira",
+    "statistics": "Prezioen Estatistikak",
+    "minimum": "Gutxienekoa",
+    "average": "Batez bestekoa",
+    "maximum": "Gehienekoa",
+    "brand": "Marka",
+    "location": "Kokapena",
+    "favorite": "Gog",
+    "actions": "Ekintzak"
+  },
+  "favorites": {
+    "title": "Nire Gogokoak",
+    "subtitle": "Zure gordetako gasolindegiak",
+    "loadingFavorites": "Gogokoak kargatzen...",
+    "noFavorites": "Ez daukazu gogokorik gordeta",
+    "noFavoritesDescription": "Hasi zure gogoko gasolindegiak gordetzen bihotz ikonoan ❤️ klik eginez zerrendako edozein gasolindegitan.",
+    "searchStations": "Gasolindegiak Bilatu",
+    "stationSaved_one": "Gasolindegia {{count}} gordeta",
+    "stationSaved_other": "{{count}} gasolindegia gordeta",
+    "exploreStations": "Gasolindegiak Arakatu",
+    "averagePrice95": "Batez Besteko Prezioa G95",
+    "averagePriceDiesel": "Batez Besteko Prezioa Gasolioa",
+    "totalFavorites": "Gogoko Guztira"
+  },
+  "profile": {
+    "title": "Nire Profila",
+    "accountInfo": "Kontuaren Informazioa",
+    "name": "Izena",
+    "email": "Emaila",
+    "role": "Rola",
+    "admin": "Administratzailea",
+    "user": "Erabiltzailea",
+    "favorites": "Gogokoak",
+    "stations": "gasolindegiak",
+    "favoriteFuel": "Gogoko Erregaia",
+    "favoriteFuelDescription": "Hautatu zure gogoko erregai mota",
+    "fuelType": "Erregai Mota",
+    "savePreference": "Lehentasuna Gorde",
+    "saving": "Gordetzen...",
+    "current": "Oraingoa",
+    "logout": "Saioa Itxi",
+    "deleteAccount": "Kontua Ezabatu",
+    "myFavorites": "Nire Gogokoak",
+    "noFavorites": "Ez daukazu gogokorik oraindik.",
+    "exploreAndSave": "Arakatu gasolindegiak eta gorde zure gogokoak",
+    "savedOn": "Gordeta",
+    "deleteConfirm": "Ziur zaude zure kontua ezabatu nahi duzula? Ekintza hau ezin da desegin.",
+    "accountDeleted": "Kontua behar bezala ezabatu da",
+    "updateSuccess": "✅ Gogoko erregaia behar bezala gorde da"
+  },
+  "auth": {
+    "welcomeBack": "Ongi etorri berriro!",
+    "findBestStations": "Aurkitu zure inguruko gasolindegirik onenak",
+    "joinUs": "Batu gurekin",
+    "createAccountDescription": "Sortu zure kontua eta aurkitu prezio onenak",
+    "email": "Emaila",
+    "emailPlaceholder": "zure@emaila.com",
+    "password": "Pasahitza",
+    "confirmPassword": "Berretsi Pasahitza",
+    "fullName": "Izen Osoa",
+    "fullNamePlaceholder": "Jon Perez",
+    "loginButton": "Hasi Saioa",
+    "loggingIn": "Saioa hasten...",
+    "registerButton": "Sortu Kontua",
+    "creatingAccount": "Kontua sortzen...",
+    "orContinueWith": "Edo jarraitu honekin",
+    "loginWithGoogle": "Google-rekin hasten...",
+    "newHere": "Berria zara hemen?",
+    "createNewAccount": "Sortu kontu berria",
+    "alreadyHaveAccount": "Badaukazu kontua?",
+    "loginHere": "Hasi Saioa",
+    "passwordRequirements": "Pasahitzaren baldintzak:",
+    "minChars": "Gutxienez 8 karaktere",
+    "uppercase": "Letra larri bat",
+    "lowercase": "Letra xehe bat",
+    "number": "Zenbaki bat",
+    "specialChar": "Karaktere berezi bat (!@#$%...)",
+    "passwordsMatch": "Pasahitzak bat datoz",
+    "passwordsDontMatch": "Pasahitzak ez datoz bat",
+    "passwordRequirementsNotMet": "Pasahitzak ez ditu baldintza guztiak betetzen",
+    "authError": "Autentifikazio errorea. Saiatu berriro.",
+    "googleCredentialError": "Ez da Google kredentzialik jaso",
+    "googleLoginError": "Errorea Google-rekin saioa hasteakoan. Saiatu berriro."
+  },
+  "fuel": {
+    "gasoline95": "Gasolina 95 E5",
+    "gasoline98": "Gasolina 98 E5",
+    "dieselA": "Gasolioa A",
+    "dieselB": "Gasolioa B",
+    "dieselPremium": "Gasolio Premium"
+  },
+  "table": {
+    "brand": "Marka",
+    "location": "Kokapena",
+    "price": "Prezioa",
+    "favorite": "Gog",
+    "viewDetails": "Xehetasunak ikusi"
+  },
+  "map": {
+    "title": "Gasolindegien Mapa",
+    "loadingLocation": "Kokapena kargatzen...",
+    "nearbyStations": "{{count}} gasolindegia zure inguruan",
+    "showingStations": "{{count}} gasolindegia erakusten",
+    "locationDetected": "Kokapena detektatu da",
+    "yourLocation": "Zure kokapena",
+    "loadingMap": "Mapa kargatzen..."
+  },
+  "detail": {
+    "back": "Atzera",
+    "howToGet": "Nola iritsi",
+    "share": "Partekatu",
+    "fuelPrices": "Erregai Prezioak",
+    "lowPrice": "PREZIO TXIKIA!",
+    "location": "Kokapena",
+    "loadingDetails": "Xehetasunak kargatzen...",
+    "nearbyStations": "Hurbileko gasolindegiak ({{count}})",
+    "sortByDistance": "Distantziaren arabera",
+    "sortByPrice": "Prezioaren arabera"
+  },
+  "history": {
+    "title": "Prezioen Historiala",
+    "loadingHistory": "Historiala kargatzen...",
+    "noData": "Ez dago datu historikorik eskuragarri aldi honetarako.",
+    "noDataDescription": "Historiala sinkronizazio bakoitzarekin eraikitzen da. Itzuli geroago prezioen bilakaera ikusteko.",
+    "days": "egun",
+    "records": "Erregistroak",
+    "averageGasoline95": "Gasolina 95 Batez Bestekoa",
+    "averageDieselA": "Gasolio A Batez Bestekoa",
+    "period": "Aldia",
+    "priceLabel": "Prezioa (€/L)",
+    "dateLabel": "Data"
+  },
+  "filter": {
+    "province": "Probintzia",
+    "municipality": "Udalerria",
+    "brandName": "Marka / Izena",
+    "fuelType": "Erregai Mota"
+  }
+}

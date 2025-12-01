@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { FaUser, FaEnvelope, FaLock, FaGasPump, FaEye, FaEyeSlash, FaCheckCircle } from 'react-icons/fa';
 
 export default function Register() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { register } = useAuth();
   const [nombre, setNombre] = useState('');
@@ -31,12 +33,12 @@ export default function Register() {
     setError('');
 
     if (!allRequirementsMet) {
-      setError('La contraseña no cumple con todos los requisitos');
+      setError(t('auth.passwordRequirementsNotMet'));
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Las contraseñas no coinciden');
+      setError(t('auth.passwordsDontMatch'));
       return;
     }
 
@@ -63,10 +65,10 @@ export default function Register() {
             </div>
           </div>
           <h1 className="text-3xl font-bold text-center mb-2">
-            Únete a nosotros
+            {t('auth.joinUs')}
           </h1>
           <p className="text-white/80 text-center text-sm">
-            Crea tu cuenta y descubre los mejores precios
+            {t('auth.createAccountDescription')}
           </p>
         </div>
 
@@ -90,7 +92,7 @@ export default function Register() {
             {/* Nombre */}
             <div>
               <label htmlFor="nombre" className="block text-sm font-semibold text-gray-700 mb-2">
-                Nombre Completo
+                {t('auth.fullName')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -103,7 +105,7 @@ export default function Register() {
                   value={nombre}
                   onChange={(e) => setNombre(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#000C74] focus:border-transparent outline-none transition bg-gray-50 hover:bg-white"
-                  placeholder="Juan Pérez"
+                  placeholder={t('auth.fullNamePlaceholder')}
                 />
               </div>
             </div>
@@ -111,7 +113,7 @@ export default function Register() {
             {/* Email */}
             <div>
               <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                Correo Electrónico
+                {t('auth.email')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -124,7 +126,7 @@ export default function Register() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#000C74] focus:border-transparent outline-none transition bg-gray-50 hover:bg-white"
-                  placeholder="tu@email.com"
+                  placeholder={t('auth.emailPlaceholder')}
                 />
               </div>
             </div>
@@ -132,7 +134,7 @@ export default function Register() {
             {/* Contraseña */}
             <div>
               <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                Contraseña
+                {t('auth.password')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -160,27 +162,27 @@ export default function Register() {
               {/* Requisitos de contraseña */}
               {password && (
                 <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">Requisitos de contraseña:</p>
+                  <p className="text-xs font-semibold text-gray-600 mb-2">{t('auth.passwordRequirements')}</p>
                   <div className="grid grid-cols-1 gap-1">
                     <div className={`flex items-center gap-2 text-xs ${passwordRequirements.length ? 'text-green-600' : 'text-gray-500'}`}>
                       <FaCheckCircle className={passwordRequirements.length ? 'opacity-100' : 'opacity-30'} />
-                      <span>Mínimo 8 caracteres</span>
+                      <span>{t('auth.minChars')}</span>
                     </div>
                     <div className={`flex items-center gap-2 text-xs ${passwordRequirements.uppercase ? 'text-green-600' : 'text-gray-500'}`}>
                       <FaCheckCircle className={passwordRequirements.uppercase ? 'opacity-100' : 'opacity-30'} />
-                      <span>Una letra mayúscula</span>
+                      <span>{t('auth.uppercase')}</span>
                     </div>
                     <div className={`flex items-center gap-2 text-xs ${passwordRequirements.lowercase ? 'text-green-600' : 'text-gray-500'}`}>
                       <FaCheckCircle className={passwordRequirements.lowercase ? 'opacity-100' : 'opacity-30'} />
-                      <span>Una letra minúscula</span>
+                      <span>{t('auth.lowercase')}</span>
                     </div>
                     <div className={`flex items-center gap-2 text-xs ${passwordRequirements.number ? 'text-green-600' : 'text-gray-500'}`}>
                       <FaCheckCircle className={passwordRequirements.number ? 'opacity-100' : 'opacity-30'} />
-                      <span>Un número</span>
+                      <span>{t('auth.number')}</span>
                     </div>
                     <div className={`flex items-center gap-2 text-xs ${passwordRequirements.special ? 'text-green-600' : 'text-gray-500'}`}>
                       <FaCheckCircle className={passwordRequirements.special ? 'opacity-100' : 'opacity-30'} />
-                      <span>Un carácter especial (!@#$%...)</span>
+                      <span>{t('auth.specialChar')}</span>
                     </div>
                   </div>
                 </div>
@@ -190,7 +192,7 @@ export default function Register() {
             {/* Confirmar Contraseña */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2">
-                Confirmar Contraseña
+                {t('auth.confirmPassword')}
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -219,13 +221,13 @@ export default function Register() {
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                   </svg>
-                  Las contraseñas no coinciden
+                  {t('auth.passwordsDontMatch')}
                 </p>
               )}
               {confirmPassword && password === confirmPassword && (
                 <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
                   <FaCheckCircle />
-                  Las contraseñas coinciden
+                  {t('auth.passwordsMatch')}
                 </p>
               )}
             </div>
@@ -239,10 +241,10 @@ export default function Register() {
               {loading ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Creando cuenta...</span>
+                  <span>{t('auth.creatingAccount')}</span>
                 </>
               ) : (
-                <>Crear Cuenta</>
+                <>{t('auth.registerButton')}</>
               )}
             </button>
           </form>
@@ -253,7 +255,7 @@ export default function Register() {
               <div className="w-full border-t border-gray-300"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">¿Ya tienes cuenta?</span>
+              <span className="px-2 bg-white text-gray-500">{t('auth.alreadyHaveAccount')}</span>
             </div>
           </div>
 
@@ -263,7 +265,7 @@ export default function Register() {
               to="/login"
               className="inline-block w-full py-3 px-4 border-2 border-[#000C74] text-[#000C74] rounded-xl font-semibold hover:bg-[#000C74] hover:text-white transition-all"
             >
-              Iniciar Sesión
+              {t('auth.loginHere')}
             </Link>
           </div>
         </div>

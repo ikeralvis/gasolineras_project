@@ -2,12 +2,15 @@ import { Link, NavLink } from "react-router-dom";
 import { FiMapPin, FiMenu, FiX } from "react-icons/fi";
 import { MdLocalGasStation } from "react-icons/md";
 import { FaUser, FaSignOutAlt, FaHeart } from "react-icons/fa";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import { useFavorites } from "../hooks/useFavorites";
 import { useState, useEffect, useRef } from "react";
+import LanguageSelector from "./LanguageSelector";
 import logo from "../assets/logo.png";
 
 export default function Navbar() {
+  const { t } = useTranslation();
   const { user, logout, isAuthenticated } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -82,25 +85,25 @@ export default function Navbar() {
         {/* Desktop Links */}
         <div className="hidden md:flex items-center gap-2">
           <NavLink to="/" className={linkStyle}>
-            Inicio
+            {t('nav.home')}
           </NavLink>
 
           <NavLink to="/gasolineras" className={linkStyle}>
             <span className="flex items-center gap-2">
-              <MdLocalGasStation size={18}/> Gasolineras
+              <MdLocalGasStation size={18}/> {t('nav.gasStations')}
             </span>
           </NavLink>
 
           <NavLink to="/mapa" className={linkStyle}>
             <span className="flex items-center gap-2">
-              <FiMapPin size={18}/> Mapa
+              <FiMapPin size={18}/> {t('nav.map')}
             </span>
           </NavLink>
 
           {isAuthenticated && (
             <NavLink to="/favoritos" className={linkStyle}>
               <span className="flex items-center gap-2">
-                <FaHeart size={16}/> Favoritos
+                <FaHeart size={16}/> {t('nav.favorites')}
                 {favoritos.length > 0 && (
                   <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">
                     {favoritos.length}
@@ -109,6 +112,9 @@ export default function Navbar() {
               </span>
             </NavLink>
           )}
+
+          {/* Language Selector */}
+          <LanguageSelector />
 
           {/* Auth Buttons Desktop */}
           {isAuthenticated ? (
@@ -130,14 +136,14 @@ export default function Navbar() {
                     className="flex items-center gap-2 px-4 py-3 hover:bg-gray-50 transition text-gray-700"
                   >
                     <FaUser size={14} />
-                    Mi Perfil
+                    {t('nav.profile')}
                   </Link>
                   <button
                     onClick={handleLogout}
                     className="w-full text-left px-4 py-3 hover:bg-red-50 transition flex items-center gap-2 text-red-600 border-t border-gray-100"
                   >
                     <FaSignOutAlt size={14} />
-                    Cerrar Sesión
+                    {t('nav.logout')}
                   </button>
                 </div>
               )}
@@ -148,13 +154,13 @@ export default function Navbar() {
                 to="/login"
                 className="px-4 py-2 rounded-full text-[#000C74] hover:bg-[#E4E7FF] transition font-medium"
               >
-                Iniciar Sesión
+                {t('nav.login')}
               </Link>
               <Link
                 to="/register"
                 className="px-4 py-2 rounded-full bg-[#000C74] text-white hover:bg-[#001A8A] transition font-medium"
               >
-                Registrarse
+                {t('nav.register')}
               </Link>
             </div>
           )}
@@ -183,20 +189,20 @@ export default function Navbar() {
         >
           <div className="px-4 py-4 space-y-2">
             <NavLink to="/" className={mobileLinkStyle} onClick={closeMobileMenu}>
-              Inicio
+              {t('nav.home')}
             </NavLink>
 
             <NavLink to="/gasolineras" className={mobileLinkStyle} onClick={closeMobileMenu}>
-              <MdLocalGasStation size={20}/> Gasolineras
+              <MdLocalGasStation size={20}/> {t('nav.gasStations')}
             </NavLink>
 
             <NavLink to="/mapa" className={mobileLinkStyle} onClick={closeMobileMenu}>
-              <FiMapPin size={20}/> Mapa
+              <FiMapPin size={20}/> {t('nav.map')}
             </NavLink>
 
             {isAuthenticated && (
               <NavLink to="/favoritos" className={mobileLinkStyle} onClick={closeMobileMenu}>
-                <FaHeart size={18}/> Favoritos
+                <FaHeart size={18}/> {t('nav.favorites')}
                 {favoritos.length > 0 && (
                   <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full ml-auto">
                     {favoritos.length}
@@ -204,6 +210,15 @@ export default function Navbar() {
                 )}
               </NavLink>
             )}
+
+            {/* Separador */}
+            <div className="border-t border-[#D9DBF2]/60 my-3"></div>
+
+            {/* Language Selector Mobile */}
+            <div className="flex items-center justify-between px-4 py-2">
+              <span className="text-[#3A3D55] font-medium">{t('profile.language')}</span>
+              <LanguageSelector />
+            </div>
 
             {/* Separador */}
             <div className="border-t border-[#D9DBF2]/60 my-3"></div>
@@ -217,14 +232,14 @@ export default function Navbar() {
                   className="flex items-center gap-3 px-4 py-3 rounded-xl text-[#3A3D55] hover:bg-[#E4E7FF] transition font-medium"
                 >
                   <FaUser size={18} />
-                  Mi Perfil ({user?.nombre || 'Usuario'})
+                  {t('nav.profile')} ({user?.nombre || 'Usuario'})
                 </Link>
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-red-600 hover:bg-red-50 transition font-medium"
                 >
                   <FaSignOutAlt size={18} />
-                  Cerrar Sesión
+                  {t('nav.logout')}
                 </button>
               </>
             ) : (
@@ -234,14 +249,14 @@ export default function Navbar() {
                   onClick={closeMobileMenu}
                   className="flex items-center justify-center px-4 py-3 rounded-xl text-[#000C74] border-2 border-[#000C74] hover:bg-[#E4E7FF] transition font-medium"
                 >
-                  Iniciar Sesión
+                  {t('nav.login')}
                 </Link>
                 <Link
                   to="/register"
                   onClick={closeMobileMenu}
                   className="flex items-center justify-center px-4 py-3 rounded-xl bg-[#000C74] text-white hover:bg-[#001A8A] transition font-medium"
                 >
-                  Registrarse
+                  {t('nav.register')}
                 </Link>
               </div>
             )}
