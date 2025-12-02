@@ -19,7 +19,7 @@
   "license": "MIT",
   "dependencies": {
     "@hono/node-server": "^1.19.5",
-    "@hono/swagger-ui": "^0.4.1",
+    "@hono/swagger-ui": "^0.5.2",
     "hono": "^4.10.1"
   },
   "engines": {
