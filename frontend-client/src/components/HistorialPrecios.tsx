@@ -192,8 +192,8 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
               borderRadius: "8px",
               padding: "12px",
             }}
-            formatter={(value: number) => [`${value.toFixed(3)} €/L`, ""]}
-            labelFormatter={(label: string) => `${t('history.dateLabel')}: ${label}`}
+            formatter={(value: number | undefined) => [`${value != null ? value.toFixed(3) : ''} €/L`, ""]}
+            labelFormatter={(label) => `${t('history.dateLabel')}: ${label}`}
           />
           <Legend
             wrapperStyle={{ fontSize: "14px", paddingTop: "20px" }}
