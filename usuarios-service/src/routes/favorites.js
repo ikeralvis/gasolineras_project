@@ -177,4 +177,59 @@ export async function favoritesRoutes(fastify) {
     }
 });
 
+    // ========================================
+    // 🔐 ENDPOINTS INTERNOS (solo gateway/servicios)
+    // ========================================
+
+    // GET /favoritos/all-ideess - Obtener todos los IDEESS favoritos (interno)
+    // Usado por gasolineras-service para guardar solo histórico de favoritas
+    fastify.get('/favoritos/all-ideess', {
+        schema: {
+            tags: ['Favoritos'],
+            summary: 'Obtener todos los IDEESS favoritos (interno)',
+            description: 'Endpoint interno para obtener lista única de IDEESS favoritos de todos los usuarios',
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        count: { type: 'integer' },
+                        ideess: { 
+                            type: 'array',
+                            items: { type: 'string' }
+                        }
+                    }
+                },
+                403: { type: 'object', properties: { error: { type: 'string' } } }
+            }
+        },
+        // 🔐 Validar secret interno
+        onRequest: async (request, reply) => {
+            const internalSecret = request.headers['x-internal-secret'];
+            const expectedSecret = process.env.INTERNAL_API_SECRET || 'dev-internal-secret-change-in-production';
+            
+            if (!internalSecret || internalSecret !== expectedSecret) {
+                fastify.log.warn('⚠️ Intento de acceso a /favoritos/all-ideess sin secret válido');
+                return reply.code(403).send({ error: 'Forbidden: Invalid internal secret' });
+            }
+        }
+    }, async (request, reply) => {
+        try {
+            // Obtener todos los IDEESS únicos de favoritos
+            const query = 'SELECT DISTINCT ideess FROM user_favorites;';
+            const result = await fastify.pg.query(query);
+            
+            const ideessList = result.rows.map(row => row.ideess);
+            
+            fastify.log.info(`📊 Total IDEESS favoritos únicos: ${ideessList.length}`);
+            
+            return reply.code(200).send({
+                count: ideessList.length,
+                ideess: ideessList
+            });
+        } catch (error) {
+            fastify.log.error('Error obteniendo IDEESS favoritos:', error);
+            return reply.code(500).send({ error: 'Error interno del servidor.' });
+        }
+    });
+
 }

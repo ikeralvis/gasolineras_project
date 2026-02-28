@@ -217,7 +217,18 @@ export async function authRoutes(fastify) {
                 { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
             );
 
-            return reply.code(200).send({ token });
+            // 🍪 Establecer cookie httpOnly para mayor seguridad
+            const isProduction = process.env.NODE_ENV === 'production';
+            reply.setCookie('authToken', token, {
+                httpOnly: true,
+                secure: isProduction,
+                sameSite: isProduction ? 'none' : 'lax',
+                path: '/',
+                maxAge: 7 * 24 * 60 * 60 // 7 días
+            });
+
+            // Devolver token también en body para compatibilidad
+            return reply.code(200).send({ token, cookieSet: true });
 
         } catch (error) {
             fastify.log.error(error);
@@ -237,8 +248,26 @@ export async function authRoutes(fastify) {
             }
         }
     }, async (request, reply) => {
-        const { id, nombre, email, is_admin } = request.user;
-        return reply.code(200).send({ id, nombre, email, is_admin });
+        try {
+            const query = 'SELECT id, nombre, email, is_admin, combustible_favorito FROM users WHERE id = $1;';
+            const result = await fastify.pg.query(query, [request.user.id]);
+            
+            if (result.rows.length === 0) {
+                return reply.code(404).send({ error: 'Usuario no encontrado' });
+            }
+            
+            const user = result.rows[0];
+            return reply.code(200).send({
+                id: user.id,
+                nombre: user.nombre,
+                email: user.email,
+                is_admin: user.is_admin,
+                combustible_favorito: user.combustible_favorito
+            });
+        } catch (error) {
+            fastify.log.error(error);
+            return reply.code(500).send({ error: 'Error interno del servidor' });
+        }
     });
 
     // PATCH /me - Actualizar perfil
@@ -252,7 +281,8 @@ export async function authRoutes(fastify) {
                 properties: {
                     nombre: { type: 'string', minLength: 1 },
                     email: { type: 'string', format: 'email' },
-                    password: { type: 'string', minLength: 8 }
+                    password: { type: 'string', minLength: 8 },
+                    combustible_favorito: { type: 'string', enum: ['Precio Gasolina 95 E5', 'Precio Gasolina 98 E5', 'Precio Gasoleo A', 'Precio Gasoleo B', 'Precio Gasoleo Premium'] }
                 },
                 additionalProperties: false,
                 minProperties: 1 // Al menos un campo debe estar presente
@@ -273,7 +303,7 @@ export async function authRoutes(fastify) {
         onRequest: [verifyJwt] // ✅ Usar hook en lugar de inline
     }, async (request, reply) => {
         const user_id = request.user.id;
-        const { nombre, email, password } = request.body;
+        const { nombre, email, password, combustible_favorito } = request.body;
         
         try {
             const updates = [];
@@ -312,6 +342,11 @@ export async function authRoutes(fastify) {
                 const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
                 updates.push(`password_hash = $${paramIndex++}`);
                 values.push(password_hash);
+            }
+            
+            if (combustible_favorito) {
+                updates.push(`combustible_favorito = $${paramIndex++}`);
+                values.push(combustible_favorito);
             }
             
             if (updates.length === 0) {
@@ -387,6 +422,103 @@ export async function authRoutes(fastify) {
         } catch (error) {
             fastify.log.error(error);
             return reply.code(500).send({ error: 'Error interno del servidor.' });
+        }
+    });
+
+    // ========================================
+    // 🔐 GOOGLE OAUTH 2.0
+    // ========================================
+
+    // POST /google/internal - Endpoint interno para crear/obtener usuario de Google
+    // 🔒 PROTEGIDO: Solo puede ser llamado por el gateway con secret válido
+    fastify.post('/google/internal', {
+        schema: {
+            tags: ['Auth'],
+            summary: 'Crear/obtener usuario de Google (interno)',
+            description: 'Endpoint interno usado por el gateway para procesar OAuth. Requiere X-Internal-Secret header.',
+            body: {
+                type: 'object',
+                required: ['google_id', 'email', 'name'],
+                properties: {
+                    google_id: { type: 'string' },
+                    email: { type: 'string', format: 'email' },
+                    name: { type: 'string' }
+                }
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        token: { type: 'string' }
+                    }
+                },
+                403: {
+                    type: 'object',
+                    properties: {
+                        error: { type: 'string' }
+                    }
+                }
+            }
+        },
+        // 🔐 Validar secret interno ANTES de procesar la petición
+        onRequest: async (request, reply) => {
+            const internalSecret = request.headers['x-internal-secret'];
+            const expectedSecret = process.env.INTERNAL_API_SECRET || 'dev-internal-secret-change-in-production';
+            
+            if (!internalSecret || internalSecret !== expectedSecret) {
+                fastify.log.warn('⚠️ Intento de acceso a /google/internal sin secret válido');
+                return reply.code(403).send({ error: 'Forbidden: Invalid internal secret' });
+            }
+        }
+    }, async (request, reply) => {
+        const { google_id, email, name } = request.body;
+
+        try {
+            // Buscar o crear usuario
+            let user;
+            const existingUserQuery = 'SELECT id, nombre, email, is_admin, google_id FROM users WHERE email = $1;';
+            const existingUserResult = await fastify.pg.query(existingUserQuery, [email.toLowerCase()]);
+
+            if (existingUserResult.rows.length > 0) {
+                // Usuario existe - actualizar google_id si no lo tiene
+                user = existingUserResult.rows[0];
+                if (!user.google_id) {
+                    await fastify.pg.query(
+                        'UPDATE users SET google_id = $1 WHERE id = $2',
+                        [google_id, user.id]
+                    );
+                }
+            } else {
+                // Crear nuevo usuario
+                const insertQuery = `
+                    INSERT INTO users (nombre, email, password_hash, google_id)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id, nombre, email, is_admin;
+                `;
+                // Generar password hash aleatorio para usuarios de Google (no lo usarán)
+                const randomPassword = await bcrypt.hash(Math.random().toString(36), SALT_ROUNDS);
+                const insertResult = await fastify.pg.query(insertQuery, [
+                    name,
+                    email.toLowerCase(),
+                    randomPassword,
+                    google_id
+                ]);
+                user = insertResult.rows[0];
+            }
+
+            // Generar JWT
+            const token = fastify.jwt.sign(
+                { id: user.id, email: user.email, is_admin: user.is_admin, nombre: user.nombre },
+                { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+            );
+
+            fastify.log.info(`✅ Usuario Google procesado: ${email}`);
+
+            return reply.code(200).send({ token });
+
+        } catch (err) {
+            fastify.log.error('Error en Google internal:', err);
+            return reply.code(500).send({ error: 'Error interno del servidor' });
         }
     });
 }

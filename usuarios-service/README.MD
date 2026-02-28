@@ -27,26 +27,11 @@ Microservicio de autenticación y gestión de usuarios con JWT, construido con *
 
 ---
 
-## 📦 Instalación
-
-### Con Docker (Recomendado)
+## 📦 Instalación con Docker (Recomendado)
 ```bash
 # Desde la raíz del proyecto
 docker-compose up -d usuarios postgres
 ```
-
-### Manual (Desarrollo Local)
-```bash
-cd usuarios-service
-npm install
-
-# Copiar y configurar variables de entorno
-cp .env.example .env
-# Edita .env con tus credenciales
-
-npm run dev
-```
-
 ---
 
 ## ⚙️ Variables de Entorno
@@ -79,33 +64,75 @@ node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
 ## 🌐 Endpoints Principales
 
-### 📄 Documentación
-- **Swagger UI**: http://localhost:3001/api-docs
+### 📄 Documentación Interactiva
+
+- **Swagger UI**: [http://localhost:3001/api-docs](http://localhost:3001/api-docs)
+  - Interfaz visual para explorar y probar los endpoints.
 - **Health Check**: `GET /api/usuarios/health`
+  - Verifica el estado del servicio y la conexión con la base de datos.
 
-### 🔓 Públicos (sin autenticación)
+---
 
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| POST | `/api/usuarios/register` | Registrar usuario |
-| POST | `/api/usuarios/login` | Login (devuelve JWT) |
+### 🔓 Públicos (No requieren autenticación)
 
-### 🔒 Protegidos (requieren token JWT)
+| Método | Endpoint               | Descripción                  |
+|--------|------------------------|------------------------------|
+| POST   | `/api/usuarios/register` | Registrar un nuevo usuario. |
+| POST   | `/api/usuarios/login`   | Iniciar sesión y obtener un token JWT. |
 
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/api/usuarios/me` | Obtener perfil |
-| PATCH | `/api/usuarios/me` | Actualizar perfil |
-| DELETE | `/api/usuarios/me` | Eliminar cuenta |
-| GET | `/api/usuarios/favoritos` | Listar favoritos |
-| POST | `/api/usuarios/favoritos` | Añadir favorito |
-| DELETE | `/api/usuarios/favoritos/:ideess` | Eliminar favorito |
+**Ejemplo:**
+```bash
+# Registro
+curl -X POST http://localhost:3001/api/usuarios/register \
+  -H "Content-Type: application/json" \
+  -d '{"nombre":"Juan","email":"juan@test.com","password":"123456"}'
 
-### 👑 Admin (requieren rol admin)
+# Login
+curl -X POST http://localhost:3001/api/usuarios/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"juan@test.com","password":"123456"}'
+```
 
-| Método | Endpoint | Descripción |
-|--------|----------|-------------|
-| GET | `/api/usuarios/` | Listar todos los usuarios |
+---
+
+### 🔒 Protegidos (Requieren token JWT)
+
+| Método | Endpoint                   | Descripción                  |
+|--------|----------------------------|------------------------------|
+| GET    | `/api/usuarios/me`         | Obtener perfil del usuario. |
+| PATCH  | `/api/usuarios/me`         | Actualizar perfil del usuario. |
+| DELETE | `/api/usuarios/me`         | Eliminar cuenta del usuario. |
+| GET    | `/api/usuarios/favoritos`  | Listar favoritos del usuario. |
+| POST   | `/api/usuarios/favoritos`  | Añadir un favorito. |
+| DELETE | `/api/usuarios/favoritos/:ideess` | Eliminar un favorito por ID. |
+
+**Ejemplo:**
+```bash
+# Obtener perfil
+curl http://localhost:3001/api/usuarios/me \
+  -H "Authorization: Bearer <tu_token_jwt>"
+
+# Añadir un favorito
+curl -X POST http://localhost:3001/api/usuarios/favoritos \
+  -H "Authorization: Bearer <tu_token_jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"ideess":"1234"}'
+```
+
+---
+
+### 👑 Admin (Requieren rol de administrador)
+
+| Método | Endpoint         | Descripción                  |
+|--------|------------------|------------------------------|
+| GET    | `/api/usuarios/` | Listar todos los usuarios. |
+
+**Ejemplo:**
+```bash
+# Listar usuarios (admin)
+curl http://localhost:3001/api/usuarios/ \
+  -H "Authorization: Bearer <tu_token_admin>"
+```
 
 ---
 

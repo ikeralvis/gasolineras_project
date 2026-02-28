@@ -10,6 +10,27 @@ import { swaggerUI } from "@hono/swagger-ui";
 const PORT = process.env.PORT || 8080;
 const USUARIOS_SERVICE = process.env.USUARIOS_SERVICE_URL || "http://usuarios:3001";
 const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000";
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+// Google OAuth config
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+
+// 🔐 Secret compartido para comunicación interna entre servicios
+const INTERNAL_API_SECRET = process.env.INTERNAL_API_SECRET;
+if (!INTERNAL_API_SECRET) {
+  console.warn("⚠️  WARNING: INTERNAL_API_SECRET no configurado. Usando valor por defecto (inseguro en producción)");
+}
+const INTERNAL_SECRET = INTERNAL_API_SECRET || "dev-internal-secret-change-in-production";
+
+// Configuración de cookies
+const COOKIE_CONFIG = {
+  httpOnly: true,
+  secure: IS_PRODUCTION,
+  sameSite: IS_PRODUCTION ? "None" : "Lax",
+  path: "/",
+  maxAge: 7 * 24 * 60 * 60 // 7 días en segundos
+};
 
 // ========================================
 // 🚀 APLICACIÓN HONO
@@ -66,7 +87,7 @@ async function fetchAndAggregateSpecs() {
       },
       servers: [
         {
-          url: `http://localhost:${PORT}`,
+          url: "/",
           description: "API Gateway (punto de entrada único)",
         },
       ],
@@ -187,11 +208,34 @@ app.use("*", logger());
 app.use(
   "*",
   cors({
-    origin: "*", // En producción, especifica los dominios permitidos
+    origin: (origin) => {
+      // Permitir orígenes específicos para seguridad
+      const allowedOrigins = [
+        FRONTEND_URL,
+        "http://localhost:5173",
+        "http://localhost:80",
+        "http://localhost",
+        "https://tankgo.onrender.com",
+        // Añadir cualquier subdominio de onrender.com
+      ];
+      // También permitir cualquier origen *.onrender.com
+      if (origin && origin.endsWith('.onrender.com')) {
+        return origin;
+      }
+      return allowedOrigins.includes(origin) ? origin : FRONTEND_URL;
+    },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
+    credentials: true, // ⬅️ Importante para cookies
   })
 );
+
+// Headers adicionales para permitir popups de Google OAuth
+app.use("*", async (c, next) => {
+  await next();
+  // Permitir popups de Google Sign-In
+  c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+});
 
 // ========================================
 // � RUTAS DE DOCUMENTACIÓN (AGREGADA)
@@ -284,6 +328,78 @@ app.get("/health", async (c) => {
 });
 
 // ========================================
+// 🔐 GOOGLE OAUTH (manejado por Gateway)
+// ========================================
+
+// POST /api/auth/google/verify - Verificar ID Token de Google (para @react-oauth/google)
+// Este es el ÚNICO endpoint necesario para OAuth con el nuevo flujo
+app.post("/api/auth/google/verify", async (c) => {
+  try {
+    const { credential } = await c.req.json();
+
+    if (!credential) {
+      return c.json({ error: "No se recibió credencial de Google" }, 400);
+    }
+
+    console.log("🔐 Verificando ID Token de Google...");
+
+    // Verificar el ID token con Google
+    const verifyResponse = await fetch(
+      `https://oauth2.googleapis.com/tokeninfo?id_token=${credential}`
+    );
+
+    if (!verifyResponse.ok) {
+      console.error("Token de Google inválido");
+      return c.json({ error: "Token de Google inválido" }, 401);
+    }
+
+    const googleUser = await verifyResponse.json();
+
+    // Validar que el token sea para nuestra app
+    if (googleUser.aud !== GOOGLE_CLIENT_ID) {
+      console.error("Token no válido para esta aplicación");
+      return c.json({ error: "Token no válido para esta aplicación" }, 401);
+    }
+
+    console.log(`✅ Usuario de Google verificado: ${googleUser.email}`);
+
+    // Llamar al usuarios-service para crear/obtener usuario y generar JWT
+    // 🔐 Usando secret interno para proteger endpoint
+    const internalResponse = await fetch(`${USUARIOS_SERVICE}/api/usuarios/google/internal`, {
+      method: "POST",
+      headers: { 
+        "Content-Type": "application/json",
+        "X-Internal-Secret": INTERNAL_SECRET
+      },
+      body: JSON.stringify({
+        google_id: googleUser.sub,
+        email: googleUser.email,
+        name: googleUser.name || googleUser.email.split("@")[0]
+      })
+    });
+
+    if (!internalResponse.ok) {
+      const errorData = await internalResponse.json();
+      console.error("Error del usuarios-service:", errorData);
+      return c.json({ error: "Error al procesar usuario" }, 500);
+    }
+
+    const { token } = await internalResponse.json();
+    console.log(`✅ JWT generado para ${googleUser.email}`);
+
+    // 🍪 Establecer token en cookie httpOnly (más seguro que localStorage)
+    c.header('Set-Cookie', `authToken=${token}; HttpOnly; ${COOKIE_CONFIG.secure ? 'Secure;' : ''} SameSite=${COOKIE_CONFIG.sameSite}; Path=${COOKIE_CONFIG.path}; Max-Age=${COOKIE_CONFIG.maxAge}`);
+    
+    // También devolver token en body para compatibilidad con frontend actual
+    return c.json({ token, cookieSet: true });
+
+  } catch (err) {
+    console.error("Error verificando token de Google:", err);
+    return c.json({ error: "Error del servidor" }, 500);
+  }
+});
+
+// ========================================
 // 🔀 PROXY: MICROSERVICIO DE USUARIOS
 // ========================================
 app.all("/api/usuarios/*", async (c) => {
@@ -298,10 +414,11 @@ app.all("/api/usuarios/*", async (c) => {
     
     console.log(`🔄 Proxy usuarios: ${c.req.method} ${url}`);
 
-    // Obtener headers y excluir host
+    // Obtener headers y excluir host y accept-encoding (evitar problemas de compresión)
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
-      if (key.toLowerCase() !== "host") {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
         headers[key] = value;
       }
     }
@@ -309,6 +426,7 @@ app.all("/api/usuarios/*", async (c) => {
     const options = {
       method: c.req.method,
       headers,
+      redirect: 'manual', // ⬅️ MUY IMPORTANTE: No seguir redirecciones automáticamente
     };
 
     // Si hay body, añadirlo
@@ -317,25 +435,25 @@ app.all("/api/usuarios/*", async (c) => {
     }
 
     const response = await fetch(url, options);
+    
+    // ✅ Si es una redirección (301, 302, 303, 307, 308), pasarla al cliente
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get('location');
+      console.log(`↪️ Redirigiendo a: ${location}`);
+      return c.redirect(location, response.status);
+    }
+    
     const contentType = response.headers.get("content-type");
 
-    // Copiar headers, pero excluir content-length para evitar ERR_CONTENT_LENGTH_MISMATCH
-    const responseHeaders = {};
-    for (const [key, value] of response.headers) {
-      if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {
-        responseHeaders[key] = value;
-      }
-    }
-
-    // Si es JSON, parsearlo
+    // Si es JSON, parsearlo y devolverlo (evita problemas de encoding)
     if (contentType?.includes("application/json")) {
       const data = await response.json();
-      return c.json(data, response.status, responseHeaders);
+      return c.json(data, response.status);
     }
 
     // Si es texto u otro formato
     const text = await response.text();
-    return c.text(text, response.status, responseHeaders);
+    return c.text(text, response.status);
   } catch (error) {
     console.error("Error en proxy de usuarios:", error);
     return c.json(
@@ -363,9 +481,11 @@ app.all("/api/gasolineras/*", async (c) => {
     
     console.log(`🔄 Proxy gasolineras: ${c.req.method} ${url}`);
 
+    // Excluir host y accept-encoding para evitar problemas de compresión
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
-      if (key.toLowerCase() !== "host") {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
         headers[key] = value;
       }
     }
@@ -382,21 +502,13 @@ app.all("/api/gasolineras/*", async (c) => {
     const response = await fetch(url, options);
     const contentType = response.headers.get("content-type");
 
-    // Copiar headers, pero excluir content-length para evitar ERR_CONTENT_LENGTH_MISMATCH
-    const responseHeaders = {};
-    for (const [key, value] of response.headers) {
-      if (key.toLowerCase() !== "content-length" && key.toLowerCase() !== "transfer-encoding") {
-        responseHeaders[key] = value;
-      }
-    }
-
     if (contentType?.includes("application/json")) {
       const data = await response.json();
-      return c.json(data, response.status, responseHeaders);
+      return c.json(data, response.status);
     }
 
     const text = await response.text();
-    return c.text(text, response.status, responseHeaders);
+    return c.text(text, response.status);
   } catch (error) {
     console.error("Error en proxy de gasolineras:", error);
     return c.json(

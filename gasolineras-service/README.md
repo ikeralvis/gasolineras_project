@@ -31,7 +31,7 @@ https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/
 
 ---
 
-## ✨ Características
+### ✨ Características
 
 ### 🔧 Técnicas
 - ✅ **FastAPI** con documentación OpenAPI automática
@@ -43,6 +43,7 @@ https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/
 - ✅ **Health checks** para monitoreo
 - ✅ **Variables de entorno** para configuración flexible
 - ✅ **Reintentos automáticos** en peticiones HTTP
+- ✅ **Índices geoespaciales** para búsquedas por ubicación
 
 ### 🎯 Funcionales
 - 🔄 Sincronización manual desde API del gobierno
@@ -51,6 +52,9 @@ https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/
 - 🔍 Búsqueda por texto en provincia/municipio
 - 💶 Filtrado por precio máximo
 - 📍 Datos geográficos con coordenadas WGS84
+- 🗺️ Búsqueda de gasolineras cercanas por radio
+- 📈 **Historial de precios** con tracking temporal
+- 📊 **Evolución de precios** por combustible
 
 ---
 
@@ -78,67 +82,7 @@ gasolineras-service/
 
 ---
 
-## 🚀 Instalación
-
-### Opción 1: Local (sin Docker)
-
-#### 1️⃣ Requisitos previos
-- Python 3.11 o superior
-- MongoDB 7.0 o superior
-- pip
-
-#### 2️⃣ Clonar e instalar dependencias
-
-```bash
-# Navegar a la carpeta del servicio
-cd gasolineras-service
-
-# Crear entorno virtual
-python -m venv venv
-
-# Activar entorno virtual
-# Windows PowerShell
-.\venv\Scripts\Activate.ps1
-# Windows CMD
-.\venv\Scripts\activate.bat
-# Linux/Mac
-source venv/bin/activate
-
-# Instalar dependencias
-pip install -r requirements.txt
-```
-
-#### 3️⃣ Configurar variables de entorno
-
-```bash
-# Copiar archivo de ejemplo
-cp .env.example .env
-
-# Editar .env con tu configuración
-# Nota: En Windows usar 'copy' en lugar de 'cp'
-```
-
-```env
-MONGO_HOST=localhost
-MONGO_PORT=27017
-MONGO_DB=gasolineras_db
-```
-
-#### 4️⃣ Ejecutar el servidor
-
-```bash
-# Modo desarrollo (con recarga automática)
-uvicorn app.main:app --reload --port 8000
-
-# Modo producción
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
-```
-
-El servicio estará disponible en: **http://localhost:8000**
-
----
-
-### Opción 2: Con Docker 🐳
+## 🚀 Instalación con Docker 🐳
 
 #### 1️⃣ Construir imagen
 
@@ -198,14 +142,13 @@ docker compose logs -f gasolineras
 ### 🏠 General
 
 #### `GET /`
-Información básica del servicio.
+Obtén información básica del servicio.
 
 **Respuesta:**
 ```json
 {
   "service": "microservicio-gasolineras",
   "version": "1.0.0",
-  "status": "running",
   "docs": "/docs",
   "redoc": "/redoc"
 }
@@ -214,7 +157,7 @@ Información básica del servicio.
 ---
 
 #### `GET /health`
-Health check para monitoreo.
+Verifica el estado del servicio y la conexión con la base de datos.
 
 **Respuesta exitosa:**
 ```json
@@ -229,47 +172,31 @@ Health check para monitoreo.
 ### ⛽ Gasolineras
 
 #### `GET /gasolineras/`
-Obtiene la lista de gasolineras con filtros opcionales.
+Obtén una lista de gasolineras con filtros opcionales.
 
-**Query Parameters:**
-| Parámetro | Tipo | Descripción | Default |
-|-----------|------|-------------|---------|
-| `provincia` | string | Filtrar por provincia | - |
-| `municipio` | string | Filtrar por municipio | - |
-| `precio_max` | float | Precio máximo gasolina 95 | - |
-| `skip` | int | Elementos a saltar | 0 |
-| `limit` | int | Máximo de resultados (max: 1000) | 100 |
+**Parámetros opcionales:**
+- `provincia` (string): Filtrar por provincia.
+- `municipio` (string): Filtrar por municipio.
+- `precio_max` (float): Precio máximo de gasolina 95.
+- `skip` (int): Número de resultados a omitir (paginación).
+- `limit` (int): Número máximo de resultados (máximo: 1000).
 
-**Ejemplo de petición:**
+**Ejemplo:**
 ```bash
-# Todas las gasolineras de Madrid
-GET /gasolineras/?provincia=madrid&limit=50
-
-# Con precio menor a 1.50€
-GET /gasolineras/?precio_max=1.50
-
-# Paginación (página 2, 20 por página)
-GET /gasolineras/?skip=20&limit=20
+GET /gasolineras/?provincia=Madrid&limit=50
 ```
 
 **Respuesta:**
 ```json
 {
   "total": 11547,
-  "skip": 0,
-  "limit": 100,
-  "count": 100,
-  "gasolineras": [
+  "results": [
     {
-      "IDEESS": "12345",
-      "Rótulo": "REPSOL",
-      "Municipio": "MADRID",
-      "Provincia": "MADRID",
-      "Dirección": "CALLE MAYOR 123",
-      "Precio Gasolina 95 E5": "1.459",
-      "Precio Gasoleo A": "1.329",
-      "Latitud": 40.4168,
-      "Longitud": -3.7038
+      "id": "1234",
+      "nombre": "Gasolinera Ejemplo",
+      "precio_gasolina_95": 1.50,
+      "provincia": "Madrid",
+      "municipio": "Madrid"
     }
   ]
 }
@@ -278,37 +205,97 @@ GET /gasolineras/?skip=20&limit=20
 ---
 
 #### `POST /gasolineras/sync`
-Sincroniza los datos desde la API del Gobierno de España.
+Sincroniza los datos desde la API oficial del Gobierno de España.
 
-⚠️ **Atención:** Esta operación:
-- Elimina todos los datos existentes en la base de datos
-- Descarga datos actualizados desde la API oficial
-- Puede tardar 10-30 segundos
+**Nota:** Esta operación elimina los datos existentes y los reemplaza con los más recientes.
 
 **Respuesta:**
 ```json
 {
-  "mensaje": "Datos sincronizados correctamente 🚀",
-  "registros_eliminados": 11547,
-  "registros_insertados": 11612,
+  "mensaje": "Datos sincronizados correctamente",
   "total": 11612
 }
 ```
 
-**Errores posibles:**
-- `503 Service Unavailable` - API del gobierno no disponible
-- `500 Internal Server Error` - Error en la sincronización
-
 ---
 
-#### `GET /gasolineras/count`
-Cuenta el número total de gasolineras almacenadas.
+#### `GET /gasolineras/{id}`
+Obtén los detalles de una gasolinera específica por su ID.
+
+**Ejemplo:**
+```bash
+GET /gasolineras/1234
+```
 
 **Respuesta:**
 ```json
 {
-  "total": 11612,
-  "mensaje": "Total de gasolineras: 11612"
+  "id": "1234",
+  "nombre": "Gasolinera Ejemplo",
+  "precio_gasolina_95": 1.50,
+  "provincia": "Madrid",
+  "municipio": "Madrid",
+  "coordenadas": {
+    "lat": 40.4168,
+    "lng": -3.7038
+  }
+}
+```
+
+---
+
+#### `GET /gasolineras/{id}/cercanas`
+Obtén gasolineras cercanas a una gasolinera específica.
+
+**Parámetros opcionales:**
+- `radio_km` (float): Radio de búsqueda en kilómetros (por defecto: 5).
+
+**Ejemplo:**
+```bash
+GET /gasolineras/1234/cercanas?radio_km=10
+```
+
+**Respuesta:**
+```json
+{
+  "origen": "1234",
+  "cercanas": [
+    {
+      "id": "5678",
+      "nombre": "Gasolinera Cercana",
+      "distancia_km": 3.2
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /gasolineras/{id}/historial`
+Consulta el historial de precios de una gasolinera.
+
+**Parámetros opcionales:**
+- `dias` (int): Número de días hacia atrás para consultar (por defecto: 30).
+
+**Ejemplo:**
+```bash
+GET /gasolineras/1234/historial?dias=90
+```
+
+**Respuesta:**
+```json
+{
+  "id": "1234",
+  "historial": [
+    {
+      "fecha": "2025-11-01",
+      "precio_gasolina_95": 1.45
+    },
+    {
+      "fecha": "2025-11-02",
+      "precio_gasolina_95": 1.47
+    }
+  ]
 }
 ```
 
@@ -316,23 +303,14 @@ Cuenta el número total de gasolineras almacenadas.
 
 ## 📖 Documentación Interactiva
 
-FastAPI genera automáticamente documentación interactiva:
+FastAPI genera automáticamente documentación interactiva para explorar y probar los endpoints:
 
-### Swagger UI
-```
-http://localhost:8000/docs
-```
-- 🎨 Interfaz visual moderna
-- 🧪 Prueba endpoints directamente desde el navegador
-- 📝 Esquemas de datos completos
+- **Swagger UI:** [http://localhost:8000/docs](http://localhost:8000/docs)
+  - Interfaz visual moderna para probar los endpoints.
+- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
+  - Documentación detallada con esquemas de datos.
 
-### ReDoc
-```
-http://localhost:8000/redoc
-```
-- 📄 Documentación tipo libro
-- 🔍 Búsqueda avanzada
-- 📱 Responsive design
+Accede a estas herramientas mientras el servicio esté en ejecución.
 
 ---
 

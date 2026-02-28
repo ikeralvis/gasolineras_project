@@ -1,7 +1,9 @@
 import { Gasolinera } from "./types";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+
 export async function getGasolineras(): Promise<Gasolinera[]> {
-  const res = await fetch("http://localhost:8080/api/gasolineras");
+  const res = await fetch(`${API_BASE_URL}/api/gasolineras`);
   const data = await res.json();
 
   // El backend devuelve { gasolineras: [...] } así que entramos al array
@@ -11,8 +13,8 @@ export async function getGasolineras(): Promise<Gasolinera[]> {
     municipio: g.Municipio,
     provincia: g.Provincia,
     direccion: g["Dirección"],
-    gasolina95: parseFloat((g["Precio Gasolina 95 E5"] || "0").replace(",", ".")) || null,
-    gasoleoA: parseFloat((g["Precio Gasoleo A"] || "0").replace(",", ".")) || null,
+    gasolina95: Number.parseFloat((g["Precio Gasolina 95 E5"] || "0").replace(",", ".")) || null,
+    gasoleoA: Number.parseFloat((g["Precio Gasoleo A"] || "0").replace(",", ".")) || null,
     lat: g.Latitud,
     lng: g.Longitud
   }));
@@ -20,7 +22,7 @@ export async function getGasolineras(): Promise<Gasolinera[]> {
 
 export async function getGasolinerasCerca(lat: number, lon: number, km: number): Promise<any[]> {
   try {
-    const res = await fetch(`http://localhost:8080/api/gasolineras/cerca?lat=${lat}&lon=${lon}&km=${km}`);
+    const res = await fetch(`${API_BASE_URL}/api/gasolineras/cerca?lat=${lat}&lon=${lon}&km=${km}`);
 
     if (!res.ok) {
       console.error(`❌ Error en la API ${res.status}`);
@@ -43,5 +45,23 @@ export async function getGasolinerasCerca(lat: number, lon: number, km: number):
   } catch (error) {
     console.error("❌ Error en getGasolinerasCerca:", error);
     return [];
+  }
+}
+
+export async function getHistorialPrecios(ideess: string, dias: number = 30): Promise<any> {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/gasolineras/${ideess}/historial?dias=${dias}`);
+    
+    if (!res.ok) {
+      console.error(`❌ Error al obtener historial ${res.status}`);
+      return null;
+    }
+    
+    const data = await res.json();
+    console.log(`✅ Historial cargado: ${data.registros} registros`);
+    return data;
+  } catch (error) {
+    console.error("❌ Error en getHistorialPrecios:", error);
+    return null;
   }
 }
