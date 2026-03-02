@@ -199,6 +199,7 @@
   "table": {
     "brand": "Marca",
     "location": "Ubicación",
+    "schedule": "Horario",
     "price": "Precio",
     "favorite": "Fav",
     "viewDetails": "Ver detalles"
@@ -217,12 +218,28 @@
     "howToGet": "Cómo llegar",
     "share": "Compartir",
     "fuelPrices": "Precios de Combustible",
+    "schedule": "Horario",
     "lowPrice": "¡PRECIO BAJO!",
     "location": "Ubicación",
     "loadingDetails": "Cargando detalles...",
     "nearbyStations": "Gasolineras cercanas ({{count}})",
     "sortByDistance": "Por distancia",
     "sortByPrice": "Por precio"
+  },
+  "horario": {
+    "schedule": "Horario",
+    "open24h": "Abierto 24 horas",
+    "noData": "Horario no disponible",
+    "open": "Abierto",
+    "closed": "Cerrado",
+    "closedToday": "Cerrado hoy",
+    "day1": "Lunes",
+    "day2": "Martes",
+    "day3": "Miércoles",
+    "day4": "Jueves",
+    "day5": "Viernes",
+    "day6": "Sábado",
+    "day7": "Domingo"
   },
   "history": {
     "title": "Historial de Precios",

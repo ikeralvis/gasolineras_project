@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import HistorialPrecios from "./HistorialPrecios";
 import FavoritoButton from "./FavoritoButton";
+import HorarioDisplay, { type HorarioParsed } from "./HorarioDisplay";
 
 // API URL
 const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
@@ -32,6 +33,7 @@ interface Gasolinera {
   ["Precio Gasoleo B"]?: string;
   ["Precio Gasoleo Premium"]?: string;
   Horario?: string;
+  horario_parsed?: HorarioParsed;
   distancia?: number;
 }
 
@@ -219,6 +221,23 @@ export default function GasolineraDetalle() {
             </div>
           </div>
         </div>
+
+        {/* HORARIO */}
+        {(gasolinera.Horario || gasolinera.horario_parsed) && (
+          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
+            <h2 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2">
+              <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              {t('detail.schedule')}
+            </h2>
+            <HorarioDisplay
+              mode="full"
+              horario={gasolinera.Horario}
+              horario_parsed={gasolinera.horario_parsed}
+            />
+          </div>
+        )}
 
         {/* MAPA MEJORADO */}
         <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
