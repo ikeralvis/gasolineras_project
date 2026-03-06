@@ -4,14 +4,8 @@ fastapi==0.115.12
 # Uvicorn - Servidor ASGI
 uvicorn[standard]==0.34.0
 
-# MongoDB - Driver oficial
-pymongo[srv]==4.10.1
-
-# Certificados SSL actualizados (necesario para Atlas)
-certifi>=2024.0.0
-
-# DNS para mongodb+srv://
-dnspython>=2.4.0
+# PostgreSQL - Driver oficial (compatible con Neon)
+psycopg2-binary==2.9.9
 
 # Pydantic - Validación de datos
 pydantic==2.10.5

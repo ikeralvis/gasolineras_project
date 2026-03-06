@@ -199,6 +199,7 @@
   "table": {
     "brand": "Marka",
     "location": "Kokapena",
+    "schedule": "Ordutegia",
     "price": "Prezioa",
     "favorite": "Gog",
     "viewDetails": "Xehetasunak ikusi"
@@ -217,12 +218,28 @@
     "howToGet": "Nola iritsi",
     "share": "Partekatu",
     "fuelPrices": "Erregai Prezioak",
+    "schedule": "Ordutegia",
     "lowPrice": "PREZIO TXIKIA!",
     "location": "Kokapena",
     "loadingDetails": "Xehetasunak kargatzen...",
     "nearbyStations": "Hurbileko gasolindegiak ({{count}})",
     "sortByDistance": "Distantziaren arabera",
     "sortByPrice": "Prezioaren arabera"
+  },
+  "horario": {
+    "schedule": "Ordutegia",
+    "open24h": "24 orduz irekita",
+    "noData": "Ordutegia ez dago eskuragarri",
+    "open": "Irekita",
+    "closed": "Itxita",
+    "closedToday": "Gaur itxita",
+    "day1": "Astelehena",
+    "day2": "Asteartea",
+    "day3": "Asteazkena",
+    "day4": "Osteguna",
+    "day5": "Ostirala",
+    "day6": "Larunbata",
+    "day7": "Igandea"
   },
   "history": {
     "title": "Prezioen Historiala",

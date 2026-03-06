@@ -1,136 +1,93 @@
 """
-Gestión de conexión a MongoDB
+Gestión de conexión a PostgreSQL (Neon / local)
 """
 import os
 import logging
-import certifi
-from typing import Any
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
+from contextlib import contextmanager
+
+import psycopg2
+import psycopg2.pool
+from psycopg2.extras import RealDictCursor
 
 logger = logging.getLogger(__name__)
 
-# Variables de entorno
-MONGO_HOST = os.getenv("MONGO_HOST", "mongo")
-MONGO_PORT = int(os.getenv("MONGO_PORT", "27017"))
-MONGO_USER = os.getenv("MONGO_USER", "")
-MONGO_PASS = os.getenv("MONGO_PASS", "")
-MONGO_DB = os.getenv("MONGO_DB", "gasolineras_db")
-ENVIRONMENT = os.getenv("ENVIRONMENT", "local")  # local o production
+# -------------------------------------------------------------------
+# Configuración
+# Neon (y cualquier PostgreSQL cloud) requiere sslmode=require.
+# En local con Docker puedes poner ?sslmode=disable en DATABASE_URL.
+# -------------------------------------------------------------------
+DATABASE_URL = os.getenv(
+    "DATABASE_URL",
+    "postgresql://postgres:admin@localhost:5432/gasolineras_db"
+)
 
-# Construir URI de conexión
-MONGO_URI_ENV = os.getenv("MONGO_URI")
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
-if MONGO_URI_ENV:
-    # 🔥 Usamos Atlas en Render/Producción
-    MONGO_URI = MONGO_URI_ENV
-    IS_ATLAS = True
-else:
-    # 🐳 Modo local con Docker (igual que antes)
-    IS_ATLAS = False
-    if MONGO_USER and MONGO_PASS:
-        MONGO_URI = f"mongodb://{MONGO_USER}:{MONGO_PASS}@{MONGO_HOST}:{MONGO_PORT}"
-    else:
-        MONGO_URI = f"mongodb://{MONGO_HOST}:{MONGO_PORT}"
 
-# Cliente global
-_client = None
-_db = None
-_collection = None
-_collection_historico = None
+def _build_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Crea el pool de conexiones."""
+    dsn = DATABASE_URL
+    # Añadimos sslmode=require para Neon si no está ya especificado
+    if "sslmode" not in dsn:
+        connector = "&" if "?" in dsn else "?"
+        dsn = dsn + connector + "sslmode=require"
 
-def get_mongo_client():
-    """Obtiene o crea el cliente de MongoDB"""
-    global _client
-    if _client is None:
-        try:
-            # Configuración base de conexión
-            connection_params: dict[str, Any] = {
-                "serverSelectionTimeoutMS": 10000,
-                "connectTimeoutMS": 10000,
-                "maxPoolSize": 10,
-                "minPoolSize": 1,
-                "retryWrites": True,
-                "w": "majority"
-            }
-            
-            # Para MongoDB Atlas, usar certificados de certifi
-            if IS_ATLAS or "mongodb+srv://" in MONGO_URI or "mongodb.net" in MONGO_URI:
-                connection_params["tls"] = True
-                connection_params["tlsCAFile"] = certifi.where()
-                logger.info(f"🔐 Usando certificados de certifi: {certifi.where()}")
-            
-            _client = MongoClient(MONGO_URI, **connection_params)
-            
-            # Test de conexión
-            _client.admin.command('ping')
-            logger.info(f"✅ Conectado a MongoDB (Atlas: {IS_ATLAS})")
-        except Exception as e:
-            logger.error(f"❌ Error al conectar con MongoDB: {e}")
-            raise
-    return _client
+    logger.info("🔌 Creando pool de conexiones PostgreSQL...")
+    return psycopg2.pool.ThreadedConnectionPool(
+        minconn=1,
+        maxconn=10,
+        dsn=dsn,
+    )
 
-def get_database():
-    """Obtiene la base de datos"""
-    global _db
-    if _db is None:
-        client = get_mongo_client()
-        _db = client[MONGO_DB]
-    return _db
 
-def get_collection():
-    """Obtiene la colección de gasolineras"""
-    global _collection
-    if _collection is None:
-        db = get_database()
-        _collection = db["gasolineras"]
-    return _collection
+def get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    """Obtiene (o crea) el pool de conexiones."""
+    global _pool
+    if _pool is None or _pool.closed:
+        _pool = _build_pool()
+    return _pool
 
-def get_historico_collection():
-    """Obtiene la colección de precios históricos"""
-    global _collection_historico
-    if _collection_historico is None:
-        db = get_database()
-        _collection_historico = db["precios_historicos"]
-        # Crear índices para optimizar consultas
-        _collection_historico.create_index([("IDEESS", 1), ("fecha", -1)])
-        _collection_historico.create_index([("fecha", -1)])
-        # 🔐 TTL Index: Auto-eliminar documentos después de 30 días
-        # Esto evita que MongoDB Atlas se llene
-        try:
-            _collection_historico.create_index(
-                "fecha",
-                expireAfterSeconds=30 * 24 * 60 * 60,  # 30 días
-                name="ttl_30_dias"
-            )
-            logger.info("✅ TTL Index de 30 días creado/verificado en precios_historicos")
-        except Exception as e:
-            # El índice ya existe o hay otro problema
-            logger.warning(f"⚠️ TTL Index: {e}")
-    return _collection_historico
 
-def test_db_connection():
-    """Prueba la conexión a MongoDB"""
+@contextmanager
+def get_db_conn():
+    """
+    Context manager que entrega una conexión del pool.
+    Hace commit automático al salir; rollback si hay excepción.
+    Siempre devuelve la conexión al pool al finalizar.
+    """
+    conn = get_pool().getconn()
     try:
-        client = get_mongo_client()
-        client.admin.command('ping')
-        return True
-    except (ConnectionFailure, ServerSelectionTimeoutError) as e:
-        logger.error(f"❌ Fallo al conectar con MongoDB: {e}")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
         raise
+    finally:
+        get_pool().putconn(conn)
+
+
+def get_cursor(conn):
+    """Devuelve un cursor que retorna filas como diccionarios."""
+    return conn.cursor(cursor_factory=RealDictCursor)
+
+
+# -------------------------------------------------------------------
+# Ciclo de vida (compatibilidad con main.py)
+# -------------------------------------------------------------------
+
+def test_db_connection() -> bool:
+    """Prueba la conexión ejecutando una consulta trivial."""
+    with get_db_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute("SELECT 1")
+    logger.info("✅ Conexión a PostgreSQL verificada")
+    return True
+
 
 def close_db_connection():
-    """Cierra la conexión a MongoDB"""
-    global _client, _db, _collection, _collection_historico
-    if _client:
-        _client.close()
-        _client = None
-        _db = None
-        _collection = None
-        _collection_historico = None
-        logger.info("✅ Conexión a MongoDB cerrada")
-
-# Función para compatibilidad con FastAPI Depends
-def get_db():
-    """Obtiene la base de datos para inyección de dependencias"""
-    return get_database()
+    """Cierra todas las conexiones del pool."""
+    global _pool
+    if _pool and not _pool.closed:
+        _pool.closeall()
+        _pool = None
+        logger.info("✅ Pool de conexiones PostgreSQL cerrado")

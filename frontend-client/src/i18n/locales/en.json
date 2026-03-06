@@ -199,6 +199,7 @@
   "table": {
     "brand": "Brand",
     "location": "Location",
+    "schedule": "Schedule",
     "price": "Price",
     "favorite": "Fav",
     "viewDetails": "View details"
@@ -217,12 +218,28 @@
     "howToGet": "Get Directions",
     "share": "Share",
     "fuelPrices": "Fuel Prices",
+    "schedule": "Schedule",
     "lowPrice": "LOW PRICE!",
     "location": "Location",
     "loadingDetails": "Loading details...",
     "nearbyStations": "Nearby Stations ({{count}})",
     "sortByDistance": "By distance",
     "sortByPrice": "By price"
+  },
+  "horario": {
+    "schedule": "Schedule",
+    "open24h": "Open 24 hours",
+    "noData": "Schedule not available",
+    "open": "Open",
+    "closed": "Closed",
+    "closedToday": "Closed today",
+    "day1": "Monday",
+    "day2": "Tuesday",
+    "day3": "Wednesday",
+    "day4": "Thursday",
+    "day5": "Friday",
+    "day6": "Saturday",
+    "day7": "Sunday"
   },
   "history": {
     "title": "Price History",

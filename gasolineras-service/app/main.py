@@ -23,19 +23,19 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Gestiona el ciclo de vida de la aplicación"""
     # Startup
-    logger.info("🚀 Iniciando microservicio de gasolineras...")
+    logger.info("🚀 Iniciando microservicio de gasolineras (PostgreSQL/Neon)...")
     try:
         test_db_connection()
-        logger.info("✅ Conexión a MongoDB establecida")
+        logger.info("✅ Conexión a PostgreSQL (Neon) establecida")
     except Exception as e:
-        logger.error(f"❌ Error al conectar con MongoDB: {e}")
+        logger.error(f"❌ Error al conectar con PostgreSQL: {e}")
     
     yield
     
     # Shutdown
     logger.info("🛑 Cerrando microservicio de gasolineras...")
     close_db_connection()
-    logger.info("✅ Conexión a MongoDB cerrada")
+    logger.info("✅ Conexión a PostgreSQL cerrada")
 
 # Crear aplicación FastAPI
 app = FastAPI(

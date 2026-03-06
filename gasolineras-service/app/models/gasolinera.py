@@ -72,7 +72,18 @@ class Gasolinera(BaseModel):
         ge=-180,
         le=180
     )
-    
+
+    Horario: Optional[str] = Field(
+        None,
+        description="Horario de apertura en texto (formato gobierno)",
+        examples=["L-D: 07:00-22:00", "L-V: 06:00-22:00; S: 08:00-15:00"]
+    )
+
+    horario_parsed: Optional[dict] = Field(
+        None,
+        description="Horario de apertura estructurado en JSON"
+    )
+
     @field_validator('Latitud', 'Longitud', mode='before')
     @classmethod
     def validate_coordinates(cls, v):

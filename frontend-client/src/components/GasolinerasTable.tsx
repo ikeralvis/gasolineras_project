@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import FavoritoButton from "./FavoritoButton";
 import { useEstadisticas } from "../hooks/useEstadisticas";
 import { getPriceBadgeFromStats } from "../api/estadisticas";
+import HorarioDisplay, { type HorarioParsed } from "./HorarioDisplay";
 
 // Iconos de marcas
 import repsol from "../assets/logos/repsol.svg";
@@ -24,7 +25,9 @@ interface Gasolinera {
   ["Precio Gasoleo A"]: string;
   ["Precio Gasoleo B"]?: string;
   ["Precio Gasoleo Premium"]?: string;
-  [key: string]: string | undefined; // Permite acceso dinámico
+  Horario?: string;
+  horario_parsed?: HorarioParsed;
+  [key: string]: string | HorarioParsed | undefined; // Permite acceso dinámico
 }
 
 interface Props {
@@ -184,6 +187,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
             <tr className="text-sm text-[#000C74]/70 border-b-2 border-[#E4E6FF]">
               <th className="py-4 text-left font-semibold">{t('table.brand')}</th>
               <th className="py-4 text-left font-semibold">{t('table.location')}</th>
+              <th className="py-4 text-left font-semibold hidden lg:table-cell">{t('table.schedule')}</th>
               <th className="py-4 text-left font-semibold">{getNombreCombustible(combustibleSeleccionado)}</th>
               <th className="py-4 text-center font-semibold w-16">{t('table.favorite')}</th>
               <th className="py-4 text-left font-semibold"></th>
@@ -226,6 +230,15 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                       <p className="font-medium text-gray-900">{g.Municipio}</p>
                       <p className="text-gray-500">{g.Provincia}</p>
                     </div>
+                  </td>
+
+                  {/* HORARIO */}
+                  <td className="py-4 hidden lg:table-cell">
+                    <HorarioDisplay
+                      mode="compact"
+                      horario={g.Horario}
+                      horario_parsed={g.horario_parsed}
+                    />
                   </td>
 
                   {/* PRECIO DEL COMBUSTIBLE SELECCIONADO */}
@@ -308,6 +321,17 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                   {getPriceBadge(g[combustibleSeleccionado])}
                 </div>
               </div>
+
+              {/* HORARIO COMPACTO */}
+              {(g.Horario || g.horario_parsed) && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5">
+                  <HorarioDisplay
+                    mode="compact"
+                    horario={g.Horario}
+                    horario_parsed={g.horario_parsed}
+                  />
+                </div>
+              )}
             </div>
           );
         })}

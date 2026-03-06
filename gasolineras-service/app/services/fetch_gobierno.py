@@ -2,6 +2,7 @@
 Servicio para obtener datos de gasolineras desde la API del Gobierno de España
 """
 import os
+import re
 import logging
 import httpx
 from typing import List, Dict, Optional
@@ -54,15 +55,108 @@ def parse_float(value: str) -> Optional[float]:
         logger.warning(f"⚠️ No se pudo parsear a float el valor: '{value}' tipo: {type(value)} (Error: {e})")
         return None
 
+# ---------------------------------------------------------------------------
+# Horario parser
+# ---------------------------------------------------------------------------
+
+# Abreviaturas de días españolas → número ISO (1=Lunes, 7=Domingo)
+_DIA_A_ISO: dict[str, int] = {
+    "L": 1,  # Lunes
+    "M": 2,  # Martes
+    "X": 3,  # Miércoles
+    "J": 4,  # Jueves
+    "V": 5,  # Viernes
+    "S": 6,  # Sábado
+    "D": 7,  # Domingo
+}
+
+
+def _expand_dias(dias_str: str) -> list[int]:
+    """
+    Expande una expresión de días al listado ISO.
+    Ejemplos: 'L-V' → [1,2,3,4,5], 'L' → [1], 'L,M,S' → [1,2,6]
+    """
+    dias_str = dias_str.strip().upper()
+    # Rango tipo L-V (exactamente 3 chars: letra-guion-letra)
+    m = re.match(r'^([LMXJVSD])-([LMXJVSD])$', dias_str)
+    if m:
+        s, e = _DIA_A_ISO.get(m.group(1)), _DIA_A_ISO.get(m.group(2))
+        if s and e:
+            if s <= e:
+                return list(range(s, e + 1))
+            # Caso raro: D-L (semana circular)
+            return list(range(s, 8)) + list(range(1, e + 1))
+    # Lista separada por comas: L,M,S
+    if "," in dias_str:
+        return [_DIA_A_ISO[d.strip()] for d in dias_str.split(",") if d.strip() in _DIA_A_ISO]
+    # Día suelto
+    iso = _DIA_A_ISO.get(dias_str)
+    return [iso] if iso else []
+
+
+def parse_horario(raw: Optional[str]) -> Optional[dict]:
+    """
+    Parsea el campo Horario de la API del gobierno a JSON estructurado.
+
+    Formatos soportados:
+        "L-D: 07:00-22:00"
+        "L-V: 06:00-22:00; S-D: 08:00-15:00"
+        "24H" / "24 horas"
+        "" / None → None
+
+    Devuelve:
+        {
+          "texto": "L-D: 07:00-22:00",
+          "siempre_abierto": False,
+          "segmentos": [
+            {"dias": [1,2,3,4,5,6,7], "apertura": "07:00", "cierre": "22:00"}
+          ]
+        }
+    """
+    if not raw or not raw.strip():
+        return None
+    texto = raw.strip()
+
+    # 24H / siempre abierto
+    if re.match(r'^24\s*[Hh]', texto):
+        return {"texto": texto, "siempre_abierto": True, "segmentos": []}
+
+    segmentos = []
+    for parte in texto.split(";"):
+        parte = parte.strip()
+        if not parte:
+            continue
+        # Segmento: "L-D: 07:00-22:00"  o  "L,M,X: 08:00-20:00"
+        m = re.match(
+            r'^([LMXJVSD][LMXJVSD,\-]*)\s*:\s*(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})\s*$',
+            parte,
+            re.IGNORECASE,
+        )
+        if m:
+            dias = _expand_dias(m.group(1))
+            if dias:
+                segmentos.append({
+                    "dias": dias,
+                    "apertura": m.group(2),
+                    "cierre": m.group(3),
+                })
+        else:
+            logger.debug(f"Segmento de horario no reconocido: '{parte}'")
+
+    return {"texto": texto, "siempre_abierto": False, "segmentos": segmentos}
+
+
+# ---------------------------------------------------------------------------
+
 def parse_gasolinera(raw_data: Dict) -> Optional[Dict]:
     """
     Parsea un registro de gasolinera desde el formato de la API
     """
     try:
-        # Debug: imprimir el primer registro para ver la estructura
         lat_raw = raw_data.get("Latitud", "")
         lon_raw = raw_data.get("Longitud (WGS84)", "")
-        
+        horario_raw = raw_data.get("Horario", "")
+
         parsed_data = {
             "IDEESS": raw_data.get("IDEESS"),
             "Rótulo": raw_data.get("Rótulo", "").strip(),
@@ -70,13 +164,18 @@ def parse_gasolinera(raw_data: Dict) -> Optional[Dict]:
             "Provincia": raw_data.get("Provincia", "").strip(),
             "Dirección": raw_data.get("Dirección", "").strip(),
             "Precio Gasolina 95 E5": raw_data.get("Precio Gasolina 95 E5", ""),
+            "Precio Gasolina 98 E5": raw_data.get("Precio Gasolina 98 E5", ""),
             "Precio Gasoleo A": raw_data.get("Precio Gasoleo A", ""),
+            "Precio Gasoleo B": raw_data.get("Precio Gasoleo B", ""),
+            "Precio Gasóleo Premium": raw_data.get("Precio Gasóleo Premium", ""),
             "Latitud": parse_float(lat_raw),
             "Longitud": parse_float(lon_raw),
+            "Horario": horario_raw.strip() if horario_raw else None,
+            "Horario_parsed": parse_horario(horario_raw),
         }
-        
+
         return parsed_data
-        
+
     except Exception as e:
         logger.warning(f"⚠️ Error procesando registro {raw_data.get('IDEESS')}: {e}")
         return None

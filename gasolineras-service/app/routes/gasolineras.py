@@ -1,42 +1,66 @@
 """
-Rutas de la API de Gasolineras - VERSIÓN DEBUG
+Rutas de la API de Gasolineras - PostgreSQL/PostGIS (Neon)
 """
 import logging
 import os
 import httpx
-from typing import List, Optional, Set
-from datetime import datetime, timezone
-from fastapi import APIRouter, Query, HTTPException, status
-from app.db.connection import get_collection, get_historico_collection
+from typing import Optional, Set
+from datetime import datetime, timezone, timedelta, date
 
-PRECIO_GASOLINA_95_E5 = "Precio Gasolina 95 E5"
-from app.services.fetch_gobierno import fetch_data_gobierno
+from fastapi import APIRouter, Query, HTTPException, status
+from psycopg2.extras import execute_values, Json
+
+from app.db.connection import get_db_conn, get_cursor
+from app.services.fetch_gobierno import fetch_data_gobierno, parse_float
 from app.models.gasolinera import Gasolinera
 
 logger = logging.getLogger(__name__)
 
-# URL del servicio de usuarios para obtener favoritas
 USUARIOS_SERVICE_URL = os.getenv("USUARIOS_SERVICE_URL", "http://usuarios:3001")
 INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "dev-internal-secret-change-in-production")
 
 router = APIRouter(prefix="/gasolineras", tags=["Gasolineras"])
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _fmt(val) -> str:
+    """Convierte un NUMERIC de PG al formato espanol (coma decimal)."""
+    if val is None:
+        return ""
+    return f"{float(val):.3f}".replace(".", ",")
+
+
+def _row_to_api(row: dict) -> dict:
+    """Mapea una fila de PostgreSQL al formato de campos que espera el cliente."""
+    return {
+        "IDEESS": row.get("ideess"),
+        "R\u00f3tulo": row.get("rotulo") or "",
+        "Municipio": row.get("municipio") or "",
+        "Provincia": row.get("provincia") or "",
+        "Direcci\u00f3n": row.get("direccion") or "",
+        "Precio Gasolina 95 E5": _fmt(row.get("precio_95_e5")),
+        "Precio Gasolina 98 E5": _fmt(row.get("precio_98_e5")),
+        "Precio Gasoleo A": _fmt(row.get("precio_gasoleo_a")),
+        "Precio Gasoleo B": _fmt(row.get("precio_gasoleo_b")),
+        "Precio Gas\u00f3leo Premium": _fmt(row.get("precio_gasoleo_premium")),
+        "Latitud": row.get("latitud"),
+        "Longitud": row.get("longitud"),
+        "Horario": row.get("horario"),
+        "horario_parsed": row.get("horario_parsed"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /gasolineras/
+# ---------------------------------------------------------------------------
 @router.get(
     "/",
     response_model=dict,
     summary="Obtener gasolineras",
-    description="""
-    Obtiene la lista de gasolineras con soporte para filtros y paginación.
-    
-    **Filtros disponibles:**
-    - provincia: Filtra por provincia
-    - municipio: Filtra por municipio
-    - precio_max: Precio máximo de gasolina 95
-    
-    **Paginación:**
-    - skip: Número de elementos a saltar (default: 0)
-    - limit: Número máximo de elementos a devolver (default: 100, max: 1000)
-    """
+    description="Obtiene la lista de gasolineras con soporte para filtros y paginaci\u00f3n.",
 )
 def get_gasolineras(
     provincia: Optional[str] = Query(None, description="Filtrar por provincia"),
@@ -52,531 +76,459 @@ def get_gasolineras(
         # Construir query de filtros
         query = {}
         if provincia:
-            query["Provincia"] = {"$regex": provincia, "$options": "i"}
+            conditions.append("provincia ILIKE %s")
+            params.append(f"%{provincia}%")
         if municipio:
-            query[PRECIO_GASOLINA_95_E5] = {"$lte": str(precio_max)}
-        if precio_max:
-            query[PRECIO_GASOLINA_95_E5] = {"$lte": str(precio_max)}
-        
-        # Contar total
-        total = collection.count_documents(query)
-        
-        # Obtener datos con paginación
-        gasolineras_list = list(
-            collection.find(query, {"_id": 0})
-            .skip(skip)
-            .limit(limit)
-        )
-        
-        logger.info(f"📊 Consultadas {len(gasolineras_list)} gasolineras (total: {total})")
-        
+            conditions.append("municipio ILIKE %s")
+            params.append(f"%{municipio}%")
+        if precio_max is not None:
+            conditions.append("precio_95_e5 <= %s")
+            params.append(precio_max)
+
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute(f"SELECT COUNT(*) AS total FROM gasolineras {where}", params)
+                total = cur.fetchone()["total"]
+
+                cur.execute(
+                    f"SELECT * FROM gasolineras {where} OFFSET %s LIMIT %s",
+                    params + [skip, limit],
+                )
+                rows = [dict(r) for r in cur.fetchall()]
+
+        gasolineras_list = [_row_to_api(r) for r in rows]
+        logger.info(f"\U0001f4ca Consultadas {len(gasolineras_list)} gasolineras (total: {total})")
+
         return {
             "total": total,
             "skip": skip,
             "limit": limit,
             "count": len(gasolineras_list),
-            "gasolineras": gasolineras_list
+            "gasolineras": gasolineras_list,
         }
-        
-    except Exception as e:
-        logger.error(f"❌ Error al obtener gasolineras: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al consultar las gasolineras: {str(e)}"
-        )
 
-@router.get(
-    "/cerca",
-    summary="Obtener gasolineras cercanas a una ubicación",
-    description="Devuelve gasolineras cercanas a las coordenadas indicadas ordenadas por distancia"
-)
+    except Exception as e:
+        logger.error(f"\u274c Error al obtener gasolineras: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al consultar las gasolineras: {e}")
+
+
+# ---------------------------------------------------------------------------
+# GET /gasolineras/cerca  (PostGIS ST_DWithin)
+# ---------------------------------------------------------------------------
+@router.get("/cerca", summary="Obtener gasolineras cercanas a una ubicaci\u00f3n")
 def gasolineras_cerca(
-    lat: float = Query(..., description="Latitud", ge=-90, le=90),
-    lon: float = Query(..., description="Longitud", ge=-180, le=180),
-    km: float = Query(50, description="Radio en kilómetros", gt=0, le=200),
-    limit: int = Query(100, description="Número máximo de resultados", ge=1, le=500)
+    lat: float = Query(..., ge=-90, le=90),
+    lon: float = Query(..., ge=-180, le=180),
+    km: float = Query(50, gt=0, le=200),
+    limit: int = Query(100, ge=1, le=500),
 ):
-    """Obtiene gasolineras cercanas a una ubicación específica"""
     try:
-        collection = get_collection()
-        
-        # Asegurar índice geoespacial
-        collection.create_index([("location", "2dsphere")])
-        
-        logger.info(f"📍 Buscando gasolineras cerca de ({lat}, {lon}) en radio de {km}km")
-        
-        # Usar aggregation con $geoNear para búsqueda geoespacial
-        gasolineras = list(collection.aggregate([
-            {
-                "$geoNear": {
-                    "near": {
-                        "type": "Point",
-                        "coordinates": [lon, lat]  # GeoJSON: [longitud, latitud]
-                    },
-                    "distanceField": "distancia",
-                    "maxDistance": km * 1000,  # Convertir km a metros
-                    "spherical": True,
-                    "key": "location"
-                }
-            },
-            {"$limit": limit},
-            {"$project": {"_id": 0}}  # Excluir campo _id
-        ]))
-        
-        logger.info(f"✅ Encontradas {len(gasolineras)} gasolineras cercanas")
-        
+        sql = """
+            SELECT
+                ideess, rotulo, municipio, provincia, direccion,
+                precio_95_e5, precio_98_e5, precio_gasoleo_a,
+                precio_gasoleo_b, precio_gasoleo_premium,
+                latitud, longitud, horario, horario_parsed,
+                ST_Distance(geom, ST_MakePoint(%s, %s)::geography) / 1000.0 AS distancia_km
+            FROM gasolineras
+            WHERE geom IS NOT NULL
+              AND ST_DWithin(geom, ST_MakePoint(%s, %s)::geography, %s)
+            ORDER BY distancia_km
+            LIMIT %s
+        """
+        # params: lon,lat (distancia), lon,lat (filtro), metros, limit
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute(sql, [lon, lat, lon, lat, km * 1000, limit])
+                rows = [dict(r) for r in cur.fetchall()]
+
+        gasolineras_list = []
+        for r in rows:
+            g = _row_to_api(r)
+            g["distancia_km"] = float(r["distancia_km"]) if r.get("distancia_km") is not None else None
+            gasolineras_list.append(g)
+
+        logger.info(f"\u2705 Encontradas {len(gasolineras_list)} gasolineras cercanas")
         return {
             "ubicacion": {"lat": lat, "lon": lon},
             "radio_km": km,
-            "count": len(gasolineras),
-            "gasolineras": gasolineras
+            "count": len(gasolineras_list),
+            "gasolineras": gasolineras_list,
         }
-        
-    except Exception as e:
-        logger.error(f"❌ Error al buscar gasolineras cercanas: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al buscar gasolineras cercanas: {str(e)}"
-        )
 
+    except Exception as e:
+        logger.error(f"\u274c Error al buscar gasolineras cercanas: {e}")
+        import traceback; logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error al buscar gasolineras cercanas: {e}")
+
+
+# ---------------------------------------------------------------------------
+# POST /gasolineras/sync
+# ---------------------------------------------------------------------------
 @router.post(
     "/sync",
     response_model=dict,
-    summary="Sincronizar gasolineras",
-    description="""
-    Sincroniza los datos de gasolineras desde la API del Gobierno de España.
-    
-    Atención:
-    - Elimina todos los datos existentes de gasolineras actuales
-    - Descarga datos actualizados desde la API oficial
-    - Inserta los nuevos datos en la base de datos
-    - Guarda snapshot en histórico de precios con timestamp
-    
-    Puede tardar varios segundos.
-    """
+    summary="Sincronizar gasolineras desde la API del Gobierno de Espa\u00f1a",
 )
 def sync_gasolineras():
     try:
-        logger.info("🔄 Iniciando sincronización de gasolineras...")
-        
-        collection = get_collection()  # Sin argumentos
-        historico_collection = get_historico_collection()
+        logger.info("\U0001f504 Iniciando sincronizaci\u00f3n de gasolineras...")
 
         datos = fetch_data_gobierno()
         if not datos:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="No se pudieron obtener datos desde la API del gobierno"
-            )
+            raise HTTPException(status_code=503, detail="No se pudieron obtener datos desde la API del gobierno")
 
-        logger.info(f"📦 Datos recibidos de fetch_data_gobierno: {len(datos)} registros")
+        logger.info(f"\U0001f4e6 Datos recibidos: {len(datos)} registros")
 
-        deleted_count = collection.delete_many({}).deleted_count
-        logger.info(f"🗑️ Eliminados {deleted_count} registros antiguos")
+        datos_validos = [g for g in datos if g.get("Latitud") is not None and g.get("Longitud") is not None]
+        logger.info(f"\U0001f522 V\u00e1lidos con coordenadas: {len(datos_validos)} / {len(datos)}")
 
-        # DEBUG: Mostrar el primer registro
-        if datos:
-            primer_registro = datos[0]
-            logger.info("🔍 DEBUG - Primer registro:")
-            logger.info(f"  Keys disponibles: {list(primer_registro.keys())}")
-            logger.info(f"  IDEESS: {primer_registro.get('IDEESS')}")
-            logger.info(f"  Latitud: {primer_registro.get('Latitud')} (tipo: {type(primer_registro.get('Latitud'))})")
-            logger.info(f"  Longitud: {primer_registro.get('Longitud')} (tipo: {type(primer_registro.get('Longitud'))})")
+        if not datos_validos:
+            raise HTTPException(status_code=500, detail="No se encontraron gasolineras con coordenadas v\u00e1lidas")
 
-        datos_normalizados = []
-        registros_filtrados = 0
         fecha_sync = datetime.now(timezone.utc)
 
-        for idx, g in enumerate(datos):
-            lat = g.get("Latitud")
-            lon = g.get("Longitud")
-
-
-            # DEBUG: Mostrar los primeros 3 registros
-            if idx < 3:
-                logger.info(f"🔍 DEBUG - Registro {idx}:")
-                logger.info(f"  Latitud: {lat} (es None: {lat is None})")
-                logger.info(f"  Longitud: {lon} (es None: {lon is None})")
-
-            if lat is None or lon is None:
-                registros_filtrados += 1
-                continue
-
-            g["location"] = {
-                "type": "Point",
-                "coordinates": [lon, lat]  # GeoJSON → [longitud, latitud]
-            }
-
-            datos_normalizados.append(g)
-        
-        logger.info(f"🔢 Procesados: {len(datos)}. Filtrados por coordenadas: {registros_filtrados}. Válidos para insertar: {len(datos_normalizados)}")
-
-        if not datos_normalizados:
-            logger.error("❌ CRÍTICO: datos_normalizados está vacío!")
-            logger.error(f"   Total recibidos: {len(datos)}")
-            logger.error(f"   Total filtrados: {registros_filtrados}")
-            raise HTTPException(
-                status_code=500,
-                detail="No se encontraron gasolineras con coordenadas válidas"
+        # ---------------------------------------------------------------
+        # Batch INSERT con PostGIS
+        # geom: WKT "POINT(lon lat)" -> ST_GeomFromText(%s, 4326)::geography
+        # Nota: la API devuelve campos con nombres en espanol con tildes.
+        # fetch_gobierno.py los guarda tal cual; aqui se accede por alias
+        # sin tilde para compatibilidad con el resultado de parse_gasolinera.
+        # ---------------------------------------------------------------
+        rows = [
+            (
+                g.get("IDEESS"),
+                (g.get("R\u00f3tulo") or "").strip(),
+                (g.get("Municipio") or "").strip(),
+                (g.get("Provincia") or "").strip(),
+                (g.get("Direcci\u00f3n") or "").strip(),
+                parse_float(g.get("Precio Gasolina 95 E5") or ""),
+                parse_float(g.get("Precio Gasolina 98 E5") or ""),
+                parse_float(g.get("Precio Gasoleo A") or ""),
+                parse_float(g.get("Precio Gasoleo B") or ""),
+                parse_float(g.get("Precio Gas\u00f3leo Premium") or ""),
+                g.get("Latitud"),
+                g.get("Longitud"),
+                f"POINT({g['Longitud']} {g['Latitud']})",
+                g.get("Horario"),
+                Json(g["Horario_parsed"]) if g.get("Horario_parsed") else None,
+                fecha_sync,
             )
+            for g in datos_validos
+        ]
 
-        result = collection.insert_many(datos_normalizados)
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute("DELETE FROM gasolineras")
+                deleted_count = cur.rowcount
 
-        # Índice espacial para búsquedas cercanas
-        collection.create_index([("location", "2dsphere")])
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO gasolineras
+                        (ideess, rotulo, municipio, provincia, direccion,
+                         precio_95_e5, precio_98_e5, precio_gasoleo_a,
+                         precio_gasoleo_b, precio_gasoleo_premium,
+                         latitud, longitud, geom,
+                         horario, horario_parsed,
+                         actualizado_en)
+                    VALUES %s
+                    """,
+                    rows,
+                    template=(
+                        "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
+                        " ST_GeomFromText(%s, 4326)::geography, %s, %s, %s)"
+                    ),
+                )
+                inserted_count = len(rows)
+                logger.info(f"\u2705 Insertadas {inserted_count} gasolineras (eliminadas {deleted_count})")
 
-        inserted_count = len(result.inserted_ids)
+                cur.execute(
+                    "DELETE FROM precios_historicos WHERE fecha < %s",
+                    [fecha_sync.date() - timedelta(days=30)],
+                )
 
-        logger.info(f"✅ Insertadas {inserted_count} gasolineras nuevas")
-        
-        # ========================================
-        # 📊 HISTÓRICO - Solo gasolineras favoritas
-        # ========================================
-        # Obtener lista de IDEESS favoritos desde usuarios-service
+        # ---------------------------------------------------------------
+        # Hist\u00f3rico - solo favoritas
+        # ---------------------------------------------------------------
         favoritas_ids: Set[str] = set()
         try:
             response = httpx.get(
                 f"{USUARIOS_SERVICE_URL}/api/usuarios/favoritos/all-ideess",
                 headers={"X-Internal-Secret": INTERNAL_API_SECRET},
-                timeout=10.0
+                timeout=10.0,
             )
             if response.status_code == 200:
-                data = response.json()
-                favoritas_ids = set(data.get("ideess", []))
-                logger.info(f"📌 Obtenidos {len(favoritas_ids)} IDEESS favoritos para histórico")
+                favoritas_ids = set(response.json().get("ideess", []))
+                logger.info(f"\U0001f4cc {len(favoritas_ids)} IDEESS favoritos para hist\u00f3rico")
             else:
-                logger.warning(f"⚠️ No se pudieron obtener favoritos: {response.status_code}")
+                logger.warning(f"\u26a0\ufe0f No se pudieron obtener favoritos: {response.status_code}")
         except Exception as e:
-            logger.warning(f"⚠️ Error obteniendo favoritos (continuando sin histórico): {e}")
-        
-        # Guardar snapshot en histórico SOLO de favoritas
-        fecha_hoy = fecha_sync.replace(hour=0, minute=0, second=0, microsecond=0)
-        
-        documentos_historicos = []
-        for g in datos_normalizados:
-            ideess = g.get("IDEESS")
-            # Solo guardar si está en favoritos (o si no hay favoritos, no guardar nada)
-            if ideess and ideess in favoritas_ids:
-                # Formato comprimido para ahorrar espacio
-                doc_historico = {
-                    "IDEESS": ideess,
-                    "fecha": fecha_hoy,
-                    "p95": g.get(PRECIO_GASOLINA_95_E5),
-                    "p98": g.get("Precio Gasolina 98 E5"),
-                    "pA": g.get("Precio Gasoleo A"),
-                    "pB": g.get("Precio Gasoleo B"),
-                    "pP": g.get("Precio Gasóleo Premium"),
-                }
-                documentos_historicos.append(doc_historico)
-        
-        # Eliminar registros del mismo día si existen (evitar duplicados)
-        historico_collection.delete_many({"fecha": fecha_hoy})
-        
-        # Insertar nuevos registros históricos
+            logger.warning(f"\u26a0\ufe0f Error obteniendo favoritos (continuando sin hist\u00f3rico): {e}")
+
         historico_count = 0
-        if documentos_historicos:
-            historico_result = historico_collection.insert_many(documentos_historicos)
-            historico_count = len(historico_result.inserted_ids)
-            logger.info(f"📊 Guardados {historico_count} registros en histórico (solo favoritas) para {fecha_hoy.date()}")
-        else:
-            logger.info("📊 No hay favoritas para guardar en histórico")
-        
+        if favoritas_ids:
+            fecha_hoy: date = fecha_sync.date()
+            historico_rows = [
+                (
+                    g.get("IDEESS"),
+                    fecha_hoy,
+                    parse_float(g.get("Precio Gasolina 95 E5") or ""),
+                    parse_float(g.get("Precio Gasolina 98 E5") or ""),
+                    parse_float(g.get("Precio Gasoleo A") or ""),
+                    parse_float(g.get("Precio Gasoleo B") or ""),
+                    parse_float(g.get("Precio Gas\u00f3leo Premium") or ""),
+                )
+                for g in datos_validos
+                if g.get("IDEESS") in favoritas_ids
+            ]
+
+            if historico_rows:
+                with get_db_conn() as conn:
+                    with get_cursor(conn) as cur:
+                        execute_values(
+                            cur,
+                            """
+                            INSERT INTO precios_historicos
+                                (ideess, fecha, p95, p98, pa, pb, pp)
+                            VALUES %s
+                            ON CONFLICT (ideess, fecha) DO UPDATE SET
+                                p95 = EXCLUDED.p95,
+                                p98 = EXCLUDED.p98,
+                                pa  = EXCLUDED.pa,
+                                pb  = EXCLUDED.pb,
+                                pp  = EXCLUDED.pp
+                            """,
+                            historico_rows,
+                        )
+                    historico_count = len(historico_rows)
+                    logger.info(f"\U0001f4ca Guardados {historico_count} registros hist\u00f3ricos para {fecha_hoy}")
+
         return {
-            "mensaje": "Datos sincronizados correctamente 🚀",
+            "mensaje": "Datos sincronizados correctamente \U0001f680",
             "registros_eliminados": deleted_count,
             "registros_insertados": inserted_count,
             "registros_historicos": historico_count,
             "favoritas_totales": len(favoritas_ids),
-            "fecha_snapshot": fecha_hoy.isoformat(),
-            "total": inserted_count
+            "fecha_snapshot": fecha_sync.date().isoformat(),
+            "total": inserted_count,
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error al sincronizar gasolineras: {e}")
-        import traceback
-        logger.error(f"Traceback completo: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error al sincronizar datos: {str(e)}"
-        )
+        logger.error(f"\u274c Error al sincronizar gasolineras: {e}")
+        import traceback; logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error al sincronizar datos: {e}")
 
-@router.get(
-    "/count",
-    response_model=dict,
-    summary="Contar gasolineras",
-    description="Obtiene el número total de gasolineras en la base de datos"
-)
+
+# ---------------------------------------------------------------------------
+# GET /gasolineras/count
+# ---------------------------------------------------------------------------
+@router.get("/count", response_model=dict, summary="Contar gasolineras")
 def count_gasolineras():
-    """Cuenta el número total de gasolineras"""
     try:
-        collection = get_collection()
-        total = collection.count_documents({})
-        
-        return {
-            "total": total,
-            "mensaje": f"Total de gasolineras: {total}"
-        }
-        
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute("SELECT COUNT(*) AS total FROM gasolineras")
+                total = cur.fetchone()["total"]
+        return {"total": total, "mensaje": f"Total de gasolineras: {total}"}
     except Exception as e:
-        logger.error(f"❌ Error al contar gasolineras: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al contar gasolineras: {str(e)}"
-        )
+        logger.error(f"\u274c Error al contar gasolineras: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al contar gasolineras: {e}")
 
-@router.get(
-    "/estadisticas",
-    response_model=dict,
-    summary="Obtener estadísticas de precios",
-    description="""
-    Calcula estadísticas de precios de combustibles:
-    - Precio medio, mínimo, máximo
-    - Percentiles 25, 50 (mediana), 75
-    - Total de gasolineras analizadas
-    
-    Los percentiles se usan para determinar umbrales:
-    - P25: Precio considerado "bajo"
-    - P75: Precio considerado "alto"
-    """
-)
+
+# ---------------------------------------------------------------------------
+# GET /gasolineras/estadisticas
+# ---------------------------------------------------------------------------
+@router.get("/estadisticas", response_model=dict, summary="Obtener estad\u00edsticas de precios")
 def obtener_estadisticas(
-    provincia: Optional[str] = Query(None, description="Filtrar por provincia"),
-    municipio: Optional[str] = Query(None, description="Filtrar por municipio"),
+    provincia: Optional[str] = Query(None),
+    municipio: Optional[str] = Query(None),
 ):
-    """Calcula estadísticas de precios de combustibles"""
     try:
-        collection = get_collection()
-        
-        # Construir query de filtros
-        query = {}
+        conditions: list[str] = []
+        params: list = []
         if provincia:
-            query["Provincia"] = {"$regex": provincia, "$options": "i"}
+            conditions.append("provincia ILIKE %s")
+            params.append(f"%{provincia}%")
         if municipio:
-            query["Municipio"] = {"$regex": municipio, "$options": "i"}
-        
-        gasolineras = list(collection.find(query, {"_id": 0}))
-        total = len(gasolineras)
-        
+            conditions.append("municipio ILIKE %s")
+            params.append(f"%{municipio}%")
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute(
+                    f"SELECT precio_95_e5, precio_98_e5, precio_gasoleo_a, "
+                    f"precio_gasoleo_b, precio_gasoleo_premium FROM gasolineras {where}",
+                    params,
+                )
+                rows = [dict(r) for r in cur.fetchall()]
+
+        total = len(rows)
         if total == 0:
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontraron gasolineras con los filtros especificados"
-            )
-        
-        def calcular_estadisticas(campo: str):
-            """Calcula estadísticas para un tipo de combustible"""
-            precios = []
-            for g in gasolineras:
-                precio_str = g.get(campo, "")
-                if precio_str and precio_str.strip():
-                    try:
-                        precio = float(precio_str.replace(",", "."))
-                        if precio > 0:
-                            precios.append(precio)
-                    except ValueError:
-                        continue
-            
+            raise HTTPException(status_code=404, detail="No se encontraron gasolineras con los filtros especificados")
+
+        def calcular(campo: str):
+            precios = sorted(float(r[campo]) for r in rows if r.get(campo) is not None and float(r[campo]) > 0)
             if not precios:
                 return None
-            
-            precios.sort()
             n = len(precios)
-            
             return {
                 "min": round(precios[0], 3),
                 "max": round(precios[-1], 3),
                 "media": round(sum(precios) / n, 3),
                 "mediana": round(precios[n // 2], 3),
-                "p25": round(precios[n // 4], 3),  # Percentil 25 (precio bajo)
-                "p75": round(precios[n * 3 // 4], 3),  # Percentil 75 (precio alto)
-                "total_muestras": n
+                "p25": round(precios[n // 4], 3),
+                "p75": round(precios[n * 3 // 4], 3),
+                "total_muestras": n,
             }
-        
+
         estadisticas = {
             "total_gasolineras": total,
-            "filtros": {
-                "provincia": provincia,
-                "municipio": municipio
-            },
+            "filtros": {"provincia": provincia, "municipio": municipio},
             "combustibles": {
-                "gasolina_95": calcular_estadisticas("Precio Gasolina 95 E5"),
-                "gasolina_98": calcular_estadisticas("Precio Gasolina 98 E5"),
-                "gasoleo_a": calcular_estadisticas("Precio Gasoleo A"),
-                "gasoleo_b": calcular_estadisticas("Precio Gasoleo B"),
-                "gasoleo_premium": calcular_estadisticas("Precio Gasóleo Premium"),
+                k: v for k, v in {
+                    "gasolina_95": calcular("precio_95_e5"),
+                    "gasolina_98": calcular("precio_98_e5"),
+                    "gasoleo_a": calcular("precio_gasoleo_a"),
+                    "gasoleo_b": calcular("precio_gasoleo_b"),
+                    "gasoleo_premium": calcular("precio_gasoleo_premium"),
+                }.items() if v is not None
             },
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        
-        # Filtrar combustibles sin datos
-        estadisticas["combustibles"] = {
-            k: v for k, v in estadisticas["combustibles"].items() if v is not None
-        }
-        
-        logger.info(f"📊 Estadísticas calculadas para {total} gasolineras")
-        
+
+        logger.info(f"\U0001f4ca Estad\u00edsticas calculadas para {total} gasolineras")
         return estadisticas
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error al calcular estadísticas: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al calcular estadísticas: {str(e)}"
-        )
+        logger.error(f"\u274c Error al calcular estad\u00edsticas: {e}")
+        import traceback; logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error al calcular estad\u00edsticas: {e}")
 
-@router.get(
-    "/{id}",
-    response_model=Gasolinera,
-    summary="Obtener detalles de una gasolinera por ID"
-)
+
+# ---------------------------------------------------------------------------
+# GET /gasolineras/{id}
+# ---------------------------------------------------------------------------
+@router.get("/{id}", response_model=Gasolinera, summary="Obtener detalles de una gasolinera por ID")
 def get_gasolinera_por_id(id: str):
     try:
-        collection = get_collection()
-        gasolinera = collection.find_one({"IDEESS": id}, {"_id": 0})
-        
-        if not gasolinera:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No se encontró gasolinera con ID {id}"
-            )
-        
-        return gasolinera
-    
-    except Exception as e:
-        logger.error(f"❌ Error al obtener gasolinera {id}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error interno al consultar la gasolinera: {str(e)}"
-        )
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute("SELECT * FROM gasolineras WHERE ideess = %s", [id])
+                row = cur.fetchone()
 
-@router.get(
-    "/{id}/cercanas",
-    summary="Obtener gasolineras cercanas",
-    description="Devuelve gasolineras ordenadas por distancia respecto a la gasolinera indicada")
-def get_gasolineras_cercanas(id: str, radio_km: float = 5):
-    try:
-        collection = get_collection()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"No se encontr\u00f3 gasolinera con ID {id}")
 
-        # Asegurar el índice geoespacial
-        collection.create_index([("location", "2dsphere")])
+        return _row_to_api(dict(row))
 
-        gas = collection.find_one({"IDEESS": id})
-        if not gas:
-            raise HTTPException(status_code=404, detail=f"No se encontró gasolinera con ID {id}")
-
-        lat = float(gas["Latitud"])
-        lon = float(gas["Longitud"])
-
-        cercanas = list(collection.aggregate([
-            {
-                "$geoNear": {
-                    "near": {"type": "Point", "coordinates": [lon, lat]},
-                    "distanceField": "distancia",
-                    "maxDistance": radio_km * 1000,
-                    "spherical": True
-                }
-            },
-            {"$match": {"IDEESS": {"$ne": id}}},
-            {"$sort": {"distancia": 1}},
-            {"$limit": 10},
-            {"$project": {"_id": 0}}
-        ]))
-
-        return {
-            "origen": id,
-            "radio_km": radio_km,
-            "cantidad": len(cercanas),
-            "gasolineras_cercanas": cercanas
-        }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error al obtener gasolineras cercanas para {id}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al consultar gasolineras cercanas: {str(e)}"
-        )
+        logger.error(f"\u274c Error al obtener gasolinera {id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error interno al consultar la gasolinera: {e}")
 
-@router.get(
-    "/{id}/historial",
-    summary="Obtener historial de precios",
-    description="""
-    Devuelve el historial de precios de una gasolinera en el período especificado.
-    
-    Parámetros:
-    - id: Identificador de la gasolinera (IDEESS)
-    - dias: Número de días hacia atrás (por defecto 30)
-    
-    Retorna un array con los precios por fecha, ordenados cronológicamente.
-    """
-)
+
+# ---------------------------------------------------------------------------
+# GET /gasolineras/{id}/cercanas  (PostGIS ST_DWithin)
+# ---------------------------------------------------------------------------
+@router.get("/{id}/cercanas", summary="Obtener gasolineras cercanas a otra gasolinera")
+def get_gasolineras_cercanas(id: str, radio_km: float = 5):
+    try:
+        sql = """
+            SELECT
+                g.ideess, g.rotulo, g.municipio, g.provincia, g.direccion,
+                g.precio_95_e5, g.precio_98_e5, g.precio_gasoleo_a,
+                g.precio_gasoleo_b, g.precio_gasoleo_premium,
+                g.latitud, g.longitud, g.horario, g.horario_parsed,
+                ST_Distance(g.geom, ref.geom) / 1000.0 AS distancia_km
+            FROM gasolineras g, gasolineras ref
+            WHERE ref.ideess = %s
+              AND g.ideess != %s
+              AND g.geom IS NOT NULL
+              AND ref.geom IS NOT NULL
+              AND ST_DWithin(g.geom, ref.geom, %s)
+            ORDER BY distancia_km
+            LIMIT 10
+        """
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute(sql, [id, id, radio_km * 1000])
+                rows = [dict(r) for r in cur.fetchall()]
+
+        if not rows:
+            with get_db_conn() as conn:
+                with get_cursor(conn) as cur:
+                    cur.execute("SELECT 1 FROM gasolineras WHERE ideess = %s", [id])
+                    if not cur.fetchone():
+                        raise HTTPException(status_code=404, detail=f"No se encontr\u00f3 gasolinera con ID {id}")
+
+        cercanas = []
+        for r in rows:
+            g = _row_to_api(r)
+            g["distancia_km"] = float(r["distancia_km"]) if r.get("distancia_km") is not None else None
+            cercanas.append(g)
+
+        return {"origen": id, "radio_km": radio_km, "cantidad": len(cercanas), "gasolineras_cercanas": cercanas}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"\u274c Error al obtener gasolineras cercanas para {id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al consultar gasolineras cercanas: {e}")
+
+
+# ---------------------------------------------------------------------------
+# GET /gasolineras/{id}/historial
+# ---------------------------------------------------------------------------
+@router.get("/{id}/historial", summary="Obtener historial de precios de una gasolinera")
 def get_historial_precios(id: str, dias: int = Query(default=30, ge=1, le=365)):
     try:
-        historico_collection = get_historico_collection()
-        
-        # Calcular fecha de inicio
-        fecha_limite = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
-        from datetime import timedelta
-        fecha_inicio = fecha_limite - timedelta(days=dias)
-        
-        # Consultar histórico
-        registros = list(historico_collection.find(
-            {
-                "IDEESS": id,
-                "fecha": {"$gte": fecha_inicio, "$lte": fecha_limite}
-            },
-            {"_id": 0}
-        ).sort("fecha", 1))  # Orden cronológico ascendente
-        
-        if not registros:
-            # Verificar si la gasolinera existe
-            collection = get_collection()
-            gasolinera = collection.find_one({"IDEESS": id})
-            if not gasolinera:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No se encontró gasolinera con ID {id}"
+        fecha_hasta = datetime.now(timezone.utc).date()
+        fecha_desde = fecha_hasta - timedelta(days=dias)
+
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                cur.execute(
+                    """
+                    SELECT ideess, fecha, p95, p98, pa, pb, pp
+                    FROM precios_historicos
+                    WHERE ideess = %s AND fecha BETWEEN %s AND %s
+                    ORDER BY fecha ASC
+                    """,
+                    [id, fecha_desde, fecha_hasta],
                 )
-            
-            return {
-                "IDEESS": id,
-                "dias_consultados": dias,
-                "fecha_desde": fecha_inicio.isoformat(),
-                "fecha_hasta": fecha_limite.isoformat(),
-                "registros": 0,
-                "mensaje": "No hay datos históricos disponibles para este período",
-                "historial": []
-            }
-        
-        # Formatear fechas para mejor legibilidad
-        for registro in registros:
-            if "fecha" in registro and isinstance(registro["fecha"], datetime):
-                registro["fecha"] = registro["fecha"].isoformat()
-        
+                registros = [dict(r) for r in cur.fetchall()]
+
+                if not registros:
+                    cur.execute("SELECT 1 FROM gasolineras WHERE ideess = %s", [id])
+                    if not cur.fetchone():
+                        raise HTTPException(status_code=404, detail=f"No se encontr\u00f3 gasolinera con ID {id}")
+
+        for r in registros:
+            if isinstance(r.get("fecha"), date):
+                r["fecha"] = r["fecha"].isoformat()
+
         return {
             "IDEESS": id,
             "dias_consultados": dias,
-            "fecha_desde": fecha_inicio.isoformat(),
-            "fecha_hasta": fecha_limite.isoformat(),
+            "fecha_desde": fecha_desde.isoformat(),
+            "fecha_hasta": fecha_hasta.isoformat(),
             "registros": len(registros),
-            "historial": registros
+            "historial": registros,
+            **({"mensaje": "No hay datos hist\u00f3ricos disponibles para este per\u00edodo"} if not registros else {}),
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error al obtener historial de precios para {id}: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al consultar historial: {str(e)}"
-        )
+        logger.error(f"\u274c Error al obtener historial de precios para {id}: {e}")
+        import traceback; logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error al consultar historial: {e}")

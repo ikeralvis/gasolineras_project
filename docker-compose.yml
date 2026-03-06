@@ -42,17 +42,10 @@ services:
     ports:
       - "${GASOLINERAS_PORT}:8000"
     environment:
-      MONGO_DB: ${MONGO_DB_NAME}
-      MONGO_USER: ${MONGO_INITDB_ROOT_USERNAME}
-      MONGO_PASS: ${MONGO_INITDB_ROOT_PASSWORD}
-      MONGO_HOST: mongo
-      MONGO_PORT: 27017
-      PORT: 8000 # Puerto interno del contenedor
+      DATABASE_URL: ${DATABASE_URL}
+      PORT: 8000
       USUARIOS_SERVICE_URL: http://usuarios:3001
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
-    depends_on:
-      mongo:
-        condition: service_started
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()" ]
       interval: 10s
@@ -157,5 +150,4 @@ services:
         condition: service_healthy
 
 volumes:
-  mongo_data:
   postgres_data:
