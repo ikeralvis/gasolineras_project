@@ -89,7 +89,8 @@ async def fetch_gasolineras(
         url = settings.GASOLINERAS_API_URL
         if "limit=" not in url:
             sep = "&" if "?" in url else "?"
-            url = f"{url}{sep}limit=2000"
+            url = f"{url}{sep}limit=20000"
+
 
         logger.debug("Obteniendo gasolineras desde %s", url)
         resp = await client.get(url, timeout=settings.GASOLINERAS_TIMEOUT_S)

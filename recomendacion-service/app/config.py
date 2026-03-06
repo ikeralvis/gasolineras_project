@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     # ── Fuente de datos de gasolineras ─────────────────────────────────────────
     # Apunta al gateway del proyecto. Para uso standalone puedes cambiarlo a
     # cualquier API REST que devuelva el mismo formato JSON de gasolineras.
-    GASOLINERAS_API_URL: str = "http://gateway:8080/api/gasolineras/?limit=2000"
+    GASOLINERAS_API_URL: str = "http://gateway:8080/api/gasolineras/?limit=20000"
+
 
     # ── Parámetros por defecto del algoritmo ──────────────────────────────────
     # Peso que tiene el precio en la puntuación compuesta [0-1]

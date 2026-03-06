@@ -1,6 +1,6 @@
 services:
   mongo:
-    image: mongo:8  
+    image: mongo:8
     container_name: mon
     env_file:
       - .env
@@ -28,7 +28,7 @@ services:
       - postgres_data:/var/lib/postgresql
       - ./usuarios-service/init.sql:/docker-entrypoint-initdb.d/init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}" ]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -54,7 +54,7 @@ services:
       mongo:
         condition: service_started
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()" ]
       interval: 10s
       timeout: 3s
       retries: 5
@@ -83,7 +83,7 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3001/health"]
+      test: [ "CMD", "wget", "--spider", "-q", "http://localhost:3001/health" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -113,7 +113,7 @@ services:
       gasolineras:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      test: [ "CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" ]
       interval: 30s
       timeout: 3s
       retries: 3
@@ -127,7 +127,8 @@ services:
     ports:
       - "${RECOMENDACION_PORT:-8002}:8001"
     environment:
-      GASOLINERAS_API_URL: http://gateway:8080/api/gasolineras/?limit=2000
+      GASOLINERAS_API_URL: http://gateway:8080/api/gasolineras/?limit=20000
+
       ROUTING_BACKEND: ${ROUTING_BACKEND:-ors}
       OSRM_BASE_URL: ${OSRM_BASE_URL:-http://router.project-osrm.org}
       ORS_API_KEY: ${ORS_API_KEY}
@@ -136,7 +137,7 @@ services:
       gateway:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()"]
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()" ]
       interval: 15s
       timeout: 5s
       retries: 3

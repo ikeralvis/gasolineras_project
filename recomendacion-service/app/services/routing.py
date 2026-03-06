@@ -57,10 +57,12 @@ async def _route_osrm(
     lat2: float,
     lon2: float,
     client: httpx.AsyncClient,
+    evitar_peajes: bool = False,
 ) -> RouteResult:
     """
     Solicita ruta al backend OSRM.
     Documentación: http://project-osrm.org/docs/v5.24.0/api/
+    Nota: La demo pública de OSRM no soporta de forma sencilla omitir peajes por URL.
     """
     url = (
         f"{settings.OSRM_BASE_URL}/route/v1/driving/"
@@ -94,27 +96,39 @@ async def _route_ors(
     lat2: float,
     lon2: float,
     client: httpx.AsyncClient,
+    evitar_peajes: bool = False,
 ) -> RouteResult:
     """
-    Solicita ruta al backend OpenRouteService usando el endpoint GET.
-    GET /v2/directions/driving-car?api_key=KEY&start=lon,lat&end=lon,lat
-    Devuelve GeoJSON directamente, sin cuerpo de petición.
-    Requiere ORS_API_KEY (gratis hasta 2 000 req/día): https://openrouteservice.org/
+    Solicita ruta al backend OpenRouteService usando el endpoint POST.
+    POST /v2/directions/driving-car
+    Usa el header Authorization para la API key.
     """
     if not settings.ORS_API_KEY:
         raise ValueError("ORS_API_KEY no configurada. Añádela al .env.")
 
-    url = (
-        f"{settings.ORS_BASE_URL}/v2/directions/driving-car"
-        f"?api_key={settings.ORS_API_KEY}"
-        f"&start={lon1},{lat1}"
-        f"&end={lon2},{lat2}"
-    )
+    url = f"{settings.ORS_BASE_URL}/v2/directions/driving-car"
+    
+    headers = {
+        "Authorization": settings.ORS_API_KEY,
+        "Accept": "application/json, application/geo+json",
+        "Content-Type": "application/json; charset=utf-8",
+    }
 
-    resp = await client.get(url, timeout=settings.ROUTING_TIMEOUT_S)
+    body = {
+        "coordinates": [[lon1, lat1], [lon2, lat2]],
+        "preference": "fastest",
+        "units": "m",
+        "geometry": True,
+    }
+
+    if evitar_peajes:
+        body["options"] = {"avoid_features": ["tollways"]}
+
+    resp = await client.post(url, json=body, headers=headers, timeout=settings.ROUTING_TIMEOUT_S)
     resp.raise_for_status()
     data = resp.json()
 
+    # ORS devuelve un FeatureCollection en el endpoint POST v2
     feature = data["features"][0]
     summary = feature["properties"]["summary"]
     coords = feature["geometry"]["coordinates"]  # [[lon, lat], ...]
@@ -135,6 +149,7 @@ async def get_route(
     lon1: float,
     lat2: float,
     lon2: float,
+    evitar_peajes: bool = False,
     client: Optional[httpx.AsyncClient] = None,
 ) -> RouteResult:
     """
@@ -149,17 +164,18 @@ async def get_route(
 
     try:
         if settings.ROUTING_BACKEND == "osrm":
-            result = await _route_osrm(lat1, lon1, lat2, lon2, client)
+            result = await _route_osrm(lat1, lon1, lat2, lon2, client, evitar_peajes)
         elif settings.ROUTING_BACKEND == "ors":
-            result = await _route_ors(lat1, lon1, lat2, lon2, client)
+            result = await _route_ors(lat1, lon1, lat2, lon2, client, evitar_peajes)
         else:
             raise ValueError(f"Backend de routing desconocido: {settings.ROUTING_BACKEND}")
 
         logger.debug(
-            "Ruta calculada (%.1f km, %.0f min) con %s",
+            "Ruta calculada (%.1f km, %.0f min) con %s (evitar_peajes=%s)",
             result.distancia_km,
             result.duracion_min,
             settings.ROUTING_BACKEND,
+            evitar_peajes,
         )
         return result
 
@@ -173,6 +189,7 @@ async def get_route(
     finally:
         if own_client:
             await client.aclose()
+
 
 
 async def get_detour_km(

@@ -74,8 +74,10 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
             body.origen.lon,
             body.destino.lat,
             body.destino.lon,
+            evitar_peajes=body.evitar_peajes,
             client=client,
         )
+
 
         if route.distancia_km < 0.1:
             raise HTTPException(

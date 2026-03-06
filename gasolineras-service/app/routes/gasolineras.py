@@ -43,7 +43,7 @@ def get_gasolineras(
     municipio: Optional[str] = Query(None, description="Filtrar por municipio"),
     precio_max: Optional[float] = Query(None, description="Precio máximo gasolina 95"),
     skip: int = Query(0, ge=0, description="Elementos a saltar"),
-    limit: int = Query(100, ge=1, le=1000, description="Número máximo de resultados")
+    limit: int = Query(100, ge=1, le=20000, description="Número máximo de resultados")
 ):
     """Obtiene la lista de gasolineras con filtros opcionales"""
     try:

@@ -32,6 +32,7 @@ from app.models.schemas import (
     RutaBase,
     EstadisticasRuta,
     Coordenada,
+    GasolinerasDestacadas,
 )
 from app.services.routing import haversine_km
 
@@ -107,10 +108,15 @@ def _calc_detour(
     """
     dist_a_s = haversine_km(origin_lat, origin_lon, station_lat, station_lon)
     dist_s_b = haversine_km(station_lat, station_lon, dest_lat, dest_lon)
-    # dist(A→B) haversine puede diferir del dist de routing; usar el de routing
-    # como referencia y solo escalar A-S y S-B
-    approx_detour = (dist_a_s + dist_s_b) * ROAD_FACTOR - route_dist_km
-    return max(0.0, approx_detour)
+    
+    # El desvío ideal (línea recta) sería la distancia pasando por S menos la recta original (A->B)
+    dist_a_b_recta = haversine_km(origin_lat, origin_lon, dest_lat, dest_lon)
+    desvio_recto = max(0.0, (dist_a_s + dist_s_b) - dist_a_b_recta)
+    
+    # Aplicamos el ROAD_FACTOR solo al tramo adicional del desvío
+    approx_detour = desvio_recto * ROAD_FACTOR
+    
+    return approx_detour
 
 
 def _position_along_route(
@@ -227,6 +233,9 @@ def build_recommendations(
         if detour > req.max_desvio_km:
             continue
 
+
+
+
         pct, dist_from_origin = _position_along_route(
             s.lon, s.lat, route_line, route_dist_km
         )
@@ -297,6 +306,12 @@ def build_recommendations(
             )
         )
 
+    destacadas = GasolinerasDestacadas(
+        mejor_puntuada=items[0] if items else None,
+        mas_barata=min(items, key=lambda x: x.precio_litro) if items else None,
+        mas_cercana=min(items, key=lambda x: x.desvio_km) if items else None,
+    )
+
     return RecomendacionResponse(
         ruta_base=RutaBase(
             distancia_km=round(route_dist_km, 2),
@@ -319,6 +334,7 @@ def build_recommendations(
             precio_max=precio_max,
             combustible=req.combustible,
         ),
+        destacadas=destacadas,
         recomendaciones=items,
         metadata={},
     )

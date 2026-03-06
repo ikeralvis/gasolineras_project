@@ -71,6 +71,8 @@ class RecomendacionRequest(BaseModel):
         le=200,
         description="Litros del depósito para calcular ahorro estimado en €",
     )
+    evitar_peajes: bool = Field(False, description="Evitar carreteras con peaje")
+
 
     @model_validator(mode="after")
     def validate_weights(self) -> RecomendacionRequest:
@@ -163,9 +165,16 @@ class EstadisticasRuta(BaseModel):
     combustible: str
 
 
+class GasolinerasDestacadas(BaseModel):
+    mas_barata: Optional[RecomendacionItem] = Field(None, description="La gasolinera con el precio de combustible más bajo del top")
+    mas_cercana: Optional[RecomendacionItem] = Field(None, description="La gasolinera con el menor desvío en km de la ruta directa")
+    mejor_puntuada: Optional[RecomendacionItem] = Field(None, description="La mejor recomendación global equilibrando precio y desvío")
+
+
 class RecomendacionResponse(BaseModel):
     ruta_base: RutaBase
     estadisticas: EstadisticasRuta
+    destacadas: GasolinerasDestacadas
     recomendaciones: List[RecomendacionItem]
     metadata: dict = Field(
         default_factory=dict,
