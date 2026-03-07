@@ -23,6 +23,8 @@
     "home": "Inicio",
     "gasStations": "Gasolineras",
     "map": "Mapa",
+    "evCharging": "Recarga EV",
+    "routes": "Rutas",
     "favorites": "Favoritos",
     "login": "Iniciar Sesión",
     "register": "Registrarse",
@@ -259,5 +261,44 @@
     "municipality": "Municipio",
     "brandName": "Marca / Nombre",
     "fuelType": "Tipo de Combustible"
+  },
+  "routes": {
+    "title": "Planif. de Rutas",
+    "subtitle": "Calcula rutas y encuentra gasolineras en el camino",
+    "from": "Punto de Salida",
+    "to": "Destino",
+    "fromPlaceholder": "¿De dónde salgo?",
+    "toPlaceholder": "¿A dónde voy?",
+    "swap": "Intercambiar",
+    "useCurrentLocation": "Usar mi ubicación",
+    "calculateRoute": "Calcular Ruta",
+    "calculating": "Calculando ruta...",
+    "searching": "Buscando ubicaciones...",
+    "distance": "Distancia",
+    "duration": "Duración",
+    "minutes": "min",
+    "starting": "(Salida)",
+    "destination": "(Destino)",
+    "gasStationsNearRoute": "Gasolineras en la ruta"
+  },
+  "accessibility": {
+    "clear": "Limpiar",
+    "geolocationNotSupported": "Tu navegador no soporta geolocalización",
+    "geolocationError": "No se pudo acceder a tu ubicación"
+  },
+  "ev": {
+    "title": "Puntos de Recarga Eléctrica",
+    "navLabel": "Recarga EV",
+    "zoomIn": "Acércate al mapa para ver puntos de recarga (zoom > 8)",
+    "zoomInMore": "Área demasiado grande. Acércate un poco más.",
+    "zoomInHint": "Sube al zoom {{zoom}} para ver las estaciones",
+    "zoomInMoreHint": "Sube al zoom {{zoom}} para ver las estaciones",
+    "noStations": "No se encontraron puntos de recarga en esta área",
+    "showingMarkers": "{{locations}} estaciones · {{clusters}} grupos",
+    "drawerTitle": "Punto de Recarga",
+    "connectors": "Conectores",
+    "lastUpdated": "Actualizad.",
+    "viewDetails": "Ver detalles",
+    "detailError": "No se pudieron cargar los detalles"
   }
 }

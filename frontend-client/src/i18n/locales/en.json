@@ -23,6 +23,8 @@
     "home": "Home",
     "gasStations": "Gas Stations",
     "map": "Map",
+    "evCharging": "EV Charging",
+    "routes": "Routes",
     "favorites": "Favorites",
     "login": "Login",
     "register": "Register",
@@ -259,5 +261,44 @@
     "municipality": "Municipality",
     "brandName": "Brand / Name",
     "fuelType": "Fuel Type"
+  },
+  "routes": {
+    "title": "Route Planning",
+    "subtitle": "Calculate routes and find gas stations along the way",
+    "from": "Departure Point",
+    "to": "Destination",
+    "fromPlaceholder": "Where are you leaving from?",
+    "toPlaceholder": "Where are you going?",
+    "swap": "Swap",
+    "useCurrentLocation": "Use my location",
+    "calculateRoute": "Calculate Route",
+    "calculating": "Calculating route...",
+    "searching": "Searching locations...",
+    "distance": "Distance",
+    "duration": "Duration",
+    "minutes": "min",
+    "starting": "(Departure)",
+    "destination": "(Destination)",
+    "gasStationsNearRoute": "Gas stations along the route"
+  },
+  "accessibility": {
+    "clear": "Clear",
+    "geolocationNotSupported": "Your browser does not support geolocation",
+    "geolocationError": "Could not access your location"
+  },
+  "ev": {
+    "title": "EV Charging Points",
+    "navLabel": "EV Charging",
+    "zoomIn": "Zoom in to see charging stations (zoom > 8)",
+    "zoomInMore": "Area too large. Please zoom in further.",
+    "zoomInHint": "Zoom to level {{zoom}} to see stations",
+    "zoomInMoreHint": "Zoom to level {{zoom}} to see stations",
+    "noStations": "No charging points found in this area",
+    "showingMarkers": "{{locations}} stations · {{clusters}} clusters",
+    "drawerTitle": "Charging Point",
+    "connectors": "Connectors",
+    "lastUpdated": "Updated",
+    "viewDetails": "View details",
+    "detailError": "Could not load station details"
   }
 }

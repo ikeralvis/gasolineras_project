@@ -23,6 +23,7 @@
     "home": "Hasiera",
     "gasStations": "Gasolindegiak",
     "map": "Mapa",
+    "evCharging": "EV Karga",
     "favorites": "Gogokoak",
     "login": "Hasi saioa",
     "register": "Erregistratu",
@@ -259,5 +260,20 @@
     "municipality": "Udalerria",
     "brandName": "Marka / Izena",
     "fuelType": "Erregai Mota"
+  },
+  "ev": {
+    "title": "Karga Puntu Elektrikoak",
+    "navLabel": "EV Karga",
+    "zoomIn": "Hurbildu mapa karga puntuak ikusteko (zoom > 8)",
+    "zoomInMore": "Eremua handiegia da. Hurbildu gehiago.",
+    "zoomInHint": "Zoom {{zoom}} mailara igo geltokiak ikusteko",
+    "zoomInMoreHint": "Zoom {{zoom}} mailara igo geltokiak ikusteko",
+    "noStations": "Ez da karga punturik aurkitu eremu honetan",
+    "showingMarkers": "{{locations}} geltoki \u00b7 {{clusters}} talde",
+    "drawerTitle": "Karga Puntua",
+    "connectors": "Konektoreak",
+    "lastUpdated": "Eguneratua",
+    "viewDetails": "Xehetasunak ikusi",
+    "detailError": "Ezin izan dira xehetasunak kargatu"
   }
 }

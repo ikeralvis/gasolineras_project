@@ -1,5 +1,6 @@
 import { Link, NavLink } from "react-router-dom";
 import { FiMapPin, FiMenu, FiX } from "react-icons/fi";
+import { LuZap, LuRoute } from "react-icons/lu";
 import { MdLocalGasStation } from "react-icons/md";
 import { FaUser, FaSignOutAlt, FaHeart } from "react-icons/fa";
 import { useTranslation } from "react-i18next";
@@ -97,6 +98,18 @@ export default function Navbar() {
           <NavLink to="/mapa" className={linkStyle}>
             <span className="flex items-center gap-2">
               <FiMapPin size={18}/> {t('nav.map')}
+            </span>
+          </NavLink>
+
+          <NavLink to="/recarga" className={linkStyle}>
+            <span className="flex items-center gap-2">
+              <LuZap size={16} /> {t('nav.evCharging')}
+            </span>
+          </NavLink>
+
+          <NavLink to="/rutas" className={linkStyle}>
+            <span className="flex items-center gap-2">
+              <LuRoute size={16} /> {t('nav.routes')}
             </span>
           </NavLink>
 
@@ -198,6 +211,14 @@ export default function Navbar() {
 
             <NavLink to="/mapa" className={mobileLinkStyle} onClick={closeMobileMenu}>
               <FiMapPin size={20}/> {t('nav.map')}
+            </NavLink>
+
+            <NavLink to="/recarga" className={mobileLinkStyle} onClick={closeMobileMenu}>
+              <LuZap size={20} /> {t('nav.evCharging')}
+            </NavLink>
+
+            <NavLink to="/rutas" className={mobileLinkStyle} onClick={closeMobileMenu}>
+              <LuRoute size={20} /> {t('nav.routes')}
             </NavLink>
 
             {isAuthenticated && (

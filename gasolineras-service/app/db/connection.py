@@ -16,10 +16,12 @@ logger = logging.getLogger(__name__)
 # Neon (y cualquier PostgreSQL cloud) requiere sslmode=require.
 # En local con Docker puedes poner ?sslmode=disable en DATABASE_URL.
 # -------------------------------------------------------------------
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:admin@localhost:5432/gasolineras_db"
-)
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError(
+        "DATABASE_URL env var is not set. "
+        "Set it to your Neon / Supabase PostgreSQL connection string."
+    )
 
 _pool: psycopg2.pool.ThreadedConnectionPool | None = None
 

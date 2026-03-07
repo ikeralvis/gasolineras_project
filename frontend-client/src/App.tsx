@@ -6,6 +6,8 @@ import Home from "./pages/Home";
 import Gasolineras from "./pages/Gasolineras";
 import GasolineraDetalle from "./components/GasolineraDetalle";
 import MapaGasolineras from "./pages/MapaGasolineras";
+import MapaRecarga from "./pages/MapaRecarga";
+import Rutas from "./pages/Rutas";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
@@ -47,6 +49,8 @@ function App() {
           <Route path="/gasolineras" element={<Gasolineras />} />
           <Route path="/gasolinera/:id" element={<GasolineraDetalle />} />
           <Route path="/mapa" element={<MapaGasolineras />} />
+          <Route path="/recarga" element={<MapaRecarga />} />
+          <Route path="/rutas" element={<Rutas />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/profile" element={<Profile />} />

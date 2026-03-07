@@ -27,7 +27,6 @@ interface Gasolinera {
   ["Precio Gasoleo Premium"]?: string;
   Horario?: string;
   horario_parsed?: HorarioParsed;
-  [key: string]: string | HorarioParsed | undefined; // Permite acceso dinámico
 }
 
 interface Props {
@@ -98,6 +97,12 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
         {badge.texto}
       </span>
     );
+  };
+
+  // Safe getter for dynamic fuel price
+  const getPriceByType = (gasolinera: Gasolinera, tipo: string): string | undefined => {
+    const value = (gasolinera as unknown as Record<string, unknown>)[tipo];
+    return typeof value === 'string' ? value : undefined;
   };
 
   return (
@@ -245,10 +250,10 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                   <td className="py-4">
                     <div className="flex items-center">
                       <span className="text-lg font-bold text-gray-900">
-                        {g[combustibleSeleccionado] || "N/D"}
+                        {getPriceByType(g, combustibleSeleccionado) || "N/D"}
                       </span>
                       <span className="text-sm text-gray-500 ml-1">€/L</span>
-                      {getPriceBadge(g[combustibleSeleccionado])}
+                      {getPriceBadge(getPriceByType(g, combustibleSeleccionado))}
                     </div>
                   </td>
 
@@ -314,11 +319,11 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                   <span className="block text-xs text-blue-700 font-medium mb-1">{getNombreCombustible(combustibleSeleccionado)}</span>
                   <div className="flex items-baseline gap-1">
                     <span className="text-xl font-bold text-gray-900">
-                      {g[combustibleSeleccionado] || "N/D"}
+                      {getPriceByType(g, combustibleSeleccionado) || "N/D"}
                     </span>
                     <span className="text-xs text-gray-600">€/L</span>
                   </div>
-                  {getPriceBadge(g[combustibleSeleccionado])}
+                  {getPriceBadge(getPriceByType(g, combustibleSeleccionado))}
                 </div>
               </div>
 

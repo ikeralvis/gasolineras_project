@@ -134,14 +134,18 @@ async function buildServer() {
   });
 
   // 7. Conexión a Base de Datos
-  const isProduction = process.env.NODE_ENV === 'production';
-  const connectionString = `postgres://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}${isProduction ? '?sslmode=require' : ''}`;
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error('❌ FATAL: DATABASE_URL no está definido en las variables de entorno');
+  }
+  // Ensure sslmode=require for Neon / cloud Postgres
+  const connectionString = databaseUrl.includes('sslmode')
+    ? databaseUrl
+    : databaseUrl + (databaseUrl.includes('?') ? '&' : '?') + 'sslmode=require';
   const pgConfig = {
     connectionString,
+    ssl: { rejectUnauthorized: false },
   };
-  if (isProduction) {
-    pgConfig.ssl = { rejectUnauthorized: false };
-  }
   await fastify.register(fastifyPostgres, pgConfig);
 
 

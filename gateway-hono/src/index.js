@@ -11,6 +11,7 @@ const PORT = process.env.PORT || 8080;
 const USUARIOS_SERVICE = process.env.USUARIOS_SERVICE_URL || "http://usuarios:3001";
 const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000";
 const RECOMENDACION_SERVICE = process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001";
+const EV_CHARGING_SERVICE = process.env.EV_CHARGING_SERVICE_URL || "http://ev-charging:8000";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
@@ -584,6 +585,48 @@ app.all("/api/recomendacion/*", async (c) => {
     console.error("Error en proxy de recomendacion:", error);
     return c.json(
       { error: "Error al comunicarse con el servicio de recomendación", message: error.message },
+      503
+    );
+  }
+});
+
+// ========================================
+// 🔋 PROXY: MICROSERVICIO EV CHARGING
+// ========================================
+app.all("/api/charging/*", async (c) => {
+  try {
+    const path = c.req.path.replace("/api/charging", "/api/charging");
+    const searchParams = new URL(c.req.url).searchParams;
+    const queryString = searchParams.toString();
+    const url = `${EV_CHARGING_SERVICE}${path}${queryString ? '?' + queryString : ''}`;
+
+    console.log(`🔋 Proxy ev-charging: ${c.req.method} ${url}`);
+
+    const headers = {};
+    for (const [key, value] of c.req.raw.headers) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
+        headers[key] = value;
+      }
+    }
+
+    const options = { method: c.req.method, headers };
+    if (["POST", "PUT", "PATCH"].includes(c.req.method)) {
+      options.body = await c.req.text();
+    }
+
+    const response = await fetch(url, options);
+    const contentType = response.headers.get("content-type");
+
+    if (contentType?.includes("application/json")) {
+      const data = await response.json();
+      return c.json(data, response.status);
+    }
+    return c.text(await response.text(), response.status);
+  } catch (error) {
+    console.error("Error en proxy de ev-charging:", error);
+    return c.json(
+      { error: "Error al comunicarse con el servicio EV Charging", message: error.message },
       503
     );
   }
