@@ -1,35 +1,48 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
-  CircleMarker,
   MapContainer,
   Marker,
-  Popup,
   TileLayer,
-  Tooltip,
   useMap,
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { LuZap, LuMapPin, LuBuilding2, LuClock, LuX, LuZoomIn } from "react-icons/lu";
+import { LuZap, LuMapPin, LuClock, LuX, LuZoomIn, LuPhone, LuGlobe, LuInfo } from "react-icons/lu";
 import { useTranslation } from "react-i18next";
 import {
   BoundingBoxTooLargeError,
   EVMarker,
+  EVSEConnector,
   LocationDetail,
   fetchEVLocationDetail,
   fetchEVMarkers,
 } from "../api/charging";
 
-// ── Leaflet default icon fix (Vite asset path issue) ──────────────────────────
-const locationIcon = new L.Icon({
-  iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
-  iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
-  shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41],
-});
+// ── Location marker helpers ──────────────────────────────────────────────────
+
+function getLocationStatusColor(detail: LocationDetail): string {
+  if (!detail.evses?.length) return "#9CA3AF";
+  const hasAvailable = detail.evses.some((e) => e.status === "AVAILABLE");
+  const allCharging = detail.evses.every((e) => e.status === "CHARGING");
+  if (hasAvailable) return "#10B981"; // emerald-500
+  if (allCharging) return "#F59E0B"; // amber-500
+  return "#EF4444"; // red-500
+}
+
+function getMarkerStatusColor(status?: string): string {
+  if (status === "AVAILABLE") return "#10B981"; // emerald-500
+  if (status === "CHARGING") return "#F59E0B"; // amber-500
+  return "#9CA3AF"; // gray-400
+}
+
+function createLocationDivIcon(statusColor: string): L.DivIcon {
+  return L.divIcon({
+    html: `<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;background:${statusColor};border-radius:50%;border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.4);cursor:pointer"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>`,
+    className: "",
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+  });
+}
 
 // ── Sub-component: listens to map move/zoom and fetches markers ───────────────
 interface MapControllerProps {
@@ -50,11 +63,6 @@ function EVMapController({
 
   const fetchMarkers = useCallback(async () => {
     const zoom = map.getZoom();
-    if (zoom <= 8) {
-      onZoomTooLow(true);
-      onMarkersUpdate([]);
-      return;
-    }
     onZoomTooLow(false);
 
     // Cancel previous in-flight request
@@ -93,15 +101,35 @@ function EVMapController({
     fetchMarkers();
   }, [fetchMarkers]);
 
+  // Only moveend: zoomend also fires moveend, so listening to both causes a double fetch
   useMapEvents({
     moveend: () => { fetchMarkers(); },
-    zoomend: () => { fetchMarkers(); },
   });
 
   return null;
 }
 
-// ── Sub-component: cluster circle marker ─────────────────────────────────────
+// ── Cluster divIcon factory ───────────────────────────────────────────────────
+function createClusterDivIcon(count: number): L.DivIcon {
+  let bg: string;
+  if (count > 100) bg = "#059669";
+  else if (count > 20) bg = "#0d9488";
+  else bg = "#0ea5e9";
+
+  const size = Math.min(36 + Math.log2(count + 1) * 5, 60);
+  const iconPx = Math.round(size * 0.42);
+  const fontPx = size > 46 ? 11 : 10;
+  const label = count > 999 ? "999+" : String(count);
+
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;background:${bg};border-radius:50%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;border:2.5px solid white;box-shadow:0 2px 10px rgba(0,0,0,0.35);cursor:pointer"><svg xmlns="http://www.w3.org/2000/svg" width="${iconPx}" height="${iconPx}" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg><span style="color:white;font-size:${fontPx}px;font-weight:700;line-height:1">${label}</span></div>`,
+    className: "",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+// ── Sub-component: cluster marker ────────────────────────────────────────────
 interface ClusterCircleProps {
   lat: number;
   lng: number;
@@ -110,26 +138,34 @@ interface ClusterCircleProps {
 
 function ClusterCircle({ lat, lng, count }: Readonly<ClusterCircleProps>) {
   const map = useMap();
-  const radius = Math.min(10 + Math.log2(count + 1) * 5, 40);
-  let color: string;
-  if (count > 20) { color = "#059669"; }
-  else if (count > 5) { color = "#0d9488"; }
-  else { color = "#0ea5e9"; }
+  const icon = useMemo(() => createClusterDivIcon(count), [count]);
 
   return (
-    <CircleMarker
-      center={[lat, lng]}
-      radius={radius}
-      pathOptions={{ color: "white", fillColor: color, fillOpacity: 0.9, weight: 2 }}
+    <Marker
+      position={[lat, lng]}
+      icon={icon}
       eventHandlers={{
-        click: () => map.setZoom(map.getZoom() + 2),
+        click: () => map.flyTo([lat, lng], Math.min(map.getZoom() + 3, 18)),
       }}
-    >
-      <Tooltip permanent direction="center" className="ev-cluster-label">
-        <span className="font-bold text-white text-xs">{count}</span>
-      </Tooltip>
-    </CircleMarker>
+    />
   );
+}
+
+// ── Tariff price helper ──────────────────────────────────────────────────────
+function getTariffSummary(connector: EVSEConnector | undefined): string | null {
+  const tariff = connector?.tariffs?.[0]?.tariff;
+  if (!tariff?.elements?.length) return null;
+  const prices = tariff.elements
+    .flatMap((el) => el.price_components ?? [])
+    .filter((pc) => pc.type === "ENERGY")
+    .map((pc) => pc.price);
+  if (!prices.length) return null;
+  const currency = tariff.currency ?? "EUR";
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  return min === max
+    ? `${min.toFixed(2)} ${currency}/kWh`
+    : `${min.toFixed(2)} – ${max.toFixed(2)} ${currency}/kWh`;
 }
 
 // ── Sub-component: location drawer ───────────────────────────────────────────
@@ -189,7 +225,13 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2">
-            <LuZap className="text-[#000C74] shrink-0" size={18} />
+            <LuZap
+              className="shrink-0"
+              size={18}
+              style={{
+                color: detail ? getLocationStatusColor(detail) : "#000C74",
+              }}
+            />
             <h2 className="font-semibold text-[#000C74] text-base">
               {detail?.name ?? t("ev.drawerTitle")}
             </h2>
@@ -230,10 +272,31 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
               )}
 
               {/* Operator */}
-              {detail.operator?.name && (
-                <div className="flex items-center gap-3">
-                  <LuBuilding2 className="text-gray-400 shrink-0" size={16} />
-                  <p className="text-gray-700 text-sm">{detail.operator.name}</p>
+              {(detail.operator?.name ?? detail.owner?.name) && (
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                  <p className="text-xs text-gray-500 mb-1">Operator</p>
+                  <p className="font-semibold text-gray-900 text-sm">
+                    {detail.operator?.name ?? detail.owner?.name}
+                  </p>
+                </div>
+              )}
+
+              {detail.owner?.website && (
+                <a
+                  href={`https://${detail.owner.website.replace(/^https?:\/\//, "")}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="flex items-center gap-2 text-blue-600 hover:text-blue-800 text-xs py-2 px-3 bg-blue-50 rounded-lg"
+                >
+                  <LuGlobe size={14} />
+                  {detail.owner.website}
+                </a>
+              )}
+
+              {detail.owner?.phone && (
+                <div className="flex items-center gap-2 text-gray-700 text-sm py-2 px-3 bg-gray-50 rounded-lg">
+                  <LuPhone size={16} className="text-gray-400" />
+                  <span>{detail.owner.phone}</span>
                 </div>
               )}
 
@@ -252,35 +315,101 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                     {t("ev.connectors")} ({detail.evses.length})
                   </h3>
                   <div className="space-y-2">
-                    {detail.evses.slice(0, 10).map((evse, i) => (
-                      <div
-                        key={evse.id ?? i}
-                        className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2"
-                      >
-                        <div className="flex items-center gap-2">
-                        {(() => {
-                          let dotColor = "bg-gray-300";
-                          if (evse.status === "AVAILABLE") dotColor = "bg-green-500";
-                          else if (evse.status === "CHARGING") dotColor = "bg-yellow-500";
-                          return <span className={`w-2 h-2 rounded-full ${dotColor}`} />;
-                        })()}
-                          <span className="text-sm text-gray-700">
-                            {evse.connectors?.[0]?.standard ?? "—"}
-                          </span>
+                    {detail.evses.slice(0, 10).map((evse, i) => {
+                      const connector = evse.connectors?.[0];
+                      const price = getTariffSummary(connector);
+                      let dotColor = "bg-gray-300";
+                      if (evse.status === "AVAILABLE") dotColor = "bg-green-500";
+                      else if (evse.status === "CHARGING") dotColor = "bg-yellow-500";
+                      return (
+                        <div
+                          key={evse.evse_id ?? evse.id ?? i}
+                          className="flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
+                            <div>
+                              <span className="text-sm text-gray-700">
+                                {connector?.standard ?? "—"}
+                              </span>
+                              {price && (
+                                <p className="text-xs text-[#000C74] font-medium mt-0.5">{price}</p>
+                              )}
+                            </div>
+                          </div>
+                          {!!connector?.max_electric_power && (
+                            <span className="text-xs text-gray-500 font-medium">
+                              {(connector.max_electric_power / 1000).toFixed(0)} kW
+                            </span>
+                          )}
                         </div>
-                        {!!evse.connectors?.[0]?.max_electric_power && (
-                          <span className="text-xs text-gray-500 font-medium">
-                            {(evse.connectors[0].max_electric_power / 1000).toFixed(0)} kW
-                          </span>
-                        )}
-                      </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Postal & Location */}
+              {(detail.postal_code || detail.state) && (
+                <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+                  <p className="text-xs text-blue-900 font-medium">
+                    {[detail.postal_code, detail.state].filter(Boolean).join(" • ")}
+                  </p>
+                </div>
+              )}
+
+              {/* Payment Methods */}
+              {detail.evses?.some((e) => e.payment_methods?.length) && (
+                <div>
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+                    Payment Methods
+                  </h3>
+                  <div className="space-y-1">
+                    {Array.from(
+                      new Set(
+                        detail.evses
+                          .flatMap((e) => e.payment_methods ?? [])
+                          .filter(Boolean)
+                      )
+                    ).map((method) => (
+                      <p key={method} className="text-sm text-gray-700">• {method}</p>
                     ))}
                   </div>
                 </div>
               )}
 
+              {/* Status Badge */}
+              {detail.evses && detail.evses.length > 0 && (
+                <div className="flex flex-wrap gap-2 justify-center bg-gray-100 rounded-lg py-3 px-3">
+                  {detail.evses.some((e) => e.status === "AVAILABLE") && (
+                    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+                    <span className="flex items-center gap-1 text-sm font-medium text-green-700 bg-green-50 px-3 py-1 rounded-full">
+                      <span className="inline-block w-2 h-2 bg-green-500 rounded-full" />
+                      {" Available"}
+                    </span>
+                  )}
+                  {detail.evses.some((e) => e.status === "CHARGING") && (
+                    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+                    <span className="flex items-center gap-1 text-sm font-medium text-amber-700 bg-amber-50 px-3 py-1 rounded-full">
+                      <span className="inline-block w-2 h-2 bg-amber-500 rounded-full" />
+                      {" Charging"}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Info Footer */}
+              {detail.source_type && (
+                <div className="flex items-center gap-2 text-xs text-gray-500 justify-center pt-2">
+                  <LuInfo size={12} />
+                  <span>
+                    {typeof detail.source_type === "string" ? detail.source_type : "OCPI"} • {detail.access_restricted ? "Restricted" : "Public"}
+                  </span>
+                </div>
+              )}
+
               {detail.last_updated && (
-                <p className="text-xs text-gray-400 text-right">
+                <p className="text-xs text-gray-400 text-center">
                   {t("ev.lastUpdated")}: {new Date(detail.last_updated).toLocaleString()}
                 </p>
               )}
@@ -294,14 +423,13 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
-const MIN_ZOOM_TO_FETCH = 8;
 const SPAIN_CENTER: [number, number] = [40.4168, -3.7038];
 
 export default function MapaRecarga() {
   const { t } = useTranslation();
   const [markers, setMarkers] = useState<EVMarker[]>([]);
   const [loading, setLoading] = useState(false);
-  const [zoomTooLow, setZoomTooLow] = useState(true);
+  const [zoomTooLow, setZoomTooLow] = useState(false);
   const [bboxTooLargeZoom, setBboxTooLargeZoom] = useState<number | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
 
@@ -347,7 +475,7 @@ export default function MapaRecarga() {
             <LuZoomIn className="w-4 h-4" />
             {bboxTooLargeZoom
               ? t("ev.zoomInMoreHint", { zoom: bboxTooLargeZoom })
-              : t("ev.zoomInHint", { zoom: MIN_ZOOM_TO_FETCH + 1 })}
+              : t("ev.zoomInHint")}
           </div>
         </div>
       )}
@@ -386,26 +514,18 @@ export default function MapaRecarga() {
           }
 
           // type === "location"
-          const { id, name, latitude, longitude } = marker.location;
+          const { id, latitude, longitude, status } = marker.location;
+          const statusColor = getMarkerStatusColor(status);
+
           return (
             <Marker
               key={`loc-${id}`}
               position={[latitude, longitude]}
-              icon={locationIcon}
+              icon={createLocationDivIcon(statusColor)}
               eventHandlers={{
                 click: () => setSelectedLocationId(id),
               }}
-            >
-              <Popup>
-                <div className="text-sm font-medium">{name}</div>
-                <button
-                  className="text-xs text-[#000C74] underline mt-1"
-                  onClick={() => setSelectedLocationId(id)}
-                >
-                  {t("ev.viewDetails")}
-                </button>
-              </Popup>
-            </Marker>
+            />
           );
         })}
       </MapContainer>

@@ -45,17 +45,50 @@ export interface LocationMarker {
 
 export type EVMarker = ClusterMarker | LocationMarker;
 
+export interface TariffPriceComponent {
+  type: string; // "ENERGY" | "TIME" | "FLAT" | …
+  price: number;
+  vat?: number;
+  step_size?: number;
+}
+
+export interface TariffElement {
+  price_components?: TariffPriceComponent[];
+  restrictions?: {
+    start_time?: string | null;
+    end_time?: string | null;
+    day_of_week?: string[];
+    [key: string]: unknown;
+  };
+}
+
+export interface TariffInfo {
+  id?: string;
+  currency?: string;
+  elements?: TariffElement[];
+}
+
+export interface ConnectorTariff {
+  tariff?: TariffInfo;
+  tariff_alt_url?: string | null;
+}
+
 export interface EVSEConnector {
   id?: string;
   standard?: string;
+  format?: string;
   power_type?: string;
   max_electric_power?: number;
+  tariffs?: ConnectorTariff[];
 }
 
 export interface EVSEUnit {
   id?: string;
+  evse_id?: string;
   status?: string;
   connectors?: EVSEConnector[];
+  payment_methods?: string[];
+  last_updated?: string;
 }
 
 export interface LocationDetail {
@@ -64,13 +97,19 @@ export interface LocationDetail {
   address?: string;
   city?: string;
   country?: string;
+  postal_code?: string;
+  state?: string | null;
   latitude?: number;
   longitude?: number;
+  coordinates?: { latitude: string | number; longitude: string | number };
   operator?: { id?: string; name?: string };
+  owner?: { name?: string; website?: string; logo?: string | null; phone?: string };
   evses?: EVSEUnit[];
+  facilities?: string[];
   opening_times?: { twentyfourseven?: boolean; regular_hours?: unknown[] };
   last_updated?: string;
-  [key: string]: unknown; // external API may add fields
+  access_restricted?: boolean;
+  [key: string]: unknown;
 }
 
 export class BoundingBoxTooLargeError extends Error {

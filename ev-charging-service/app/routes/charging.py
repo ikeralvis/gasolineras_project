@@ -76,12 +76,21 @@ async def get_markers(bbox: BoundingBoxRequest):
     Raises HTTP 400 when the external API returns status_code 2001
     (bounding box is too large — the frontend must zoom in first).
     """
+    # Field names must match mapareve.es public API exactly
     payload = {
-        "lat_ne": bbox.lat_ne,
-        "lon_ne": bbox.lon_ne,
-        "lat_sw": bbox.lat_sw,
-        "lon_sw": bbox.lon_sw,
+        "latitude_ne": bbox.lat_ne,
+        "longitude_ne": bbox.lon_ne,
+        "latitude_sw": bbox.lat_sw,
+        "longitude_sw": bbox.lon_sw,
         "zoom": bbox.zoom,
+        "cpo_ids": [],
+        "only_ocpi": False,
+        "available": False,
+        "connector_types": [],
+        "payment_methods": [],
+        "facilities": [],
+        "latitude": None,
+        "longitude": None,
     }
 
     async with httpx.AsyncClient(timeout=15.0) as client:
