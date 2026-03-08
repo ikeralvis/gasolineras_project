@@ -3,6 +3,7 @@ Rutas de la API de Gasolineras - PostgreSQL/PostGIS (Neon)
 """
 import logging
 import os
+import traceback
 import httpx
 from typing import Optional, Set
 from datetime import datetime, timezone, timedelta, date
@@ -71,10 +72,9 @@ def get_gasolineras(
 ):
     """Obtiene la lista de gasolineras con filtros opcionales"""
     try:
-        collection = get_collection()
-        
         # Construir query de filtros
-        query = {}
+        conditions: list[str] = []
+        params: list = []
         if provincia:
             conditions.append("provincia ILIKE %s")
             params.append(f"%{provincia}%")
@@ -160,7 +160,7 @@ def gasolineras_cerca(
 
     except Exception as e:
         logger.error(f"\u274c Error al buscar gasolineras cercanas: {e}")
-        import traceback; logger.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error al buscar gasolineras cercanas: {e}")
 
 
@@ -320,7 +320,7 @@ def sync_gasolineras():
         raise
     except Exception as e:
         logger.error(f"\u274c Error al sincronizar gasolineras: {e}")
-        import traceback; logger.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error al sincronizar datos: {e}")
 
 
@@ -409,7 +409,7 @@ def obtener_estadisticas(
         raise
     except Exception as e:
         logger.error(f"\u274c Error al calcular estad\u00edsticas: {e}")
-        import traceback; logger.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error al calcular estad\u00edsticas: {e}")
 
 
@@ -530,5 +530,5 @@ def get_historial_precios(id: str, dias: int = Query(default=30, ge=1, le=365)):
         raise
     except Exception as e:
         logger.error(f"\u274c Error al obtener historial de precios para {id}: {e}")
-        import traceback; logger.error(traceback.format_exc())
+        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Error al consultar historial: {e}")
