@@ -10,8 +10,8 @@ html, body {
 
 body {
 	font-family: 'Inter', system-ui, sans-serif;
-	background: linear-gradient(120deg, #f8fafc 0%, #e2e8f0 100%);
-	color: #222;
+	background: #fafafa;
+	color: #111;
 	min-height: 100vh;
 }
 
@@ -73,13 +73,13 @@ canvas {
 	}
 }
 
-/* Iconos del mapa - mantener aspect ratio */
+/* Iconos del mapa - sin fondo blanco */
 .leaflet-marker-icon {
 	object-fit: contain !important;
-	background-color: white;
-	border-radius: 8px;
-	padding: 2px;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+	background: transparent;
+	border-radius: 0;
+	padding: 0;
+	box-shadow: none;
 }
 
 /* PWA - Mejoras para móvil */

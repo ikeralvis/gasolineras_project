@@ -310,7 +310,7 @@ export default function Gasolineras() {
                 {/* Contenido del acordeón */}
                 <div 
                     id="panel-filtros"
-                    className={`transition-all duration-300 ease-in-out overflow-hidden ${filtrosAbiertos ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}
+                    className={`transition-all duration-300 ease-in-out overflow-hidden ${filtrosAbiertos ? 'max-h-250 opacity-100' : 'max-h-0 opacity-0'}`}
                 >
                     <div className="p-4 md:p-6 pt-0 border-t border-gray-100">
                         <div className="flex items-center justify-end mb-4">

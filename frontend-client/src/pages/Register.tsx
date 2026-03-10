@@ -28,7 +28,7 @@ export default function Register() {
 
   const allRequirementsMet = Object.values(passwordRequirements).every(Boolean);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
 

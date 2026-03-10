@@ -111,111 +111,104 @@ export default function GasolineraDetalle() {
     return precioA - precioB;
   });
 
-  const icon = new L.Icon({
-    iconUrl: logo || "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
+  const iconUrl = logo || "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png";
+  const icon = L.divIcon({
+    html: `<div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center"><img src="${iconUrl}" style="width:40px;height:40px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));" /></div>`,
+    className: "",
     iconSize: [44, 44],
     iconAnchor: [22, 44],
-    popupAnchor: [0, -44]
+    popupAnchor: [0, -44],
   });
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-12">
-      <div className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+    <div className="min-h-screen bg-white pb-16 sm:pb-12">
+      <div className="max-w-4xl mx-auto px-4 py-5 sm:py-8 space-y-4 sm:space-y-6">
 
         {/* HEADER CON BOTÓN VOLVER */}
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-[#000C74] hover:text-[#0A128C] font-medium transition-colors"
+          className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#000C74] transition-colors font-medium"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           {t('detail.back')}
         </button>
 
         {/* CARD PRINCIPAL CON LOGO */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-          <div className="flex items-start justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-4">
-              {logo ? (
-                <img 
-                  src={logo} 
-                  alt={gasolinera["Rótulo"]} 
-                  className="w-16 h-16 object-contain rounded-xl bg-white shadow-md p-2"
-                />
-              ) : (
-                <div className="w-16 h-16 rounded-xl bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold text-xl shadow-md">
-                  {gasolinera["Rótulo"].substring(0, 2).toUpperCase()}
-                </div>
-              )}
-              
-              <div>
-                <h1 className="text-3xl font-bold text-gray-900">
-                  {gasolinera["Rótulo"]}
-                </h1>
-                <div className="flex items-center gap-2 mt-2 text-gray-600">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                  </svg>
-                  <span>{gasolinera.Municipio}, {gasolinera.Provincia}</span>
-                </div>
-                {gasolinera.Dirección && (
-                  <p className="text-sm text-gray-500 mt-1">{gasolinera.Dirección}</p>
-                )}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
+          {/* Logo + Nombre + Acciones */}
+          <div className="flex items-start gap-3 sm:gap-4">
+            {logo ? (
+              <img
+                src={logo}
+                alt={gasolinera["Rótulo"]}
+                className="w-14 h-14 sm:w-16 sm:h-16 object-contain shrink-0"
+              />
+            ) : (
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#000C74] flex items-center justify-center text-white font-bold text-xl shrink-0">
+                {gasolinera["Rótulo"].substring(0, 2).toUpperCase()}
               </div>
+            )}
+
+            <div className="flex-1 min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">
+                {gasolinera["Rótulo"]}
+              </h1>
+              <p className="text-sm text-gray-500 mt-0.5">
+                {gasolinera.Municipio}, {gasolinera.Provincia}
+              </p>
+              {gasolinera.Dirección && (
+                <p className="text-xs text-gray-400 mt-0.5 truncate">{gasolinera.Dirección}</p>
+              )}
             </div>
 
-            {/* BOTONES DE ACCIÓN */}
-            <div className="flex gap-3 items-center">
+            <div className="shrink-0">
               <FavoritoButton ideess={gasolinera.IDEESS} size="lg" showLabel />
-              <a
-                href={`https://www.google.com/maps/dir/?api=1&destination=${gasolinera.Latitud},${gasolinera.Longitud}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-4 py-2 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition shadow-md font-medium flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                </svg>
-                {t('detail.howToGet')}
-              </a>
-              
-              <button
-                className="px-4 py-2 bg-white border-2 border-[#000C74] text-[#000C74] rounded-xl hover:bg-[#F8F9FF] transition shadow-md font-medium flex items-center gap-2"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                </svg>
-                {t('detail.share')}
-              </button>
             </div>
           </div>
 
+          {/* BOTONES DE ACCIÓN */}
+          <div className="flex flex-wrap gap-2 mt-4">
+            <a
+              href={`https://www.google.com/maps/dir/?api=1&destination=${gasolinera.Latitud},${gasolinera.Longitud}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition text-sm font-medium"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
+              </svg>
+              {t('detail.howToGet')}
+            </a>
+
+            <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-sm font-medium text-gray-700">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+              </svg>
+              {t('detail.share')}
+            </button>
+          </div>
+
           {/* PRECIOS DE COMBUSTIBLES */}
-          <div className="mt-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-4">{t('detail.fuelPrices')}</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="mt-5">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{t('detail.fuelPrices')}</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
               {combustibles.map((combustible) => (
-                <div 
+                <div
                   key={combustible.nombre}
-                  className="relative rounded-xl border-2 border-gray-200 bg-linear-to-br from-white to-gray-50 p-5 hover:shadow-md transition-shadow"
+                  className="relative rounded-xl border border-gray-100 bg-gray-50/60 p-3 sm:p-4"
                 >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <span className="text-sm font-medium text-gray-600">{combustible.nombre}</span>
-                      <div className="mt-2 flex items-baseline gap-1">
-                        <span className="text-3xl font-bold text-gray-900">
-                          {combustible.precio}
-                        </span>
-                        <span className="text-sm text-gray-500">€/L</span>
-                      </div>
-                    </div>
-                    {combustible.precio && esPrecioBajo(combustible.precio, combustible.tipo) && (
-                      <span className="px-2 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-full">
-                        {t('detail.lowPrice')}
-                      </span>
-                    )}
+                  <span className="text-xs text-gray-500 font-medium leading-tight block">{combustible.nombre}</span>
+                  <div className="mt-1.5 flex items-baseline gap-0.5">
+                    <span className="text-2xl sm:text-3xl font-bold text-gray-900">
+                      {combustible.precio}
+                    </span>
+                    <span className="text-xs text-gray-400 mb-0.5">€/L</span>
                   </div>
+                  {combustible.precio && esPrecioBajo(combustible.precio, combustible.tipo) && (
+                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-500" title={t('detail.lowPrice')} />
+                  )}
                 </div>
               ))}
             </div>
@@ -224,9 +217,9 @@ export default function GasolineraDetalle() {
 
         {/* HORARIO */}
         {(gasolinera.Horario || gasolinera.horario_parsed) && (
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-8">
-            <h2 className="text-lg font-semibold text-gray-900 mb-5 flex items-center gap-2">
-              <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 2m6-2a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               {t('detail.schedule')}
@@ -239,27 +232,27 @@ export default function GasolineraDetalle() {
           </div>
         )}
 
-        {/* MAPA MEJORADO */}
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-          <div className="p-4 bg-linear-to-r from-[#000C74] to-[#4A52D9] text-white">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+        {/* MAPA */}
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
               </svg>
               {t('detail.location')}
             </h2>
-            <p className="text-white/80 text-sm mt-1">
-              {gasolinera.Latitud.toFixed(6)}, {gasolinera.Longitud.toFixed(6)}
-            </p>
+            <span className="text-xs text-gray-400 font-mono">
+              {gasolinera.Latitud.toFixed(5)}, {gasolinera.Longitud.toFixed(5)}
+            </span>
           </div>
-          
+
           <MapContainer
             center={[gasolinera.Latitud, gasolinera.Longitud]}
             zoom={16}
-            className="h-96 w-full z-0"
+            className="h-56 sm:h-80 w-full z-0"
             style={{ zIndex: 0 }}
           >
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
             <Marker position={[gasolinera.Latitud, gasolinera.Longitud]} icon={icon}>
               <Popup>
                 <div className="p-2">
@@ -274,36 +267,32 @@ export default function GasolineraDetalle() {
         {/* HISTORIAL DE PRECIOS */}
         <HistorialPrecios ideess={gasolinera.IDEESS} />
 
-        {/* GASOLINERAS CERCANAS MEJORADAS */}
+        {/* GASOLINERAS CERCANAS */}
         {cercanas.length > 0 && (
-          <div className="bg-white rounded-2xl shadow-lg border border-gray-100 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
-                <svg className="w-6 h-6 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 {t('detail.nearbyStations', { count: cercanas.length })}
               </h2>
-              
+
               {/* SELECTOR DE ORDEN */}
-              <div className="flex gap-2 bg-gray-100 rounded-lg p-1">
+              <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
                 <button
                   onClick={() => setOrdenCercanas("distancia")}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
                     ordenCercanas === "distancia"
-                      ? "bg-white text-[#000C74] shadow"
-                      : "text-gray-600 hover:text-gray-900"
+                      ? "bg-white text-[#000C74] shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   {t('detail.sortByDistance')}
                 </button>
                 <button
                   onClick={() => setOrdenCercanas("precio")}
-                  className={`px-4 py-2 rounded-md text-sm font-medium transition ${
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition ${
                     ordenCercanas === "precio"
-                      ? "bg-white text-[#000C74] shadow"
-                      : "text-gray-600 hover:text-gray-900"
+                      ? "bg-white text-[#000C74] shadow-sm"
+                      : "text-gray-500 hover:text-gray-700"
                   }`}
                 >
                   {t('detail.sortByPrice')}
@@ -311,68 +300,41 @@ export default function GasolineraDetalle() {
               </div>
             </div>
 
-            <div className="grid gap-4">
+            <div className="divide-y divide-gray-50">
               {cercanasOrdenadas.slice(0, 5).map((g, index) => {
                 const logoC = getBrandLogo(g["Rótulo"]);
                 const distanciaKm = g.distancia ? (g.distancia / 1000).toFixed(1) : null;
-                
+
                 return (
                   <button
                     key={g.IDEESS}
                     onClick={() => navigate(`/gasolinera/${g.IDEESS}`)}
-                    className="p-5 bg-linear-to-r from-gray-50 to-white border-2 border-gray-200 rounded-xl hover:border-[#000C74] hover:shadow-lg transition-all text-left group"
+                    className="w-full flex items-center gap-3 py-3 hover:bg-gray-50/70 transition-colors text-left rounded-xl px-2 -mx-2"
                   >
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-center gap-3 flex-1">
-                        {/* NÚMERO */}
-                        <div className="w-8 h-8 rounded-full bg-[#000C74] text-white flex items-center justify-center font-bold text-sm">
-                          {index + 1}
-                        </div>
-                        
-                        {/* LOGO */}
-                        {logoC ? (
-                          <img 
-                            src={logoC} 
-                            alt={g["Rótulo"]} 
-                            className="w-10 h-10 object-contain rounded-lg bg-white shadow-sm p-1"
-                          />
-                        ) : (
-                          <div className="w-10 h-10 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold text-xs">
-                            {g["Rótulo"].substring(0, 2).toUpperCase()}
-                          </div>
-                        )}
-                        
-                        {/* INFO */}
-                        <div className="flex-1">
-                          <p className="font-semibold text-gray-900 group-hover:text-[#000C74] transition">
-                            {g["Rótulo"]}
-                          </p>
-                          <p className="text-sm text-gray-600">{g.Municipio}</p>
-                          {distanciaKm && (
-                            <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                              </svg>
-                              {distanciaKm} km
-                            </p>
-                          )}
-                        </div>
+                    <span className="w-5 h-5 rounded-full bg-[#000C74]/10 text-[#000C74] flex items-center justify-center text-[10px] font-bold shrink-0">
+                      {index + 1}
+                    </span>
+                    {logoC ? (
+                      <img src={logoC} alt="" className="w-9 h-9 object-contain shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-xl bg-[#000C74] flex items-center justify-center text-white font-bold text-xs shrink-0">
+                        {g["Rótulo"].substring(0, 2).toUpperCase()}
                       </div>
-                      
-                      {/* PRECIOS */}
-                      <div className="flex gap-3">
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500">G95</p>
-                          <p className="text-lg font-bold text-gray-900">
-                            {g["Precio Gasolina 95 E5"]}€
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-xs text-gray-500">Diesel</p>
-                          <p className="text-lg font-bold text-gray-900">
-                            {g["Precio Gasoleo A"]}€
-                          </p>
-                        </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 text-sm truncate">{g["Rótulo"]}</p>
+                      <p className="text-xs text-gray-500">
+                        {g.Municipio}{distanciaKm ? ` · ${distanciaKm} km` : ""}
+                      </p>
+                    </div>
+                    <div className="flex gap-3 shrink-0">
+                      <div className="text-right">
+                        <p className="text-[10px] text-gray-400">G95</p>
+                        <p className="text-sm font-bold text-gray-900">{g["Precio Gasolina 95 E5"]}€</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] text-gray-400">GOA</p>
+                        <p className="text-sm font-bold text-gray-900">{g["Precio Gasoleo A"]}€</p>
                       </div>
                     </div>
                   </button>

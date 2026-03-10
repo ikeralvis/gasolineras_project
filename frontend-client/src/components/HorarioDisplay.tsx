@@ -63,7 +63,7 @@ export default function HorarioDisplay({
   horario,
   horario_parsed,
   mode,
-}: HorarioDisplayProps) {
+}: Readonly<HorarioDisplayProps>) {
   const { t } = useTranslation();
 
   /* ─── COMPACT MODE ─── */
@@ -85,8 +85,7 @@ export default function HorarioDisplay({
     if (horario_parsed.siempre_abierto) {
       return (
         <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs font-semibold">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-          24H
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />{' '}24H
         </span>
       );
     }
@@ -118,22 +117,32 @@ export default function HorarioDisplay({
 
   /* ─── FULL MODE ─── */
   if (!horario_parsed) {
-    if (horario) return <p className="text-sm text-gray-700">{horario}</p>;
-    return <p className="text-sm text-gray-400">{t('horario.noData')}</p>;
+    if (horario) return <p className="text-sm text-gray-700 bg-gray-50 rounded-xl p-3">{horario}</p>;
+    return <p className="text-sm text-gray-400 italic">{t('horario.noData')}</p>;
   }
 
   if (horario_parsed.siempre_abierto) {
     return (
-      <div className="flex items-center">
-        <span className="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-green-100 text-green-700 font-bold text-base shadow-sm">
-          <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
-          {t('horario.open24h')}
-        </span>
+      <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-2xl px-5 py-4">
+        <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse shrink-0" />
+        <p className="font-bold text-green-700 text-base">{t('horario.open24h')}</p>
       </div>
     );
   }
 
   const today = getTodayISO();
+  const todaySeg = getSegmentForDay(horario_parsed.segmentos, today);
+  const todayOpen = todaySeg ? isOpenNow(todaySeg.apertura, todaySeg.cierre) : false;
+
+  const bannerBg = todayOpen
+    ? 'bg-green-50 border-green-200'
+    : (todaySeg ? 'bg-orange-50 border-orange-200' : 'bg-gray-50 border-gray-200');
+  const dotColor = todayOpen
+    ? 'bg-green-500 animate-pulse'
+    : (todaySeg ? 'bg-orange-400' : 'bg-gray-400');
+  const labelColor = todayOpen
+    ? 'text-green-700'
+    : (todaySeg ? 'text-orange-700' : 'text-gray-500');
 
   // Build per-day mapping
   const daySchedule: Record<number, { apertura: string; cierre: string } | null> = {};
@@ -143,67 +152,68 @@ export default function HorarioDisplay({
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-      {([1, 2, 3, 4, 5, 6, 7] as const).map(d => {
-        const sched = daySchedule[d];
-        const isToday = d === today;
-        const open = sched ? isOpenNow(sched.apertura, sched.cierre) : false;
+    <div className="space-y-3">
+      {/* Banner estado actual */}
+      <div className={`flex items-center justify-between px-4 py-3 rounded-2xl border ${bannerBg}`}>
+        <div className="flex items-center gap-2.5">
+          <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColor}`} />
+          <span className={`font-semibold text-sm ${labelColor}`}>
+            {todayOpen ? t('horario.open') : t('horario.closed')}
+          </span>
+        </div>
+        {todaySeg && (
+          <span className="text-sm font-mono text-gray-700 font-medium tabular-nums">
+            {todaySeg.apertura} – {todaySeg.cierre}
+          </span>
+        )}
+      </div>
 
-        return (
-          <div
-            key={d}
-            className={`flex items-center justify-between px-4 py-2.5 rounded-xl border-2 transition-all ${
-              isToday
-                ? open
-                  ? 'border-green-300 bg-green-50 shadow-sm'
-                  : 'border-[#000C74]/30 bg-[#F8F9FF] shadow-sm'
-                : 'border-gray-100 bg-white'
-            }`}
-          >
-            {/* Day label */}
-            <div className="flex items-center gap-2">
-              <span
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold ${
-                  isToday
-                    ? 'bg-[#000C74] text-white'
-                    : 'bg-gray-100 text-gray-600'
-                }`}
-              >
-                {DAY_ABBR[d]}
-              </span>
-              <span
-                className={`text-sm ${
-                  isToday ? 'font-semibold text-gray-900' : 'font-medium text-gray-700'
-                }`}
-              >
-                {t(`horario.day${d}`)}
-              </span>
-            </div>
+      {/* Tabla semanal */}
+      <div className="rounded-xl overflow-hidden border border-gray-100 divide-y divide-gray-100">
+        {([1, 2, 3, 4, 5, 6, 7] as const).map(d => {
+          const sched = daySchedule[d];
+          const isToday = d === today;
+          const open = sched ? isOpenNow(sched.apertura, sched.cierre) : false;
 
-            {/* Hours / status */}
-            {sched ? (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-800 font-mono tabular-nums">
-                  {sched.apertura}&nbsp;–&nbsp;{sched.cierre}
+          return (
+            <div
+              key={d}
+              className={`flex items-center justify-between px-4 py-2.5 ${
+                isToday ? 'bg-[#F0F3FF]' : 'bg-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                  isToday ? 'bg-[#000C74] text-white' : 'bg-gray-100 text-gray-400'
+                }`}>
+                  {DAY_ABBR[d]}
+                </span>
+                <span className={`text-sm ${isToday ? 'font-semibold text-gray-900' : 'text-gray-600'}`}>
+                  {t(`horario.day${d}`)}
                 </span>
                 {isToday && (
-                  <span
-                    className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                      open
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-orange-100 text-orange-700'
-                    }`}
-                  >
-                    {t(open ? 'horario.open' : 'horario.closed')}
+                  <span className="hidden sm:inline text-[10px] font-bold text-[#000C74] bg-[#E4E7FF] px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                    {t('horario.today')}
                   </span>
                 )}
               </div>
-            ) : (
-              <span className="text-sm text-gray-400">{t('horario.closed')}</span>
-            )}
-          </div>
-        );
-      })}
+
+              {sched ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-800 font-mono tabular-nums">
+                    {sched.apertura}–{sched.cierre}
+                  </span>
+                  {isToday && (
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${open ? 'bg-green-500' : 'bg-orange-400'}`} />
+                  )}
+                </div>
+              ) : (
+                <span className="text-sm text-gray-400">{t('horario.closed')}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

@@ -1,0 +1,102 @@
+@startuml
+title Diagrama de clases - Entidades principales (Gasolineras Project)
+
+' Clases principales
+class User {
+  +UUID id
+  +String email
+  +String password_hash
+  +String name
+  +String role
+  +boolean is_active
+  +timestamptz created_at
+  +timestamptz updated_at
+  +timestamptz last_login
+}
+
+class Favorite {
+  +UUID id
+  +UUID user_id
+  +UUID gas_station_id
+  +String note
+  +timestamptz created_at
+}
+
+class GasStation {
+  +UUID id
+  +String external_id
+  +String name
+  +String brand
+  +String address
+  +String city
+  +String province
+  +String postal_code
+  +double lat
+  +double lon
+  +JSONB metadata
+  +String source
+  +timestamptz created_at
+  +timestamptz updated_at
+  +timestamptz last_fetched_at
+}
+
+class Price {
+  +UUID id
+  +UUID gas_station_id
+  +String fuel_type
+  +Numeric price
+  +String currency
+  +timestamptz observed_at
+  +timestamptz created_at
+}
+
+class Prediction {
+  +UUID id
+  +UUID gas_station_id
+  +String fuel_type
+  +Numeric predicted_price
+  +Date predicted_for
+  +String model_version
+  +JSONB features
+  +int horizon
+  +Numeric confidence
+  +timestamptz created_at
+}
+
+class EVChargingStation {
+  +UUID id
+  +String external_id
+  +JSONB data
+  +double lat
+  +double lon
+  +String source
+  +timestamptz last_fetched_at
+}
+
+' Relaciones
+User "1" -- "*" Favorite : has
+Favorite "*" --> "1" GasStation : references
+GasStation "1" -- "*" Price : has
+GasStation "1" -- "*" Prediction : has
+GasStation "0..1" -- "0..*" EVChargingStation : optional_cache
+
+' Notas
+note right of GasStation
+  - metadata almacena horarios y servicios (JSONB)
+  - Para búsquedas por proximidad usar PostGIS (location GEOGRAPHY(POINT,4326))
+end note
+
+note left of Price
+  - Mantener histórico: una fila por observación (observed_at)
+  - Considerar particionado por fecha si escala mucho
+end note
+
+note right of Prediction
+  - Guardar model_version y features para reproducibilidad
+  - Alternativa: cache en Redis para predicciones en tiempo real
+end note
+
+' Leyenda simple
+skinparam classAttributeIconSize 0
+
+@enduml
