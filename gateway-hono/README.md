@@ -1,6 +1,6 @@
 # 🚀 API Gateway - TankGo
 
-El **API Gateway** es el punto de entrada único para la aplicación TankGo. Centraliza y gestiona las solicitudes hacia los microservicios de usuarios y gasolineras, proporcionando una capa adicional de seguridad, abstracción y monitoreo.
+El **API Gateway** es el punto de entrada único para la aplicación TankGo. Centraliza y gestiona las solicitudes hacia los microservicios de usuarios, gasolineras, recomendación, EV charging y predicción (cuando aplica), proporcionando una capa adicional de seguridad, abstracción y monitoreo.
 
 ---
 
@@ -28,6 +28,13 @@ El **API Gateway** es el punto de entrada único para la aplicación TankGo. Cen
 ```env
 FRONTEND_URL=https://tu-frontend.example.com
 FRONTEND_URLS=https://tu-frontend.example.com,https://admin.tu-frontend.example.com
+GATEWAY_PUBLIC_URL=https://tu-gateway.example.com
+USUARIOS_SERVICE_URL=https://usuarios.internal
+GASOLINERAS_SERVICE_URL=https://gasolineras.internal
+RECOMENDACION_SERVICE_URL=https://recomendacion.internal
+EV_CHARGING_SERVICE_URL=https://ev-charging.internal
+# Opcional:
+# PREDICTION_SERVICE_URL=https://prediction.internal
 INTERNAL_API_SECRET=un-secreto-largo-y-unico
 NODE_ENV=production
 ```
@@ -81,6 +88,25 @@ El gateway redirige las solicitudes relacionadas con gasolineras al microservici
 | Método | Endpoint       | Descripción                              |
 |--------|----------------|------------------------------------------|
 | GET    | `/api/gasolineras` | Obtener todas las gasolineras.         |
+
+### Recomendación
+
+| Método | Endpoint                                | Descripción                           |
+|--------|-----------------------------------------|---------------------------------------|
+| ALL    | `/api/recomendacion/*`                  | Proxy canónico hacia recomendación.   |
+| ALL    | `/api/recomendaciones/*`                | Alias compatible.                     |
+
+### EV Charging
+
+| Método | Endpoint                                | Descripción                           |
+|--------|-----------------------------------------|---------------------------------------|
+| ALL    | `/api/charging/*`                       | Proxy hacia puntos de recarga EV.     |
+
+### Prediction
+
+| Método | Endpoint                                | Descripción                           |
+|--------|-----------------------------------------|---------------------------------------|
+| ALL    | `/api/prediction/*`                     | Proxy a predicción (si está configurado). |
 
 ---
 
