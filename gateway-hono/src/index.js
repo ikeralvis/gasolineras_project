@@ -21,32 +21,34 @@ const FRONTEND_URLS = (process.env.FRONTEND_URLS || "")
   .map((o) => o.trim())
   .filter(Boolean);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const OPENAPI_TIMEOUT_MS = Number(process.env.OPENAPI_TIMEOUT_MS || 12000);
+const HEALTH_TIMEOUT_MS = Number(process.env.HEALTH_TIMEOUT_MS || 12000);
 
 const SERVICE_REGISTRY = {
   usuarios: {
     url: USUARIOS_SERVICE,
     openapiPath: "/openapi.json",
-    healthPath: "/health",
+    healthPaths: ["/health", "/api/usuarios/health"],
   },
   gasolineras: {
     url: GASOLINERAS_SERVICE,
     openapiPath: "/openapi.json",
-    healthPath: "/",
+    healthPaths: ["/health", "/"],
   },
   recomendacion: {
     url: RECOMENDACION_SERVICE,
     openapiPath: "/openapi.json",
-    healthPath: "/health",
+    healthPaths: ["/health", "/"],
   },
   ev_charging: {
     url: EV_CHARGING_SERVICE,
     openapiPath: "/openapi.json",
-    healthPath: "/",
+    healthPaths: ["/", "/health"],
   },
   prediction: {
     url: PREDICTION_SERVICE,
     openapiPath: "/openapi.json",
-    healthPath: "/health",
+    healthPaths: ["/health", "/"],
     optional: true,
   },
 };
@@ -94,7 +96,7 @@ async function fetchAndAggregateSpecs() {
 
     const specEntries = Object.entries(SERVICE_REGISTRY).filter(([, service]) => Boolean(service.url));
     const specRequests = specEntries.map(([, service]) =>
-      fetch(`${service.url}${service.openapiPath}`, { signal: AbortSignal.timeout(5000) })
+      fetch(`${service.url}${service.openapiPath}`, { signal: AbortSignal.timeout(OPENAPI_TIMEOUT_MS) })
     );
     const specResponses = await Promise.allSettled(specRequests);
 
@@ -368,19 +370,41 @@ app.get("/health", async (c) => {
       continue;
     }
 
+    const healthCandidates = serviceConfig.healthPaths || ["/health", "/"];
+    let probeOk = false;
+    let lastError = null;
+
     try {
-      const healthRes = await fetch(`${serviceConfig.url}${serviceConfig.healthPath}`, {
-        signal: AbortSignal.timeout(3000),
-      });
-      services[serviceName] = {
-        status: healthRes.ok ? "UP" : "DOWN",
-        url: serviceConfig.url,
-      };
+      for (const healthPath of healthCandidates) {
+        const healthRes = await fetch(`${serviceConfig.url}${healthPath}`, {
+          signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+        });
+
+        if (healthRes.ok) {
+          services[serviceName] = {
+            status: "UP",
+            url: serviceConfig.url,
+            healthPath,
+          };
+          probeOk = true;
+          break;
+        }
+
+        lastError = `HTTP ${healthRes.status} en ${healthPath}`;
+      }
+
+      if (!probeOk) {
+        services[serviceName] = {
+          status: "DOWN",
+          url: serviceConfig.url,
+          error: lastError,
+        };
+      }
     } catch (error) {
       services[serviceName] = {
         status: "DOWN",
         url: serviceConfig.url,
-        error: error.message,
+        error: error?.message || "Health probe failed",
       };
     }
   }
