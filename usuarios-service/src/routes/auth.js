@@ -4,6 +4,20 @@ import { validateStrongPassword, validateEmail, sanitizeName } from '../utils/va
 
 const SALT_ROUNDS = 10;
 
+function mapFuelToPreferredPrice(fuelType) {
+    switch (fuelType) {
+        case 'gasolina':
+            return 'Precio Gasolina 95 E5';
+        case 'diesel':
+            return 'Precio Gasoleo A';
+        case 'hibrido':
+            return 'Precio Gasolina 95 E5';
+        case 'electrico':
+        default:
+            return null;
+    }
+}
+
 // Esquemas OpenAPI
 const authSchemas = {
     register: {
@@ -15,7 +29,13 @@ const authSchemas = {
             properties: {
                 nombre: { type: 'string', minLength: 1, description: 'Nombre del usuario' },
                 email: { type: 'string', format: 'email', description: 'Email único del usuario' },
-                password: { type: 'string', minLength: 8, description: 'Contraseña (mín 8 chars, mayúsculas, minúsculas, números y símbolos)' }
+                password: { type: 'string', minLength: 8, description: 'Contraseña (mín 8 chars, mayúsculas, minúsculas, números y símbolos)' },
+                modelo_coche: { type: 'string', minLength: 1, maxLength: 255, description: 'Modelo del coche principal del usuario' },
+                tipo_combustible_coche: {
+                    type: 'string',
+                    enum: ['gasolina', 'diesel', 'electrico', 'hibrido'],
+                    description: 'Tipo de combustible del coche principal'
+                }
             },
             additionalProperties: false
         },
@@ -151,7 +171,7 @@ export async function authRoutes(fastify) {
             }
         }
     }, async (request, reply) => {
-        const { nombre, email, password } = request.body;
+        const { nombre, email, password, modelo_coche, tipo_combustible_coche } = request.body;
 
         // Validar email con validador robusto
         const emailValidation = validateEmail(email);
@@ -168,13 +188,21 @@ export async function authRoutes(fastify) {
         try {
             const password_hash = await bcrypt.hash(password, SALT_ROUNDS);
             const nombreSanitizado = sanitizeName(nombre);
+            const combustiblePreferido = mapFuelToPreferredPrice(tipo_combustible_coche);
 
             const query = `
-                INSERT INTO users (nombre, email, password_hash)
-                VALUES ($1, $2, $3)
-                RETURNING id, nombre, email;
+                INSERT INTO users (nombre, email, password_hash, modelo_coche, tipo_combustible_coche, combustible_favorito)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING id, nombre, email, modelo_coche, tipo_combustible_coche, combustible_favorito;
             `;
-            const result = await fastify.pg.query(query, [nombreSanitizado, email.toLowerCase(), password_hash]);
+            const result = await fastify.pg.query(query, [
+                nombreSanitizado,
+                email.toLowerCase(),
+                password_hash,
+                modelo_coche?.trim() || null,
+                tipo_combustible_coche || null,
+                combustiblePreferido,
+            ]);
 
             if (result.rows.length === 0) {
                 return reply.code(500).send({ error: 'Fallo al registrar el usuario' });
@@ -249,7 +277,7 @@ export async function authRoutes(fastify) {
         }
     }, async (request, reply) => {
         try {
-            const query = 'SELECT id, nombre, email, is_admin, combustible_favorito FROM users WHERE id = $1;';
+            const query = 'SELECT id, nombre, email, is_admin, combustible_favorito, modelo_coche, tipo_combustible_coche FROM users WHERE id = $1;';
             const result = await fastify.pg.query(query, [request.user.id]);
             
             if (result.rows.length === 0) {
@@ -262,7 +290,9 @@ export async function authRoutes(fastify) {
                 nombre: user.nombre,
                 email: user.email,
                 is_admin: user.is_admin,
-                combustible_favorito: user.combustible_favorito
+                combustible_favorito: user.combustible_favorito,
+                modelo_coche: user.modelo_coche,
+                tipo_combustible_coche: user.tipo_combustible_coche
             });
         } catch (error) {
             fastify.log.error(error);
@@ -282,7 +312,9 @@ export async function authRoutes(fastify) {
                     nombre: { type: 'string', minLength: 1 },
                     email: { type: 'string', format: 'email' },
                     password: { type: 'string', minLength: 8 },
-                    combustible_favorito: { type: 'string', enum: ['Precio Gasolina 95 E5', 'Precio Gasolina 98 E5', 'Precio Gasoleo A', 'Precio Gasoleo B', 'Precio Gasoleo Premium'] }
+                    combustible_favorito: { type: 'string', enum: ['Precio Gasolina 95 E5', 'Precio Gasolina 98 E5', 'Precio Gasoleo A', 'Precio Gasoleo B', 'Precio Gasoleo Premium'] },
+                    modelo_coche: { type: 'string', minLength: 1, maxLength: 255 },
+                    tipo_combustible_coche: { type: 'string', enum: ['gasolina', 'diesel', 'electrico', 'hibrido'] }
                 },
                 additionalProperties: false,
                 minProperties: 1 // Al menos un campo debe estar presente
@@ -293,7 +325,10 @@ export async function authRoutes(fastify) {
                     properties: {
                         id: { type: 'integer' },
                         nombre: { type: 'string' },
-                        email: { type: 'string' }
+                        email: { type: 'string' },
+                        combustible_favorito: { type: 'string', nullable: true },
+                        modelo_coche: { type: 'string', nullable: true },
+                        tipo_combustible_coche: { type: 'string', nullable: true }
                     }
                 },
                 400: { type: 'object', properties: { error: { type: 'string' } } },
@@ -303,7 +338,7 @@ export async function authRoutes(fastify) {
         onRequest: [verifyJwt] // ✅ Usar hook en lugar de inline
     }, async (request, reply) => {
         const user_id = request.user.id;
-        const { nombre, email, password, combustible_favorito } = request.body;
+        const { nombre, email, password, combustible_favorito, modelo_coche, tipo_combustible_coche } = request.body;
         
         try {
             const updates = [];
@@ -348,6 +383,22 @@ export async function authRoutes(fastify) {
                 updates.push(`combustible_favorito = $${paramIndex++}`);
                 values.push(combustible_favorito);
             }
+
+            if (modelo_coche) {
+                updates.push(`modelo_coche = $${paramIndex++}`);
+                values.push(modelo_coche.trim());
+            }
+
+            if (tipo_combustible_coche) {
+                updates.push(`tipo_combustible_coche = $${paramIndex++}`);
+                values.push(tipo_combustible_coche);
+
+                // Si el cliente no envía combustible_favorito, lo inferimos para mantener consistencia.
+                if (!combustible_favorito) {
+                    updates.push(`combustible_favorito = $${paramIndex++}`);
+                    values.push(mapFuelToPreferredPrice(tipo_combustible_coche));
+                }
+            }
             
             if (updates.length === 0) {
                 return reply.code(400).send({ error: 'No hay campos para actualizar.' });
@@ -358,10 +409,13 @@ export async function authRoutes(fastify) {
                 UPDATE users 
                 SET ${updates.join(', ')}
                 WHERE id = $${paramIndex}
-                RETURNING id, nombre, email;
+                RETURNING id, nombre, email, combustible_favorito, modelo_coche, tipo_combustible_coche;
             `;
             
             const result = await fastify.pg.query(query, values);
+            if (result.rows.length === 0) {
+                return reply.code(404).send({ error: 'Usuario no encontrado.' });
+            }
             return reply.code(200).send(result.rows[0]);
         } catch (error) {
             fastify.log.error(error);

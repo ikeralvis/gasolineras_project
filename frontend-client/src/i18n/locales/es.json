@@ -155,6 +155,28 @@
     "deleteConfirm": "¿Seguro que quieres eliminar tu cuenta? Esta acción es irreversible.",
     "accountDeleted": "Cuenta eliminada correctamente",
     "updateSuccess": "✅ Combustible favorito guardado correctamente",
+    "onboardingBanner": "Completa tu coche y combustible para personalizar la app tras iniciar con Google.",
+    "vehicle": "Coche",
+    "vehicleModel": "Modelo de coche",
+    "vehicleModelPlaceholder": "Ej: Seat Ibiza 1.9 TDI",
+    "vehicleFuel": "Combustible coche",
+    "vehicleFuelType": "Combustible del coche",
+    "selectOption": "Selecciona una opción",
+    "notDefined": "No definido",
+    "vehicleModelRequired": "Debes indicar el modelo de coche",
+    "vehicleFuelRequired": "Debes indicar el combustible de tu coche",
+    "errorLoadingUserData": "Error al cargar datos de usuario",
+    "errorLoadingProfile": "No se pudo cargar el perfil",
+    "errorDeletingAccount": "Error al eliminar cuenta",
+    "networkErrorDeletingAccount": "Error de red al eliminar cuenta",
+    "errorSavingPreference": "Error al guardar preferencia",
+    "networkErrorSavingPreference": "Error de red al guardar preferencia",
+    "vehicleFuelOptions": {
+      "gasolina": "Gasolina",
+      "diesel": "Diésel",
+      "electrico": "Eléctrico",
+      "hibrido": "Híbrido"
+    },
     "language": "Idioma"
   },
   "auth": {

@@ -15,6 +15,7 @@ const createAuthMock = (overrides = {}) => ({
   token: null,
   isAuthenticated: false,
   loading: false,
+  refreshUser: vi.fn(async () => {}),
   login: vi.fn(),
   loginWithToken: vi.fn(),
   loginWithGoogleCredential: vi.fn(),

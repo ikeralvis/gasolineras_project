@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 interface Favorito {
   ideess: string;
@@ -9,14 +9,14 @@ interface Favorito {
 }
 
 export function useFavorites() {
-  const { token, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
   const [favoritos, setFavoritos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Cargar favoritos al montar o cuando cambie el token
+  // Cargar favoritos al montar o cuando cambie el estado de autenticación
   const cargarFavoritos = useCallback(async () => {
-    if (!isAuthenticated || !token) {
+    if (!isAuthenticated) {
       setFavoritos([]);
       return;
     }
@@ -26,9 +26,7 @@ export function useFavorites() {
 
     try {
       const response = await fetch(`${API_URL}/api/usuarios/favoritos`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {
@@ -43,7 +41,7 @@ export function useFavorites() {
     } finally {
       setLoading(false);
     }
-  }, [token, isAuthenticated]);
+  }, [isAuthenticated]);
 
   // Cargar favoritos al montar
   useEffect(() => {
@@ -57,7 +55,7 @@ export function useFavorites() {
 
   // Añadir favorito
   const agregarFavorito = async (ideess: string) => {
-    if (!isAuthenticated || !token) {
+    if (!isAuthenticated) {
       throw new Error('Debes iniciar sesión para agregar favoritos');
     }
 
@@ -66,9 +64,9 @@ export function useFavorites() {
     try {
       const response = await fetch(`${API_URL}/api/usuarios/favoritos`, {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ ideess }),
       });
@@ -90,7 +88,7 @@ export function useFavorites() {
 
   // Eliminar favorito
   const eliminarFavorito = async (ideess: string) => {
-    if (!isAuthenticated || !token) {
+    if (!isAuthenticated) {
       throw new Error('Debes iniciar sesión');
     }
 
@@ -99,9 +97,7 @@ export function useFavorites() {
     try {
       const response = await fetch(`${API_URL}/api/usuarios/favoritos/${ideess}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+        credentials: 'include',
       });
 
       if (!response.ok) {

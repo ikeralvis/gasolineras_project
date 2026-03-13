@@ -16,6 +16,25 @@ const MARCAS_POPULARES = [
     { nombre: "Costco", logo: "🔷" },
 ];
 
+const GASOLINERAS_CACHE_KEY = "gasolineras:list:v1";
+const CACHE_MAX_AGE_MS = 8 * 60 * 1000;
+
+const asText = (value: unknown): string => (typeof value === "string" ? value : "");
+
+const normalizeGasolinera = (g: any) => {
+    const rotulo = g?.["Rótulo"] ?? g?.Rotulo ?? "";
+    const direccion = g?.["Dirección"] ?? g?.Direccion ?? "";
+    return {
+        ...g,
+        "Rótulo": asText(rotulo),
+        Rotulo: asText(rotulo),
+        "Dirección": asText(direccion),
+        Direccion: asText(direccion),
+        Provincia: asText(g?.Provincia),
+        Municipio: asText(g?.Municipio),
+    };
+};
+
 export default function Gasolineras() {
     const { t } = useTranslation();
     const { user } = useAuth();
@@ -58,11 +77,12 @@ export default function Gasolineras() {
     const [showMunicipioDropdown, setShowMunicipioDropdown] = useState(false);
     
     // Listas únicas para autocomplete
-    const provinciasUnicas = [...new Set(gasolineras.map(g => g.Provincia))].sort((a, b) => a.localeCompare(b));
+    const provinciasUnicas = [...new Set(gasolineras.map(g => asText(g.Provincia)).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const municipiosUnicas = [...new Set(
         gasolineras
-            .filter(g => !provincia || g.Provincia.toLowerCase().includes(provincia.toLowerCase()))
-            .map(g => g.Municipio)
+            .filter(g => !provincia || asText(g.Provincia).toLowerCase().includes(provincia.toLowerCase()))
+            .map(g => asText(g.Municipio))
+            .filter(Boolean)
     )].sort((a, b) => a.localeCompare(b));
 
 
@@ -70,22 +90,52 @@ export default function Gasolineras() {
   async function cargarDatos() {
     try {
       console.log("🔄 Iniciando carga de gasolineras...");
-      setLoading(true);
+            let hasCache = false;
+            try {
+                const cachedRaw = sessionStorage.getItem(GASOLINERAS_CACHE_KEY);
+                if (cachedRaw) {
+                    const cached = JSON.parse(cachedRaw) as {
+                        ts: number;
+                        data: any[];
+                        ordenadoPorCercania: boolean;
+                    };
+                    if (Date.now() - cached.ts < CACHE_MAX_AGE_MS && Array.isArray(cached.data) && cached.data.length > 0) {
+                        hasCache = true;
+                        setGasolineras(cached.data);
+                        setFiltered(cached.data);
+                        setOrdenadoPorCercania(!!cached.ordenadoPorCercania);
+                        setLoading(false);
+                    }
+                }
+            } catch {
+                // Si el cache falla, seguimos con flujo normal.
+            }
+
+            if (!hasCache) {
+                setLoading(true);
+            }
       
       // Función para cargar todas las gasolineras (fallback)
       const cargarTodasLasGasolineras = async () => {
         console.log("🔄 Cargando todas las gasolineras...");
-        const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080'}/api/gasolineras`);
+        const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+        const res = await fetch(`${apiBase}/api/gasolineras`);
         const data = await res.json();
         console.log("📦 Respuesta del servidor:", data);
         
-        const gasolinerasData = data.gasolineras || [];
+        const gasolinerasData = Array.isArray(data.gasolineras)
+            ? data.gasolineras.map((g: any) => normalizeGasolinera(g))
+            : [];
         console.log("📊 Total gasolineras cargadas:", gasolinerasData.length);
         
         setGasolineras(gasolinerasData);
         setFiltered(gasolinerasData);
         setOrdenadoPorCercania(false);
         setLoading(false);
+                sessionStorage.setItem(
+                    GASOLINERAS_CACHE_KEY,
+                    JSON.stringify({ ts: Date.now(), data: gasolinerasData, ordenadoPorCercania: false })
+                );
       };
 
       // Timeout de 5 segundos para geolocalización
@@ -105,10 +155,15 @@ export default function Gasolineras() {
           const cerca = await getGasolinerasCerca(lat, lon, 50);
           console.log("✅ Gasolineras cercanas recibidas:", cerca.length);
           // Las gasolineras ya vienen ordenadas por distancia desde el backend
-          setGasolineras(cerca);
-          setFiltered(cerca);
+          const cercaNormalizadas = cerca.map((g) => normalizeGasolinera(g));
+          setGasolineras(cercaNormalizadas);
+          setFiltered(cercaNormalizadas);
           setOrdenadoPorCercania(true);
           setLoading(false);
+                    sessionStorage.setItem(
+                        GASOLINERAS_CACHE_KEY,
+                        JSON.stringify({ ts: Date.now(), data: cercaNormalizadas, ordenadoPorCercania: true })
+                    );
         },
         async (error) => {
           clearTimeout(geoTimeout);
@@ -143,19 +198,19 @@ export default function Gasolineras() {
 
         if (provincia.trim() !== "") {
             resultado = resultado.filter((g) =>
-                g.Provincia.toLowerCase().includes(provincia.toLowerCase())
+                asText(g.Provincia).toLowerCase().includes(provincia.toLowerCase())
             );
         }
 
         if (municipio.trim() !== "") {
             resultado = resultado.filter((g) =>
-                g.Municipio.toLowerCase().includes(municipio.toLowerCase())
+                asText(g.Municipio).toLowerCase().includes(municipio.toLowerCase())
             );
         }
 
         if (nombre.trim() !== "") {
             resultado = resultado.filter((g) =>
-                g["Rótulo"].toLowerCase().includes(nombre.toLowerCase())
+                asText(g["Rótulo"] ?? g.Rotulo).toLowerCase().includes(nombre.toLowerCase())
             );
         }
 
@@ -163,7 +218,7 @@ export default function Gasolineras() {
         if (marcasSeleccionadas.length > 0) {
             resultado = resultado.filter((g) =>
                 marcasSeleccionadas.some(marca =>
-                    g["Rótulo"].toLowerCase().includes(marca.toLowerCase())
+                    asText(g["Rótulo"] ?? g.Rotulo).toLowerCase().includes(marca.toLowerCase())
                 )
             );
         }
@@ -234,8 +289,16 @@ export default function Gasolineras() {
         if (loading) {
             return (
                 <div className="text-center py-12">
-                    <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-[#000C74] border-t-transparent mb-4"></div>
-                    <p className="text-lg text-gray-600">{t('gasStations.loadingStations')}</p>
+                            <div className="space-y-3 animate-pulse">
+                                <div className="mx-auto h-4 w-56 rounded-full bg-[#DCE0FF]" />
+                                <div className="mx-auto h-3 w-40 rounded-full bg-[#E8EBFF]" />
+                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 max-w-3xl mx-auto">
+                                    {["a", "b", "c", "d"].map((keyId) => (
+                                        <div key={keyId} className="h-20 rounded-xl border border-[#D9DBF2] bg-white/80" />
+                                    ))}
+                                </div>
+                            </div>
+                            <p className="text-sm text-gray-500 mt-4">{t('gasStations.loadingStations')}</p>
                 </div>
             );
         }

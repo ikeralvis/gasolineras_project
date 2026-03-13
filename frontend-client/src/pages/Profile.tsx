@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from 'react-i18next';
 import { useAuth } from "../contexts/AuthContext";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FaUser, FaEnvelope, FaShieldAlt, FaHeart, FaTrash, FaSignOutAlt, FaGasPump } from "react-icons/fa";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 interface Usuario {
   id: number;
@@ -12,6 +12,8 @@ interface Usuario {
   email: string;
   is_admin: boolean;
   combustible_favorito?: string;
+  modelo_coche?: string;
+  tipo_combustible_coche?: 'gasolina' | 'diesel' | 'electrico' | 'hibrido';
 }
 
 interface Favorito {
@@ -21,28 +23,32 @@ interface Favorito {
 
 export default function Profile() {
   const { t } = useTranslation();
-  const { token, logout } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { isAuthenticated, logout, refreshUser } = useAuth();
   const [perfil, setPerfil] = useState<Usuario | null>(null);
   const [favoritos, setFavoritos] = useState<Favorito[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [combustibleSeleccionado, setCombustibleSeleccionado] = useState<string>("");
+  const [modeloCoche, setModeloCoche] = useState<string>("");
   const [guardandoCombustible, setGuardandoCombustible] = useState(false);
+  const [saveOkMessage, setSaveOkMessage] = useState<string>("");
   const navigate = useNavigate();
+  const onboardingMode = searchParams.get('onboarding') === '1';
 
   // Fetch perfil y favoritos
   useEffect(() => {
-    if (!token) {
+    if (!isAuthenticated) {
       navigate("/login");
       return;
     }
     setLoading(true);
     Promise.all([
       fetch(`${API_BASE}/api/usuarios/me`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       }).then((r) => r.json()),
       fetch(`${API_BASE}/api/usuarios/favoritos`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       }).then((r) => r.json()),
     ])
       .then(([perfilData, favoritosData]) => {
@@ -50,13 +56,14 @@ export default function Profile() {
         else {
           setPerfil(perfilData);
           setCombustibleSeleccionado(perfilData.combustible_favorito || "Precio Gasolina 95 E5");
+          setModeloCoche(perfilData.modelo_coche || "");
         }
         if (Array.isArray(favoritosData)) setFavoritos(favoritosData);
         else if (favoritosData.error) setError(favoritosData.error);
       })
-      .catch(() => setError("Error al cargar datos de usuario"))
+        .catch(() => setError(t('profile.errorLoadingUserData')))
       .finally(() => setLoading(false));
-  }, [token, navigate]);
+      }, [isAuthenticated, navigate, t]);
 
   // Logout
   const handleLogout = () => {
@@ -71,49 +78,105 @@ export default function Profile() {
     try {
       const res = await fetch(`${API_BASE}/api/usuarios/me`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: 'include',
       });
       if (res.ok) {
         logout();
         navigate("/register");
       } else {
         const data = await res.json();
-        setError(data.error || "Error al eliminar cuenta");
+        setError(data.error || t('profile.errorDeletingAccount'));
       }
     } catch {
-      setError("Error de red al eliminar cuenta");
+      setError(t('profile.networkErrorDeletingAccount'));
     } finally {
       setLoading(false);
     }
   };
 
-  // Guardar combustible favorito
+  const deriveCarFuelType = (fuel: string): 'gasolina' | 'diesel' | 'electrico' | 'hibrido' => {
+    if (fuel.includes('Gasolina')) return 'gasolina';
+    if (fuel.includes('Gasoleo') || fuel.includes('Gasóleo')) return 'diesel';
+    return 'gasolina';
+  };
+
+  // Guardar preferencias de movilidad
   const handleGuardarCombustible = async () => {
-    if (!combustibleSeleccionado || combustibleSeleccionado === perfil?.combustible_favorito) {
+    if (!perfil) {
+      return;
+    }
+
+    if (!modeloCoche.trim()) {
+      setError(t('profile.vehicleModelRequired'));
+      return;
+    }
+
+    const tipoCombustibleCoche = deriveCarFuelType(combustibleSeleccionado);
+
+    const unchanged =
+      combustibleSeleccionado === perfil.combustible_favorito &&
+      modeloCoche.trim() === (perfil.modelo_coche || "") &&
+      tipoCombustibleCoche === (perfil.tipo_combustible_coche || '');
+
+    if (unchanged) {
       return;
     }
     
     setGuardandoCombustible(true);
+    setSaveOkMessage("");
     try {
       const res = await fetch(`${API_BASE}/api/usuarios/me`, {
         method: "PATCH",
+        credentials: 'include',
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ combustible_favorito: combustibleSeleccionado }),
+        body: JSON.stringify({
+          combustible_favorito: combustibleSeleccionado,
+          modelo_coche: modeloCoche.trim(),
+          tipo_combustible_coche: tipoCombustibleCoche,
+        }),
       });
       
       if (res.ok) {
-        const updatedPerfil = await res.json();
-        setPerfil(prev => prev ? { ...prev, combustible_favorito: updatedPerfil.combustible_favorito } : null);
-        alert(t('profile.updateSuccess'));
+        const patchedPerfil = await res.json();
+        if (patchedPerfil?.error) {
+          setError(patchedPerfil.error);
+          return;
+        }
+
+        setPerfil((prev) => {
+          const basePerfil = prev ?? ({} as Usuario);
+          return {
+            ...basePerfil,
+            ...patchedPerfil,
+          };
+        });
+        setCombustibleSeleccionado(patchedPerfil.combustible_favorito || combustibleSeleccionado);
+        setModeloCoche(patchedPerfil.modelo_coche || "");
+
+        const refreshed = await fetch(`${API_BASE}/api/usuarios/me`, {
+          credentials: 'include',
+        });
+        const updatedPerfil = await refreshed.json();
+        if (updatedPerfil.error) {
+          setError('Se actualizó la sesión, pero no se pudo verificar en base de datos. Revisa usuarios-service/BD en Render.');
+        } else {
+          setPerfil(updatedPerfil);
+          setCombustibleSeleccionado(updatedPerfil.combustible_favorito || "Precio Gasolina 95 E5");
+          setModeloCoche(updatedPerfil.modelo_coche || "");
+          await refreshUser();
+          setSaveOkMessage(t('profile.updateSuccess'));
+        }
+        if (onboardingMode) {
+          navigate('/gasolineras', { replace: true });
+        }
       } else {
         const data = await res.json();
-        setError(data.error || "Error al guardar preferencia");
+        setError(data.error || t('profile.errorSavingPreference'));
       }
     } catch {
-      setError("Error de red al guardar preferencia");
+      setError(t('profile.networkErrorSavingPreference'));
     } finally {
       setGuardandoCombustible(false);
     }
@@ -131,10 +194,20 @@ export default function Profile() {
     return nombres[tipo] || tipo;
   };
 
+  const getLabelTipoCoche = (tipo?: string) => {
+    const labels: Record<string, string> = {
+      gasolina: t('profile.vehicleFuelOptions.gasolina'),
+      diesel: t('profile.vehicleFuelOptions.diesel'),
+      electrico: t('profile.vehicleFuelOptions.electrico'),
+      hibrido: t('profile.vehicleFuelOptions.hibrido'),
+    };
+    return tipo ? labels[tipo] || tipo : t('profile.notDefined');
+  };
+
   // Render
   if (loading) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF] flex items-center justify-center">
+      <div className="min-h-screen bg-[#F4F6FF] flex items-center justify-center">
         <div className="w-12 h-12 border-4 border-[#000C74] border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
@@ -142,20 +215,20 @@ export default function Profile() {
 
   if (error || !perfil) {
     return (
-      <div className="min-h-screen bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF] flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#F4F6FF] flex items-center justify-center px-4">
         <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-r-xl max-w-md">
-          <p className="text-red-700 font-medium">{error || "No se pudo cargar el perfil"}</p>
+          <p className="text-red-700 font-medium">{error || t('profile.errorLoadingProfile')}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF] py-12 px-4">
+    <div className="min-h-screen bg-[#F4F6FF] py-10 px-4">
       <div className="max-w-4xl mx-auto">
         {/* Header */}
-        <div className="bg-white shadow-xl rounded-3xl overflow-hidden mb-6">
-          <div className="bg-linear-to-r from-[#000C74] to-[#4A52D9] p-8 text-white">
+        <div className="bg-white shadow-md rounded-3xl overflow-hidden mb-6 border border-[#E1E5FF]">
+          <div className="bg-linear-to-r from-[#000C74] to-[#2A36B8] p-8 text-white">
             <div className="flex items-center gap-4">
               <div className="bg-white/20 p-4 rounded-full backdrop-blur-sm">
                 <FaUser className="w-8 h-8" />
@@ -169,6 +242,12 @@ export default function Profile() {
               </div>
             </div>
           </div>
+
+          {onboardingMode && (
+            <div className="mx-8 mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
+              {t('profile.onboardingBanner')}
+            </div>
+          )}
 
           <div className="p-8">
             {/* Info Card */}
@@ -205,13 +284,27 @@ export default function Profile() {
                   </div>
                   <p className="text-gray-800 font-medium">{favoritos.length} {t('profile.stations')}</p>
                 </div>
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <div className="flex items-center gap-2 text-gray-600 mb-1">
+                    <FaUser size={14} />
+                    <span className="text-sm font-semibold">{t('profile.vehicle')}</span>
+                  </div>
+                  <p className="text-gray-800 font-medium">{perfil.modelo_coche || t('profile.notDefined')}</p>
+                </div>
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <div className="flex items-center gap-2 text-gray-600 mb-1">
+                    <FaGasPump size={14} />
+                    <span className="text-sm font-semibold">{t('profile.vehicleFuel')}</span>
+                  </div>
+                  <p className="text-gray-800 font-medium">{getLabelTipoCoche(perfil.tipo_combustible_coche)}</p>
+                </div>
               </div>
             </div>
 
             {/* Preferencias de Combustible */}
-            <div className="mb-6 p-6 bg-linear-to-r from-blue-50 to-indigo-50 rounded-2xl border-2 border-blue-200">
+            <div className="mb-6 p-6 bg-[#F7F8FF] rounded-2xl border border-[#D7DBFF]">
               <div className="flex items-center gap-3 mb-4">
-                <div className="bg-blue-500 p-3 rounded-xl">
+                <div className="bg-[#000C74] p-3 rounded-xl">
                   <FaGasPump className="text-white" size={20} />
                 </div>
                 <div>
@@ -223,6 +316,21 @@ export default function Profile() {
               <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
                 <div className="flex-1">
                   <label
+                    htmlFor="modelo-coche"
+                    className="block text-sm font-medium text-gray-700 mb-2"
+                  >
+                    {t('profile.vehicleModel')}
+                  </label>
+                  <input
+                    id="modelo-coche"
+                    type="text"
+                    value={modeloCoche}
+                    onChange={(e) => setModeloCoche(e.target.value)}
+                    placeholder={t('profile.vehicleModelPlaceholder')}
+                    className="mb-3 w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
+                  />
+
+                  <label
                     htmlFor="tipo-combustible"
                     className="block text-sm font-medium text-gray-700 mb-2"
                   >
@@ -232,7 +340,7 @@ export default function Profile() {
                     id="tipo-combustible"
                     value={combustibleSeleccionado}
                     onChange={(e) => setCombustibleSeleccionado(e.target.value)}
-                    className="w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
+                    className="mb-3 w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
                   >
                     <option value="Precio Gasolina 95 E5">⛽ {t('fuel.gasoline95')}</option>
                     <option value="Precio Gasolina 98 E5">⛽ {t('fuel.gasoline98')}</option>
@@ -240,10 +348,21 @@ export default function Profile() {
                     <option value="Precio Gasoleo B">🚜 {t('fuel.dieselB')}</option>
                     <option value="Precio Gasoleo Premium">💎 {t('fuel.dieselPremium')}</option>
                   </select>
+
+                  <p className="text-xs text-blue-700 bg-blue-100 rounded-lg px-3 py-2">
+                    {t('profile.vehicleFuelType')}: <span className="font-semibold">{getLabelTipoCoche(deriveCarFuelType(combustibleSeleccionado))}</span>
+                  </p>
                 </div>
                 <button
                   onClick={handleGuardarCombustible}
-                  disabled={guardandoCombustible || combustibleSeleccionado === perfil.combustible_favorito}
+                  disabled={
+                    guardandoCombustible ||
+                    (
+                      combustibleSeleccionado === perfil.combustible_favorito &&
+                      modeloCoche.trim() === (perfil.modelo_coche || '') &&
+                      deriveCarFuelType(combustibleSeleccionado) === (perfil.tipo_combustible_coche || '')
+                    )
+                  }
                   className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {guardandoCombustible ? (
@@ -266,6 +385,11 @@ export default function Profile() {
                     <span className="font-semibold text-blue-700">{t('profile.current')}:</span>{" "}
                     {getNombreCombustible(perfil.combustible_favorito)}
                   </p>
+                </div>
+              )}
+              {saveOkMessage && (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
+                  {saveOkMessage}
                 </div>
               )}
             </div>

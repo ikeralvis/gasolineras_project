@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 export interface HorarioParsed {
@@ -65,6 +66,7 @@ export default function HorarioDisplay({
   mode,
 }: Readonly<HorarioDisplayProps>) {
   const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
 
   /* ─── COMPACT MODE ─── */
   if (mode === 'compact') {
@@ -168,8 +170,17 @@ export default function HorarioDisplay({
         )}
       </div>
 
+      <button
+        type="button"
+        onClick={() => setExpanded((prev) => !prev)}
+        className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+      >
+        {expanded ? t('common.seeLess') : t('common.seeMore')}
+        <span className={`transition-transform ${expanded ? 'rotate-180' : ''}`}>⌄</span>
+      </button>
+
       {/* Tabla semanal */}
-      <div className="rounded-xl overflow-hidden border border-gray-100 divide-y divide-gray-100">
+      <div className={`rounded-xl overflow-hidden border border-gray-100 divide-y divide-gray-100 transition-all ${expanded ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0 border-transparent divide-transparent'}`}>
         {([1, 2, 3, 4, 5, 6, 7] as const).map(d => {
           const sched = daySchedule[d];
           const isToday = d === today;

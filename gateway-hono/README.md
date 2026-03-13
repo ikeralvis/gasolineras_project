@@ -15,6 +15,29 @@ El **API Gateway** es el punto de entrada único para la aplicación TankGo. Cen
 
 ---
 
+## 🔐 Seguridad Recomendada
+
+- El gateway establece sesion con cookie `httpOnly` (`authToken`) tras login.
+- El frontend debe enviar peticiones autenticadas con `credentials: include`.
+- El proxy de usuarios puede inyectar `Authorization: Bearer <cookie>` para compatibilidad con `usuarios-service`.
+- `POST /api/auth/logout` limpia la cookie de sesion.
+- `POST /api/gasolineras/sync` requiere `X-Internal-Secret` y esta pensado para uso interno.
+
+### Variables Clave para Cloud
+
+```env
+FRONTEND_URL=https://tu-frontend.example.com
+FRONTEND_URLS=https://tu-frontend.example.com,https://admin.tu-frontend.example.com
+INTERNAL_API_SECRET=un-secreto-largo-y-unico
+NODE_ENV=production
+```
+
+Notas:
+- Usa HTTPS extremo a extremo para que `Secure` cookies funcionen en navegador.
+- Manten `INTERNAL_API_SECRET` igual en gateway y servicios internos que validan sincronizacion.
+
+---
+
 ## 📋 Endpoints Principales
 
 ### Información del Gateway

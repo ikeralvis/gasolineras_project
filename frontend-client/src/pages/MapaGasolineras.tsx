@@ -1,12 +1,12 @@
-﻿import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+﻿import { MapContainer, TileLayer, Marker, Popup, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useNavigate } from "react-router-dom";
 import { LuX, LuMapPin, LuNavigation, LuExternalLink, LuClock } from "react-icons/lu";
 import { MdLocalGasStation } from "react-icons/md";
-import { getGasolinerasCerca } from "../api/gasolineras";
+import { fetchGasMarkers, type GasMarker } from "../api/gasolineras";
 import HorarioDisplay, { type HorarioParsed } from "../components/HorarioDisplay";
 
 import repsol from "../assets/logos/repsol.svg";
@@ -21,7 +21,7 @@ import costco from "../assets/logos/costco.png";
 import easygas from "../assets/logos/easygas.png";
 import petroprix from "../assets/logos/petroprix.png";
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8080";
+const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 interface Gasolinera {
   IDEESS: string;
@@ -34,6 +34,30 @@ interface Gasolinera {
   ["Precio Gasoleo A"]: string;
 }
 
+function normalizeStation<T extends Record<string, unknown>>(station: T): T & {
+  [key: string]: unknown;
+} {
+  const rotulo = (station["Rótulo"] as string | undefined) ?? (station.Rotulo as string | undefined) ?? "";
+  const direccion = (station["Dirección"] as string | undefined) ?? (station.Direccion as string | undefined);
+  const direccionFields = direccion === undefined
+    ? {}
+    : { "Dirección": direccion, Direccion: direccion };
+  return {
+    ...station,
+    "Rótulo": rotulo,
+    Rotulo: rotulo,
+    ...direccionFields,
+  };
+}
+
+interface GasClusterMarker {
+  type: "cluster";
+  latitude: number;
+  longitude: number;
+  count: number;
+  min_precio_95_e5?: string;
+}
+
 interface GasolineraDetail extends Gasolinera {
   Dirección?: string;
   ["Precio Gasolina 98 E5"]?: string;
@@ -44,7 +68,17 @@ interface GasolineraDetail extends Gasolinera {
 }
 
 // Crear icono transparente con drop-shadow
-function createIcon(imageUrl: string) {
+function createIcon(imageUrl?: string | null) {
+  if (!imageUrl) {
+    return L.divIcon({
+      html: `<div style="width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:#0F766E;border-radius:50%;border:2.5px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.35)"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12"/><path d="M5 22V6.5A2.5 2.5 0 0 1 7.5 4h6A2.5 2.5 0 0 1 16 6.5V22"/><path d="M16 9h2.5A1.5 1.5 0 0 1 20 10.5V14"/></svg></div>`,
+      className: "",
+      iconSize: [42, 42],
+      iconAnchor: [21, 42],
+      popupAnchor: [0, -42],
+    });
+  }
+
   return L.divIcon({
     html: `<div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center"><img src="${imageUrl}" style="width:40px;height:40px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));" /></div>`,
     className: "",
@@ -68,24 +102,8 @@ const userLocationIcon = L.divIcon({
   popupAnchor: [0, -20]
 });
 
-function getBrandIcon(rotulo: string) {
-  const name = rotulo.toLowerCase();
-  if (name.includes("repsol")) return repsol;
-  if (name.includes("cepsa")) return cepsa;
-  if (name.includes("bp")) return bp;
-  if (name.includes("shell")) return shell;
-  if (name.includes("galp")) return galp;
-  if (name.includes("eroski")) return eroski;
-  if (name.includes("moeve")) return moeve;
-  if (name.includes("petronor")) return petronor;
-  if (name.includes("costco")) return costco;
-  if (name.includes("easygas")) return easygas;
-  if (name.includes("petroprix")) return petroprix;
-  return "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png";
-}
-
-function getBrandLogo(rotulo: string): string | null {
-  const name = rotulo.toLowerCase();
+function getBrandIcon(rotulo?: string): string | null {
+  const name = (rotulo ?? "").toLowerCase();
   if (name.includes("repsol")) return repsol;
   if (name.includes("cepsa")) return cepsa;
   if (name.includes("bp")) return bp;
@@ -98,6 +116,10 @@ function getBrandLogo(rotulo: string): string | null {
   if (name.includes("easygas")) return easygas;
   if (name.includes("petroprix")) return petroprix;
   return null;
+}
+
+function getBrandLogo(rotulo?: string): string | null {
+  return getBrandIcon(rotulo);
 }
 
 // Componente para actualizar el centro del mapa
@@ -109,11 +131,93 @@ function MapUpdater({ center }: { center: [number, number] }) {
   return null;
 }
 
-// â”€â”€ Drawer de detalle de gasolinera â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+interface GasMapControllerProps {
+  onMarkersUpdate: (markers: GasMarker[]) => void;
+  onLoading: (loading: boolean) => void;
+}
+
+function GasMapController({ onMarkersUpdate, onLoading }: Readonly<GasMapControllerProps>) {
+  const map = useMap();
+  const abortRef = useRef<AbortController | null>(null);
+
+  const fetchMarkers = useCallback(async () => {
+    abortRef.current?.abort();
+    abortRef.current = new AbortController();
+
+    const bounds = map.getBounds();
+    const ne = bounds.getNorthEast();
+    const sw = bounds.getSouthWest();
+
+    onLoading(true);
+    try {
+      const markers = await fetchGasMarkers({
+        lat_ne: ne.lat,
+        lon_ne: ne.lng,
+        lat_sw: sw.lat,
+        lon_sw: sw.lng,
+        zoom: map.getZoom(),
+      });
+      onMarkersUpdate(markers);
+    } catch (err) {
+      console.error("Gas markers fetch error:", err);
+      onMarkersUpdate([]);
+    } finally {
+      onLoading(false);
+    }
+  }, [map, onMarkersUpdate, onLoading]);
+
+  useEffect(() => {
+    map.whenReady(() => {
+      fetchMarkers();
+      setTimeout(() => fetchMarkers(), 220);
+    });
+  }, [fetchMarkers]);
+
+  useMapEvents({
+    moveend: () => {
+      fetchMarkers();
+    },
+  });
+
+  return null;
+}
+
+function createClusterDivIcon(count: number): L.DivIcon {
+  const size = Math.min(34 + Math.log2(count + 1) * 5, 58);
+  const label = count > 999 ? "999+" : String(count);
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;background:#0F766E;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;border:2.5px solid white;box-shadow:0 2px 10px rgba(0,0,0,0.35);cursor:pointer">${label}</div>`,
+    className: "",
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+  });
+}
+
+interface ClusterCircleProps {
+  marker: GasClusterMarker;
+}
+
+function ClusterCircle({ marker }: Readonly<ClusterCircleProps>) {
+  const map = useMap();
+  const icon = useMemo(() => createClusterDivIcon(marker.count), [marker.count]);
+
+  return (
+    <Marker
+      position={[marker.latitude, marker.longitude]}
+      icon={icon}
+      eventHandlers={{
+        click: () => map.flyTo([marker.latitude, marker.longitude], Math.min(map.getZoom() + 2, 18)),
+      }}
+    />
+  );
+}
+
 interface GasolineraDrawerProps {
   ideess: string | null;
   onClose: () => void;
 }
+
+const MOBILE_SNAP_POINTS = [42, 68, 90] as const;
 
 function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) {
   const { t } = useTranslation();
@@ -121,6 +225,25 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
   const [detail, setDetail] = useState<GasolineraDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [snapIndex, setSnapIndex] = useState<number>(1);
+  const dragStartY = useRef<number | null>(null);
+
+  const startHandleDrag = (startY: number) => {
+    dragStartY.current = startY;
+  };
+
+  const endHandleDrag = (endY: number) => {
+    if (dragStartY.current === null) {
+      return;
+    }
+    const delta = endY - dragStartY.current;
+    if (delta < -45) {
+      setSnapIndex((prev) => Math.min(prev + 1, MOBILE_SNAP_POINTS.length - 1));
+    } else if (delta > 45) {
+      setSnapIndex((prev) => Math.max(prev - 1, 0));
+    }
+    dragStartY.current = null;
+  };
 
   useEffect(() => {
     if (!ideess) { setDetail(null); return; }
@@ -130,14 +253,34 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
     setDetail(null);
     fetch(`${API_URL}/api/gasolineras/${ideess}`)
       .then(r => r.json())
-      .then(d => { if (!cancelled) setDetail(d); })
+      .then(d => { if (!cancelled) setDetail(normalizeStation(d) as GasolineraDetail); })
       .catch(() => { if (!cancelled) setError(t("detail.loadingDetails")); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [ideess, t]);
 
+  useEffect(() => {
+    if (ideess) {
+      setSnapIndex(1);
+    }
+  }, [ideess]);
+
+  useEffect(() => {
+    if (!ideess) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    globalThis.addEventListener("keydown", onKeyDown);
+    return () => globalThis.removeEventListener("keydown", onKeyDown);
+  }, [ideess, onClose]);
+
   const isOpen = !!ideess;
   const logo = detail ? getBrandLogo(detail["Rótulo"]) : null;
+  const snapHeight = `${MOBILE_SNAP_POINTS[snapIndex]}vh`;
 
   const combustibles = detail ? [
     { label: "G95", nombre: "Gasolina 95 E5", precio: detail["Precio Gasolina 95 E5"] },
@@ -165,16 +308,35 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
           md:bottom-auto md:top-0 md:right-0 md:left-auto
           md:h-full md:w-96
           bg-white shadow-2xl z-1000
-          transition-transform duration-300 ease-in-out
+          transition-all duration-300 ease-in-out
           rounded-t-2xl md:rounded-none
           ${isOpen ? "translate-y-0 md:translate-x-0" : "translate-y-full md:translate-x-full"}
-          flex flex-col max-h-[80vh] md:max-h-full overflow-hidden
+          flex flex-col max-h-(--sheet-h,80vh) md:max-h-full overflow-hidden
         `}
+        style={{ ...(isOpen ? ({ "--sheet-h": snapHeight } as Record<string, string>) : {}) }}
       >
-        {/* Handle mÃ³vil */}
-        <div className="md:hidden flex justify-center pt-3 pb-1 shrink-0">
-          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        {/* Handle movil */}
+        <div className="md:hidden flex justify-center pt-3 pb-1 shrink-0 touch-none">
+          <button
+            type="button"
+            aria-label="Arrastra para expandir o colapsar"
+            className="h-8 w-24 rounded-full flex items-center justify-center"
+            onClick={() => setSnapIndex((prev) => (prev === MOBILE_SNAP_POINTS.length - 1 ? 0 : prev + 1))}
+            onTouchStart={(event) => startHandleDrag(event.touches[0].clientY)}
+            onTouchEnd={(event) => endHandleDrag(event.changedTouches[0].clientY)}
+            onMouseDown={(event) => {
+              startHandleDrag(event.clientY);
+              const onMouseUp = (upEvent: MouseEvent) => {
+                endHandleDrag(upEvent.clientY);
+                globalThis.removeEventListener("mouseup", onMouseUp);
+              };
+              globalThis.addEventListener("mouseup", onMouseUp);
+            }}
+          >
+            <span className="w-12 h-1.5 rounded-full bg-gray-300" />
+          </button>
         </div>
+        <p className="md:hidden text-center text-[11px] text-gray-400 pb-2">Toca o arrastra para ajustar</p>
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 shrink-0">
@@ -218,6 +380,23 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
 
           {detail && !loading && (
             <>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-500">G95</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {detail["Precio Gasolina 95 E5"] || "-"}
+                    <span className="ml-1 text-xs font-medium text-gray-500">€/L</span>
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
+                  <p className="text-[11px] uppercase tracking-wide text-gray-500">GOA</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {detail["Precio Gasoleo A"] || "-"}
+                    <span className="ml-1 text-xs font-medium text-gray-500">€/L</span>
+                  </p>
+                </div>
+              </div>
+
               {/* Dirección */}
               {detail.Dirección && (
                 <div className="flex items-start gap-2 text-sm text-gray-600">
@@ -269,7 +448,7 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
           <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex gap-2">
             <button
               onClick={() => navigate(`/gasolinera/${detail.IDEESS}`)}
-              className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#001A8A] transition text-sm font-medium"
+              className="flex-1 min-h-11 flex items-center justify-center gap-2 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#001A8A] transition text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
             >
               <LuExternalLink size={15} />
               {t("common.viewDetails")}
@@ -278,7 +457,7 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
               href={`https://www.google.com/maps/dir/?api=1&destination=${detail.Latitud},${detail.Longitud}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-[#000C74] text-[#000C74] rounded-xl hover:bg-[#F0F2FF] transition text-sm font-medium"
+              className="min-h-11 flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-[#000C74] text-[#000C74] rounded-xl hover:bg-[#F0F2FF] transition text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
             >
               <LuNavigation size={15} />
               {t("detail.howToGet")}
@@ -292,47 +471,35 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
 
 export default function MapaGasolineras() {
   const { t } = useTranslation();
-  const [gasolineras, setGasolineras] = useState<Gasolinera[]>([]);
+  const [markers, setMarkers] = useState<GasMarker[]>([]);
   const [userLocation, setUserLocation] = useState<[number, number]>([40.4168, -3.7038]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [locationGranted, setLocationGranted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
-    async function cargarGasolineras() {
-      try {
-        setLoading(true);
-        navigator.geolocation.getCurrentPosition(
-          async (pos) => {
-            const lat = pos.coords.latitude;
-            const lon = pos.coords.longitude;
-            setUserLocation([lat, lon]);
-            setLocationGranted(true);
-            const cerca = await getGasolinerasCerca(lat, lon, 50);
-            setGasolineras(cerca);
-            setLoading(false);
-          },
-          async (error) => {
-            console.warn("âš ï¸ No se pudo obtener ubicaciÃ³n:", error.message);
-            const res = await fetch(`${API_URL}/api/gasolineras?limit=500`);
-            const data = await res.json();
-            setGasolineras(data.gasolineras || []);
-            setLoading(false);
-          },
-          { timeout: 5000 }
-        );
-      } catch (error) {
-        console.error("âŒ Error cargando gasolineras:", error);
-        setLoading(false);
-      }
-    }
-    cargarGasolineras();
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        setUserLocation([lat, lon]);
+        setLocationGranted(true);
+      },
+      (error) => {
+        console.warn("No se pudo obtener ubicacion:", error.message);
+      },
+      { timeout: 5000 }
+    );
   }, []);
+
+  const stationMarkers = markers.filter((m): m is { type: "station"; station: Gasolinera } => m.type === "station");
+  const clusterMarkers = markers.filter((m): m is GasClusterMarker => m.type === "cluster");
 
   const getStatusMessage = () => {
     if (loading) return t("map.loadingLocation");
-    if (locationGranted) return t("map.nearbyStations", { count: gasolineras.length });
-    return t("map.showingStations", { count: gasolineras.length });
+    if (clusterMarkers.length > 0) return `Mostrando ${clusterMarkers.length} clusters`;
+    if (locationGranted) return t("map.nearbyStations", { count: stationMarkers.length });
+    return t("map.showingStations", { count: stationMarkers.length });
   };
 
   return (
@@ -360,20 +527,12 @@ export default function MapaGasolineras() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex-1 flex items-center justify-center bg-gray-50">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-[#000C74] border-t-transparent mb-4" />
-            <p className="text-gray-600 font-medium">{t("map.loadingMap")}</p>
-          </div>
-        </div>
-      ) : (
-        <MapContainer
-          center={userLocation}
-          zoom={13}
-          className="flex-1 z-0"
-          style={{ zIndex: 0 }}
-        >
+      <MapContainer
+        center={userLocation}
+        zoom={locationGranted ? 13 : 6}
+        className="flex-1 z-0"
+        style={{ zIndex: 0 }}
+      >
           <TileLayer
             url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
             attribution="&copy; <a href='https://carto.com/attributions'>CARTO</a>"
@@ -381,27 +540,47 @@ export default function MapaGasolineras() {
 
           <MapUpdater center={userLocation} />
 
+          <GasMapController
+            onMarkersUpdate={setMarkers}
+            onLoading={setLoading}
+          />
+
           {locationGranted && (
             <Marker position={userLocation} icon={userLocationIcon}>
               <Popup>
                 <div className="p-2 text-center">
-                  <p className="font-semibold text-[#000C74]">ðŸ“ {t("map.yourLocation")}</p>
+                  <p className="font-semibold text-[#000C74]">{t("map.yourLocation")}</p>
                 </div>
               </Popup>
             </Marker>
           )}
 
-          {gasolineras.map((g) => (
+          {clusterMarkers.map((cluster) => (
+            <ClusterCircle
+              key={`cluster-${cluster.latitude}-${cluster.longitude}-${cluster.count}`}
+              marker={cluster}
+            />
+          ))}
+
+          {stationMarkers.map((g) => (
             <Marker
-              key={g.IDEESS}
-              position={[g.Latitud, g.Longitud]}
-              icon={createIcon(getBrandIcon(g["Rótulo"]))}
+              key={g.station.IDEESS}
+              position={[g.station.Latitud, g.station.Longitud]}
+              icon={createIcon(getBrandIcon(g.station["Rótulo"] ?? (g.station as any).Rotulo))}
               eventHandlers={{
-                click: () => setSelectedId(g.IDEESS),
+                click: () => setSelectedId(g.station.IDEESS),
               }}
             />
           ))}
-        </MapContainer>
+      </MapContainer>
+
+      {loading && (
+        <div className="absolute inset-0 z-500 flex items-center justify-center bg-white/55 backdrop-blur-[1px] pointer-events-none">
+          <div className="text-center">
+            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-[#000C74] border-t-transparent mb-3" />
+            <p className="text-gray-600 font-medium">{t("map.loadingMap")}</p>
+          </div>
+        </div>
       )}
 
       {/* Drawer de detalle */}

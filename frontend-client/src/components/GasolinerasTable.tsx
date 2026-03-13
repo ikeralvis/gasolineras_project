@@ -49,9 +49,20 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
     page * rowsPerPage
   );
 
+  const openStationDetail = (ideess: string) => {
+    navigate(`/gasolinera/${ideess}`);
+  };
+
+  const onCardKeyDown = (event: React.KeyboardEvent<HTMLElement>, ideess: string) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openStationDetail(ideess);
+    }
+  };
+
   // Función para obtener logo de la marca
-  const getBrandLogo = (rotulo: string): string | null => {
-    const name = rotulo.toLowerCase();
+  const getBrandLogo = (rotulo?: string): string | null => {
+    const name = (rotulo ?? "").toLowerCase();
     if (name.includes("repsol")) return repsol;
     if (name.includes("cepsa")) return cepsa;
     if (name.includes("bp")) return bp;
@@ -99,6 +110,10 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
     );
   };
 
+  const selectedStats = estadisticas && !loadingStats
+    ? estadisticas.combustibles[getTipoEstadistica(combustibleSeleccionado)]
+    : null;
+
   // Safe getter for dynamic fuel price
   const getPriceByType = (gasolinera: Gasolinera, tipo: string): string | undefined => {
     const value = (gasolinera as unknown as Record<string, unknown>)[tipo];
@@ -110,8 +125,8 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
 
       {/* ESTADÍSTICAS DE PRECIOS */}
       {estadisticas && !loadingStats && (
-        <div className="mb-6 p-4 bg-linear-to-r from-[#F8F9FF] to-[#E4E6FF] rounded-xl border border-[#C8CAEE]">
-          <h3 className="text-sm font-semibold text-[#000C74] mb-3 flex items-center gap-2">
+        <div className="mb-4 rounded-xl border border-[#D7DBFF] bg-[#F7F8FF] px-3 py-2.5">
+          <h3 className="text-xs font-semibold text-[#000C74] mb-2 flex items-center gap-2">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v10a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
             </svg>
@@ -120,69 +135,26 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
               ({estadisticas.total_gasolineras.toLocaleString()} {t('nav.gasStations').toLowerCase()})
             </span>
           </h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* GASOLINA 95 */}
-            {estadisticas.combustibles.gasolina_95 && (
-              <div className="bg-white rounded-lg p-3 shadow-sm border border-blue-100">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-2 h-2 rounded-full bg-blue-500"></div>
-                  <span className="font-semibold text-sm text-gray-900">{t('fuel.gasoline95')}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <span className="text-gray-500 block">{t('gasStations.minimum')}</span>
-                    <span className="font-bold text-green-600">
-                      {estadisticas.combustibles.gasolina_95.min.toFixed(3)} €
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block">{t('gasStations.average')}</span>
-                    <span className="font-bold text-[#000C74]">
-                      {estadisticas.combustibles.gasolina_95.media.toFixed(3)} €
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block">{t('gasStations.maximum')}</span>
-                    <span className="font-bold text-red-600">
-                      {estadisticas.combustibles.gasolina_95.max.toFixed(3)} €
-                    </span>
-                  </div>
-                </div>
+          {selectedStats && (
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="rounded-lg border border-green-200 bg-green-50 px-2 py-1.5">
+                <span className="text-gray-500 block">{t('gasStations.minimum')}</span>
+                <span className="font-bold text-green-700">{selectedStats.min.toFixed(3)} €</span>
               </div>
-            )}
-
-            {/* GASÓLEO A */}
-            {estadisticas.combustibles.gasoleo_a && (
-              <div className="bg-white rounded-lg p-3 shadow-sm border border-green-100">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                  <span className="font-semibold text-sm text-gray-900">{t('fuel.dieselA')}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <span className="text-gray-500 block">{t('gasStations.minimum')}</span>
-                    <span className="font-bold text-green-600">
-                      {estadisticas.combustibles.gasoleo_a.min.toFixed(3)} €
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block">{t('gasStations.average')}</span>
-                    <span className="font-bold text-[#000C74]">
-                      {estadisticas.combustibles.gasoleo_a.media.toFixed(3)} €
-                    </span>
-                  </div>
-                  <div>
-                    <span className="text-gray-500 block">{t('gasStations.maximum')}</span>
-                    <span className="font-bold text-red-600">
-                      {estadisticas.combustibles.gasoleo_a.max.toFixed(3)} €
-                    </span>
-                  </div>
-                </div>
+              <div className="rounded-lg border border-[#C8CAEE] bg-white px-2 py-1.5">
+                <span className="text-gray-500 block">{t('gasStations.average')}</span>
+                <span className="font-bold text-[#000C74]">{selectedStats.media.toFixed(3)} €</span>
               </div>
-            )}
+              <div className="rounded-lg border border-red-200 bg-red-50 px-2 py-1.5">
+                <span className="text-gray-500 block">{t('gasStations.maximum')}</span>
+                <span className="font-bold text-red-700">{selectedStats.max.toFixed(3)} €</span>
+              </div>
+            </div>
+          )}
+          {!selectedStats && (
+            <p className="text-xs text-gray-500">{t('common.noResults')}</p>
+          )}
           </div>
-        </div>
       )}
 
       {/* TABLE (ESCRITORIO) */}
@@ -201,7 +173,8 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
 
           <tbody>
             {paginated.map((g) => {
-              const logo = getBrandLogo(g["Rótulo"]);
+              const stationName = g["Rótulo"] ?? (g as any).Rotulo ?? "Gasolinera";
+              const logo = getBrandLogo(stationName);
               
               return (
                 <tr
@@ -215,16 +188,16 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                       {logo ? (
                         <img 
                           src={logo} 
-                          alt={g["Rótulo"]} 
+                          alt={stationName} 
                           className="w-10 h-10 object-contain rounded-lg bg-white shadow-sm p-1"
                         />
                       ) : (
                         <div className="w-10 h-10 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold text-sm">
-                          {g["Rótulo"].substring(0, 2).toUpperCase()}
+                          {stationName.substring(0, 2).toUpperCase()}
                         </div>
                       )}
                       <div>
-                        <p className="font-semibold text-gray-900">{g["Rótulo"]}</p>
+                        <p className="font-semibold text-gray-900">{stationName}</p>
                       </div>
                     </div>
                   </td>
@@ -281,37 +254,44 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
       {/* CARDS (MÓVIL) */}
       <div className="md:hidden space-y-4">
         {paginated.map((g) => {
-          const logo = getBrandLogo(g["Rótulo"]);
+          const stationName = g["Rótulo"] ?? (g as any).Rotulo ?? "Gasolinera";
+          const logo = getBrandLogo(stationName);
           
           return (
             <div
               key={g.IDEESS}
-              className="border border-gray-200 rounded-xl p-5 shadow-sm bg-white hover:shadow-md transition-all cursor-pointer"
-              onClick={() => navigate(`/gasolinera/${g.IDEESS}`)}
+              className="border border-gray-200 rounded-xl p-5 shadow-sm bg-white hover:shadow-md transition-all"
             >
-              {/* HEADER CON LOGO */}
-              <div className="flex items-center gap-3 mb-4">
-                {logo ? (
-                  <img 
-                    src={logo} 
-                    alt={g["Rótulo"]} 
-                    className="w-12 h-12 object-contain rounded-lg bg-white shadow-sm p-1"
-                  />
-                ) : (
-                  <div className="w-12 h-12 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold">
-                    {g["Rótulo"].substring(0, 2).toUpperCase()}
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {logo ? (
+                    <img
+                      src={logo}
+                      alt={stationName}
+                      className="w-12 h-12 object-contain rounded-lg bg-white shadow-sm p-1"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold">
+                      {stationName.substring(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-lg text-[#000C74] truncate">
+                      {stationName}
+                    </h3>
+                    <p className="text-sm text-gray-600 truncate">{g.Municipio}, {g.Provincia}</p>
                   </div>
-                )}
-                <div className="flex-1">
-                  <h3 className="font-semibold text-lg text-[#000C74]">
-                    {g["Rótulo"]}
-                  </h3>
-                  <p className="text-sm text-gray-600">{g.Municipio}, {g.Provincia}</p>
                 </div>
-                <div onClick={(e) => e.stopPropagation()}>
-                  <FavoritoButton ideess={g.IDEESS} size="lg" />
-                </div>
+                <FavoritoButton ideess={g.IDEESS} size="lg" />
               </div>
+
+              <button
+                type="button"
+                aria-label={`Ver detalle de ${stationName} en ${g.Municipio}`}
+                onClick={() => openStationDetail(g.IDEESS)}
+                onKeyDown={(event) => onCardKeyDown(event, g.IDEESS)}
+                className="w-full text-left rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
+              >
 
               {/* PRECIO DEL COMBUSTIBLE SELECCIONADO */}
               <div className="grid grid-cols-1 gap-3">
@@ -337,6 +317,16 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                   />
                 </div>
               )}
+
+              </button>
+
+              <button
+                type="button"
+                onClick={() => openStationDetail(g.IDEESS)}
+                className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#000C74] px-4 text-sm font-semibold text-white transition hover:bg-[#0A128C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
+              >
+                {t('table.viewDetails')}
+              </button>
             </div>
           );
         })}

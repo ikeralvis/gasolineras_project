@@ -8,8 +8,9 @@ import httpx
 from typing import Optional, Set
 from datetime import datetime, timezone, timedelta, date
 
-from fastapi import APIRouter, Query, HTTPException, status
+from fastapi import APIRouter, Query, HTTPException, status, Header
 from psycopg2.extras import execute_values, Json
+from pydantic import BaseModel, Field
 
 from app.db.connection import get_db_conn, get_cursor
 from app.services.fetch_gobierno import fetch_data_gobierno, parse_float
@@ -21,6 +22,14 @@ USUARIOS_SERVICE_URL = os.getenv("USUARIOS_SERVICE_URL", "http://usuarios:3001")
 INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "dev-internal-secret-change-in-production")
 
 router = APIRouter(prefix="/gasolineras", tags=["Gasolineras"])
+
+
+class MarkersViewport(BaseModel):
+    lat_ne: float = Field(..., ge=-90, le=90)
+    lon_ne: float = Field(..., ge=-180, le=180)
+    lat_sw: float = Field(..., ge=-90, le=90)
+    lon_sw: float = Field(..., ge=-180, le=180)
+    zoom: int = Field(..., ge=0, le=22)
 
 
 # ---------------------------------------------------------------------------
@@ -38,20 +47,150 @@ def _row_to_api(row: dict) -> dict:
     """Mapea una fila de PostgreSQL al formato de campos que espera el cliente."""
     return {
         "IDEESS": row.get("ideess"),
-        "R\u00f3tulo": row.get("rotulo") or "",
+        "Rotulo": row.get("rotulo") or "",
         "Municipio": row.get("municipio") or "",
         "Provincia": row.get("provincia") or "",
-        "Direcci\u00f3n": row.get("direccion") or "",
+        "Dirección": row.get("direccion") or "",
         "Precio Gasolina 95 E5": _fmt(row.get("precio_95_e5")),
         "Precio Gasolina 98 E5": _fmt(row.get("precio_98_e5")),
         "Precio Gasoleo A": _fmt(row.get("precio_gasoleo_a")),
         "Precio Gasoleo B": _fmt(row.get("precio_gasoleo_b")),
-        "Precio Gas\u00f3leo Premium": _fmt(row.get("precio_gasoleo_premium")),
+        "Precio Gasoleo Premium": _fmt(row.get("precio_gasoleo_premium")),
         "Latitud": row.get("latitud"),
         "Longitud": row.get("longitud"),
         "Horario": row.get("horario"),
         "horario_parsed": row.get("horario_parsed"),
     }
+
+
+def _grid_size_for_zoom(zoom: int) -> Optional[float]:
+    """Tamano de celda en grados para clustering segun zoom."""
+    if zoom <= 6:
+        return 0.35
+    if zoom <= 8:
+        return 0.18
+    if zoom <= 10:
+        return 0.08
+    if zoom <= 12:
+        return 0.035
+    if zoom <= 14:
+        return 0.015
+    return None
+
+
+@router.post(
+    "/markers",
+    response_model=dict,
+    summary="Obtener markers de gasolineras por viewport",
+    description="Devuelve clusters a bajo zoom y estaciones individuales a alto zoom, siempre desde BD.",
+)
+def get_gasolineras_markers(viewport: MarkersViewport):
+    try:
+        if viewport.lat_sw >= viewport.lat_ne:
+            raise HTTPException(status_code=400, detail="lat_sw must be lower than lat_ne")
+        if viewport.lon_sw >= viewport.lon_ne:
+            raise HTTPException(status_code=400, detail="lon_sw must be lower than lon_ne")
+
+        grid_size = _grid_size_for_zoom(viewport.zoom)
+
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                if grid_size is not None:
+                    cur.execute(
+                        """
+                        WITH filtered AS (
+                            SELECT geom, precio_95_e5
+                            FROM gasolineras
+                            WHERE geom IS NOT NULL
+                              AND ST_Intersects(
+                                  geom::geometry,
+                                  ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+                              )
+                        ), grouped AS (
+                            SELECT
+                                ST_SnapToGrid(geom::geometry, %s, %s) AS grid_geom,
+                                COUNT(*)::int AS total,
+                                MIN(precio_95_e5) AS min_precio_95_e5
+                            FROM filtered
+                            GROUP BY grid_geom
+                        )
+                        SELECT
+                            ST_Y(ST_Centroid(grid_geom)) AS latitude,
+                            ST_X(ST_Centroid(grid_geom)) AS longitude,
+                            total,
+                            min_precio_95_e5
+                        FROM grouped
+                        ORDER BY total DESC
+                        LIMIT 1500
+                        """,
+                        [
+                            viewport.lon_sw,
+                            viewport.lat_sw,
+                            viewport.lon_ne,
+                            viewport.lat_ne,
+                            grid_size,
+                            grid_size,
+                        ],
+                    )
+                    rows = [dict(r) for r in cur.fetchall()]
+                    markers = [
+                        {
+                            "type": "cluster",
+                            "latitude": float(r["latitude"]),
+                            "longitude": float(r["longitude"]),
+                            "count": int(r["total"]),
+                            "min_precio_95_e5": _fmt(r.get("min_precio_95_e5")),
+                        }
+                        for r in rows
+                    ]
+                    mode = "cluster"
+                else:
+                    cur.execute(
+                        """
+                        SELECT
+                            ideess, rotulo, municipio, provincia, direccion,
+                            precio_95_e5, precio_98_e5, precio_gasoleo_a,
+                            precio_gasoleo_b, precio_gasoleo_premium,
+                            latitud, longitud, horario, horario_parsed
+                        FROM gasolineras
+                        WHERE geom IS NOT NULL
+                          AND ST_Intersects(
+                              geom::geometry,
+                              ST_MakeEnvelope(%s, %s, %s, %s, 4326)
+                          )
+                        ORDER BY precio_95_e5 NULLS LAST, ideess
+                        LIMIT 2000
+                        """,
+                        [
+                            viewport.lon_sw,
+                            viewport.lat_sw,
+                            viewport.lon_ne,
+                            viewport.lat_ne,
+                        ],
+                    )
+                    rows = [dict(r) for r in cur.fetchall()]
+                    markers = [{"type": "station", "station": _row_to_api(r)} for r in rows]
+                    mode = "station"
+
+        return {
+            "mode": mode,
+            "zoom": viewport.zoom,
+            "count": len(markers),
+            "markers": markers,
+            "bbox": {
+                "lat_ne": viewport.lat_ne,
+                "lon_ne": viewport.lon_ne,
+                "lat_sw": viewport.lat_sw,
+                "lon_sw": viewport.lon_sw,
+            },
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error al obtener markers de gasolineras: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error al obtener markers: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -172,7 +311,10 @@ def gasolineras_cerca(
     response_model=dict,
     summary="Sincronizar gasolineras desde la API del Gobierno de Espa\u00f1a",
 )
-def sync_gasolineras():
+def sync_gasolineras(x_internal_secret: Optional[str] = Header(default=None, alias="X-Internal-Secret")):
+    if x_internal_secret != INTERNAL_API_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
     try:
         logger.info("\U0001f504 Iniciando sincronizaci\u00f3n de gasolineras...")
 

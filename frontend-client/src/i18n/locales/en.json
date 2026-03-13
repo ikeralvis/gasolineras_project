@@ -155,6 +155,28 @@
     "deleteConfirm": "Are you sure you want to delete your account? This action is irreversible.",
     "accountDeleted": "Account deleted successfully",
     "updateSuccess": "✅ Favorite fuel saved successfully",
+    "onboardingBanner": "Complete your car and fuel setup to personalize the app after signing in with Google.",
+    "vehicle": "Car",
+    "vehicleModel": "Car model",
+    "vehicleModelPlaceholder": "E.g.: Seat Ibiza 1.9 TDI",
+    "vehicleFuel": "Car fuel",
+    "vehicleFuelType": "Car fuel type",
+    "selectOption": "Select an option",
+    "notDefined": "Not set",
+    "vehicleModelRequired": "You must provide your car model",
+    "vehicleFuelRequired": "You must provide your car fuel type",
+    "errorLoadingUserData": "Error loading user data",
+    "errorLoadingProfile": "Profile could not be loaded",
+    "errorDeletingAccount": "Error deleting account",
+    "networkErrorDeletingAccount": "Network error while deleting account",
+    "errorSavingPreference": "Error saving preference",
+    "networkErrorSavingPreference": "Network error while saving preference",
+    "vehicleFuelOptions": {
+      "gasolina": "Gasoline",
+      "diesel": "Diesel",
+      "electrico": "Electric",
+      "hibrido": "Hybrid"
+    },
     "language": "Language"
   },
   "auth": {

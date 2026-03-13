@@ -243,9 +243,22 @@ GET  /cerca?lat=X&lon=Y&km=Z       # Cercanas
 GET  /estadisticas                 # Stats de precios
 GET  /{id}/historial?dias=30       # Historial precios
 GET  /{id}/cercanas                # Gasolineras cercanas
+POST /markers                      # Markers por viewport (clusters/estaciones desde BD)
 POST /sync                         # Sincronizar datos
 GET  /count                        # Total
 ```
+
+`POST /api/gasolineras/sync` es un endpoint interno. Debe invocarse solo desde jobs internos (cron/scheduler) enviando `X-Internal-Secret`.
+
+---
+
+## 🔐 Seguridad y Despliegue Cloud
+
+- El frontend usa sesion por cookie `httpOnly` gestionada por el gateway.
+- Las llamadas autenticadas del frontend deben usar `credentials: include`.
+- En produccion, configura `FRONTEND_URLS` en el gateway con los dominios permitidos (separados por coma).
+- Configura el mismo `INTERNAL_API_SECRET` en `gateway-hono` y `gasolineras-service` para proteger `/sync`.
+- En HTTPS de cloud, habilita cookies seguras (`Secure`) y evita exponer JWT en `localStorage`.
 
 ---
 

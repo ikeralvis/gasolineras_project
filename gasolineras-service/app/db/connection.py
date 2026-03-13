@@ -50,6 +50,27 @@ def get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     return _pool
 
 
+def _acquire_connection() -> psycopg2.extensions.connection:
+    """Obtiene una conexión viva del pool y recrea el pool si quedó inválido."""
+    pool = get_pool()
+    conn = pool.getconn()
+
+    # Neon puede cerrar conexiones inactivas; descartamos y pedimos una nueva.
+    if conn.closed:
+        pool.putconn(conn, close=True)
+        conn = pool.getconn()
+
+    # Si aún llega cerrada, recreamos el pool completo y reintentamos una vez.
+    if conn.closed:
+        logger.warning("♻️ Reiniciando pool PostgreSQL tras conexión cerrada")
+        pool.closeall()
+        global _pool
+        _pool = None
+        conn = get_pool().getconn()
+
+    return conn
+
+
 @contextmanager
 def get_db_conn():
     """
@@ -57,15 +78,20 @@ def get_db_conn():
     Hace commit automático al salir; rollback si hay excepción.
     Siempre devuelve la conexión al pool al finalizar.
     """
-    conn = get_pool().getconn()
+    conn = _acquire_connection()
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        if not conn.closed:
+            conn.rollback()
         raise
     finally:
-        get_pool().putconn(conn)
+        # Nunca devolvemos conexiones cerradas al pool para evitar reutilización rota.
+        if conn.closed:
+            get_pool().putconn(conn, close=True)
+        else:
+            get_pool().putconn(conn)
 
 
 def get_cursor(conn):

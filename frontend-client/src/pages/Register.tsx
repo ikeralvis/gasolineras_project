@@ -1,275 +1,422 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
+import { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { GoogleLogin } from '@react-oauth/google';
+import { motion } from 'framer-motion';
+import {
+  ArrowLeft,
+  ArrowRight,
+  Car,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Mail,
+  User,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { FaUser, FaEnvelope, FaLock, FaGasPump, FaEye, FaEyeSlash, FaCheckCircle } from 'react-icons/fa';
+import logo from '../assets/logo.png';
+
+const FUEL_OPTIONS = [
+  { value: 'gasolina', label: 'Gasolina', hint: 'Te mostraremos gasolina por defecto' },
+  { value: 'diesel', label: 'Diésel', hint: 'Verás diésel como combustible principal' },
+  { value: 'electrico', label: 'Eléctrico', hint: 'Priorizaremos puntos de recarga' },
+  { value: 'hibrido', label: 'Híbrido', hint: 'Combinaremos opciones de repostaje y recarga' },
+] as const;
+
+type FuelType = (typeof FUEL_OPTIONS)[number]['value'];
+
+function needsOnboarding(user: { modelo_coche?: string; tipo_combustible_coche?: string }) {
+  return !user.modelo_coche || !user.tipo_combustible_coche;
+}
 
 export default function Register() {
-  const { t } = useTranslation();
   const navigate = useNavigate();
-  const { register } = useAuth();
+  const { register, loginWithGoogleCredential } = useAuth();
+
+  const [step, setStep] = useState<1 | 2>(1);
   const [nombre, setNombre] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [modeloCoche, setModeloCoche] = useState('');
+  const [tipoCombustible, setTipoCombustible] = useState<FuelType | ''>('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  // Validación de contraseña en tiempo real
-  const passwordRequirements = {
-    length: password.length >= 8,
-    uppercase: /[A-Z]/.test(password),
-    lowercase: /[a-z]/.test(password),
-    number: /\d/.test(password),
-    special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+  const passwordRules = useMemo(
+    () => ({
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /\d/.test(password),
+      special: /[!@#$%^&*(),.?":{}|<>_\-+=[\]\\/'`~]/.test(password),
+    }),
+    [password]
+  );
+
+  const passwordIsValid = Object.values(passwordRules).every(Boolean);
+  let submitLabel = 'Crear cuenta';
+  if (loading) {
+    submitLabel = 'Creando cuenta...';
+  } else if (step === 1) {
+    submitLabel = 'Continuar';
+  }
+
+  const validateStepOne = () => {
+    if (!passwordIsValid) {
+      setError('La contraseña debe cumplir todos los requisitos.');
+      return false;
+    }
+    if (password !== confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return false;
+    }
+    return true;
   };
 
-  const allRequirementsMet = Object.values(passwordRequirements).every(Boolean);
+  const validateStepTwo = () => {
+    if (!modeloCoche.trim()) {
+      setError('Indica qué coche tienes.');
+      return false;
+    }
+    if (!tipoCombustible) {
+      setError('Selecciona el tipo de combustible de tu coche.');
+      return false;
+    }
+    return true;
+  };
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const goToStepTwo = () => {
+    setError('');
+    if (!validateStepOne()) return;
+    setStep(2);
+  };
+
+  const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
 
-    if (!allRequirementsMet) {
-      setError(t('auth.passwordRequirementsNotMet'));
+    if (step === 1) {
+      goToStepTwo();
       return;
     }
 
-    if (password !== confirmPassword) {
-      setError(t('auth.passwordsDontMatch'));
+    if (!validateStepTwo()) {
       return;
     }
+
+    const selectedFuel = tipoCombustible as FuelType;
 
     setLoading(true);
-
     try {
-      await register(nombre, email, password);
+      await register({
+        nombre,
+        email,
+        password,
+        modelo_coche: modeloCoche.trim(),
+        tipo_combustible_coche: selectedFuel,
+      });
       navigate('/gasolineras');
-    } catch (err: any) {
-      setError(err.message || 'Error al registrarse');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al crear la cuenta.');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleGoogleSuccess = async (credentialResponse: { credential?: string }) => {
+    if (!credentialResponse.credential) {
+      setError('No se recibió credencial de Google.');
+      return;
+    }
+
+    setGoogleLoading(true);
+    setError('');
+
+    try {
+      const user = await loginWithGoogleCredential(credentialResponse.credential);
+      if (needsOnboarding(user)) {
+        navigate('/profile?onboarding=1');
+        return;
+      }
+      navigate('/gasolineras');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al registrarte con Google.');
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-[#000C74] via-[#1E3A8A] to-[#3B52D9] px-4 py-12">
-      <div className="bg-white shadow-2xl rounded-3xl overflow-hidden w-full max-w-md">
-        {/* Header con gradiente */}
-        <div className="bg-linear-to-r from-[#000C74] to-[#4A52D9] p-8 text-white">
-          <div className="flex items-center justify-center mb-4">
-            <div className="bg-white/20 p-3 rounded-full backdrop-blur-sm">
-              <FaGasPump className="w-8 h-8" />
+    <div className="relative isolate min-h-screen overflow-hidden bg-(--color-bg) px-4 py-8 sm:px-6 sm:py-10">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10">
+        <div className="landing-glow-1" />
+        <div className="landing-glow-2" />
+        <div className="landing-grid" />
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.35, ease: 'easeOut' }}
+        className="mx-auto w-full max-w-md"
+      >
+        <div className="landing-panel rounded-3xl p-5 sm:p-7">
+          <div className="mb-6 flex items-center justify-center">
+            <img src={logo} alt="TankGo" className="h-14 w-auto" />
+          </div>
+
+          <div className="mb-4">
+            <div className="mb-3 flex items-center justify-between text-xs font-semibold uppercase tracking-[0.13em] text-(--color-text-muted)">
+              <span>Paso {step} de 2</span>
+              <span>{step === 1 ? 'Cuenta' : 'Vehículo'}</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-white/70 ring-1 ring-(--color-border)">
+              <motion.div
+                className="h-full bg-(--color-primary)"
+                animate={{ width: step === 1 ? '50%' : '100%' }}
+                transition={{ duration: 0.22 }}
+              />
             </div>
           </div>
-          <h1 className="text-3xl font-bold text-center mb-2">
-            {t('auth.joinUs')}
-          </h1>
-          <p className="text-white/80 text-center text-sm">
-            {t('auth.createAccountDescription')}
-          </p>
-        </div>
 
-        <div className="p-8">
+          <h1 className="mb-2 text-2xl font-bold text-(--color-primary-ink)">
+            {step === 1 ? 'Crea tu cuenta' : 'Configura tu movilidad'}
+          </h1>
+          <p className="mb-5 text-sm text-(--color-text-muted)">
+            {step === 1
+              ? 'Primero tus datos de acceso. Luego personalizamos la app para tu coche.'
+              : 'Esto nos ayuda a mostrarte datos relevantes desde el primer minuto.'}
+          </p>
+
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-lg">
-              <div className="flex items-center">
-                <div className="shrink-0">
-                  <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-700 font-medium">{error}</p>
-                </div>
-              </div>
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
+              {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-5">
-            {/* Nombre */}
-            <div>
-              <label htmlFor="nombre" className="block text-sm font-semibold text-gray-700 mb-2">
-                {t('auth.fullName')}
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaUser className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="nombre"
-                  type="text"
-                  required
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#000C74] focus:border-transparent outline-none transition bg-gray-50 hover:bg-white"
-                  placeholder={t('auth.fullNamePlaceholder')}
-                />
-              </div>
-            </div>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {step === 1 && (
+              <>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-(--color-text)">Nombre</span>
+                  <span className="relative block">
+                    <User className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--color-text-muted)" />
+                    <input
+                      type="text"
+                      required
+                      value={nombre}
+                      onChange={(e) => setNombre(e.target.value)}
+                      placeholder="Tu nombre"
+                      className="w-full rounded-xl border border-(--color-border) bg-white/80 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-(--color-primary) focus:ring-2 focus:ring-(--color-primary-soft)"
+                    />
+                  </span>
+                </label>
 
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="block text-sm font-semibold text-gray-700 mb-2">
-                {t('auth.email')}
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaEnvelope className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="email"
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#000C74] focus:border-transparent outline-none transition bg-gray-50 hover:bg-white"
-                  placeholder={t('auth.emailPlaceholder')}
-                />
-              </div>
-            </div>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-(--color-text)">Correo electrónico</span>
+                  <span className="relative block">
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--color-text-muted)" />
+                    <input
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="tu@email.com"
+                      className="w-full rounded-xl border border-(--color-border) bg-white/80 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-(--color-primary) focus:ring-2 focus:ring-(--color-primary-soft)"
+                    />
+                  </span>
+                </label>
 
-            {/* Contraseña */}
-            <div>
-              <label htmlFor="password" className="block text-sm font-semibold text-gray-700 mb-2">
-                {t('auth.password')}
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaLock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#000C74] focus:border-transparent outline-none transition bg-gray-50 hover:bg-white"
-                  placeholder="••••••••"
-                  minLength={8}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <FaEyeSlash className="h-5 w-5" /> : <FaEye className="h-5 w-5" />}
-                </button>
-              </div>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-(--color-text)">Contraseña</span>
+                  <span className="relative block">
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--color-text-muted)" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-xl border border-(--color-border) bg-white/80 py-3 pl-10 pr-12 text-sm outline-none transition focus:border-(--color-primary) focus:ring-2 focus:ring-(--color-primary-soft)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) transition hover:text-(--color-primary)"
+                      aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </span>
+                </label>
 
-              {/* Requisitos de contraseña */}
-              {password && (
-                <div className="mt-3 space-y-2 bg-gray-50 p-3 rounded-lg">
-                  <p className="text-xs font-semibold text-gray-600 mb-2">{t('auth.passwordRequirements')}</p>
-                  <div className="grid grid-cols-1 gap-1">
-                    <div className={`flex items-center gap-2 text-xs ${passwordRequirements.length ? 'text-green-600' : 'text-gray-500'}`}>
-                      <FaCheckCircle className={passwordRequirements.length ? 'opacity-100' : 'opacity-30'} />
-                      <span>{t('auth.minChars')}</span>
-                    </div>
-                    <div className={`flex items-center gap-2 text-xs ${passwordRequirements.uppercase ? 'text-green-600' : 'text-gray-500'}`}>
-                      <FaCheckCircle className={passwordRequirements.uppercase ? 'opacity-100' : 'opacity-30'} />
-                      <span>{t('auth.uppercase')}</span>
-                    </div>
-                    <div className={`flex items-center gap-2 text-xs ${passwordRequirements.lowercase ? 'text-green-600' : 'text-gray-500'}`}>
-                      <FaCheckCircle className={passwordRequirements.lowercase ? 'opacity-100' : 'opacity-30'} />
-                      <span>{t('auth.lowercase')}</span>
-                    </div>
-                    <div className={`flex items-center gap-2 text-xs ${passwordRequirements.number ? 'text-green-600' : 'text-gray-500'}`}>
-                      <FaCheckCircle className={passwordRequirements.number ? 'opacity-100' : 'opacity-30'} />
-                      <span>{t('auth.number')}</span>
-                    </div>
-                    <div className={`flex items-center gap-2 text-xs ${passwordRequirements.special ? 'text-green-600' : 'text-gray-500'}`}>
-                      <FaCheckCircle className={passwordRequirements.special ? 'opacity-100' : 'opacity-30'} />
-                      <span>{t('auth.specialChar')}</span>
-                    </div>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-(--color-text)">Confirmar contraseña</span>
+                  <span className="relative block">
+                    <KeyRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--color-text-muted)" />
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="••••••••"
+                      className="w-full rounded-xl border border-(--color-border) bg-white/80 py-3 pl-10 pr-12 text-sm outline-none transition focus:border-(--color-primary) focus:ring-2 focus:ring-(--color-primary-soft)"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-(--color-text-muted) transition hover:text-(--color-primary)"
+                      aria-label={showConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                    >
+                      {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </span>
+                </label>
+
+                <div className="rounded-xl border border-(--color-border) bg-white/70 p-3 text-xs text-(--color-text-muted)">
+                  <p className="mb-2 font-semibold">Requisitos de contraseña</p>
+                  <ul className="space-y-1">
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${passwordRules.length ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      Mínimo 8 caracteres
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${passwordRules.uppercase ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      Al menos una mayúscula
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${passwordRules.lowercase ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      Al menos una minúscula
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${passwordRules.number ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      Al menos un número
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <CheckCircle2 className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${passwordRules.special ? 'text-emerald-600' : 'text-slate-400'}`} />
+                      Al menos un carácter especial
+                    </li>
+                  </ul>
+                </div>
+              </>
+            )}
+
+            {step === 2 && (
+              <>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-(--color-text)">¿Qué coche tienes?</span>
+                  <span className="relative block">
+                    <Car className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--color-text-muted)" />
+                    <input
+                      type="text"
+                      required
+                      value={modeloCoche}
+                      onChange={(e) => setModeloCoche(e.target.value)}
+                      placeholder="Ej: Seat Ibiza 1.9 TDI"
+                      className="w-full rounded-xl border border-(--color-border) bg-white/80 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-(--color-primary) focus:ring-2 focus:ring-(--color-primary-soft)"
+                    />
+                  </span>
+                </label>
+
+                <fieldset>
+                  <legend className="mb-2 text-sm font-medium text-(--color-text)">¿Qué combustible usa?</legend>
+                  <div className="grid gap-2">
+                    {FUEL_OPTIONS.map((option) => {
+                      const checked = tipoCombustible === option.value;
+                      return (
+                        <label
+                          key={option.value}
+                          className={`cursor-pointer rounded-xl border px-3 py-2.5 transition ${
+                            checked
+                              ? 'border-(--color-primary) bg-(--color-primary-soft)'
+                              : 'border-(--color-border) bg-white/80 hover:border-(--color-primary-soft)'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="fuel"
+                            value={option.value}
+                            checked={checked}
+                            onChange={() => setTipoCombustible(option.value)}
+                            className="sr-only"
+                          />
+                          <p className="text-sm font-semibold text-(--color-text)">{option.label}</p>
+                          <p className="text-xs text-(--color-text-muted)">{option.hint}</p>
+                        </label>
+                      );
+                    })}
                   </div>
-                </div>
-              )}
-            </div>
+                </fieldset>
+              </>
+            )}
 
-            {/* Confirmar Contraseña */}
-            <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-semibold text-gray-700 mb-2">
-                {t('auth.confirmPassword')}
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <FaLock className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-[#000C74] focus:border-transparent outline-none transition bg-gray-50 hover:bg-white"
-                  placeholder="••••••••"
-                  minLength={8}
-                />
+            <div className="flex items-center gap-2 pt-1">
+              {step === 2 && (
                 <button
                   type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                  onClick={() => {
+                    setError('');
+                    setStep(1);
+                  }}
+                  className="inline-flex min-h-11 items-center justify-center gap-1 rounded-xl border border-(--color-border) bg-white px-4 text-sm font-semibold text-(--color-text) transition hover:bg-slate-50"
                 >
-                  {showConfirmPassword ? <FaEyeSlash className="h-5 w-5" /> : <FaEye className="h-5 w-5" />}
+                  <ArrowLeft className="h-4 w-4" />
+                  Atrás
                 </button>
-              </div>
-              {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-red-500 mt-2 flex items-center gap-1">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
-                  {t('auth.passwordsDontMatch')}
-                </p>
               )}
-              {confirmPassword && password === confirmPassword && (
-                <p className="text-xs text-green-600 mt-2 flex items-center gap-1">
-                  <FaCheckCircle />
-                  {t('auth.passwordsMatch')}
-                </p>
-              )}
-            </div>
 
-            {/* Botón de submit */}
-            <button
-              type="submit"
-              disabled={loading || !allRequirementsMet}
-              className="w-full bg-linear-to-r from-[#000C74] to-[#4A52D9] text-white py-3.5 rounded-xl font-bold hover:shadow-lg hover:scale-[1.02] transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 flex items-center justify-center gap-2"
-            >
-              {loading ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>{t('auth.creatingAccount')}</span>
-                </>
-              ) : (
-                <>{t('auth.registerButton')}</>
-              )}
-            </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-(--color-primary) px-4 text-sm font-semibold text-white transition hover:bg-(--color-primary-strong) disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {submitLabel}
+                {!loading && <ArrowRight className="h-4 w-4" />}
+              </button>
+            </div>
           </form>
 
-          {/* Divider */}
-          <div className="relative my-6">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white text-gray-500">{t('auth.alreadyHaveAccount')}</span>
-            </div>
+          <div className="my-5 flex items-center gap-3">
+            <div className="h-px flex-1 bg-(--color-border)" />
+            <span className="text-xs uppercase tracking-[0.12em] text-(--color-text-muted)">o</span>
+            <div className="h-px flex-1 bg-(--color-border)" />
           </div>
 
-          {/* Enlace a login */}
-          <div className="text-center">
-            <Link
-              to="/login"
-              className="inline-block w-full py-3 px-4 border-2 border-[#000C74] text-[#000C74] rounded-xl font-semibold hover:bg-[#000C74] hover:text-white transition-all"
-            >
-              {t('auth.loginHere')}
-            </Link>
+          <div className="flex justify-center">
+            {googleLoading ? (
+              <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
+                <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-(--color-primary) border-t-transparent" />
+                Registrando con Google...
+              </div>
+            ) : (
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setError('Error al registrarte con Google')}
+                useOneTap={false}
+                theme="outline"
+                size="large"
+                text="continue_with"
+                shape="pill"
+                locale="es"
+                ux_mode="popup"
+              />
+            )}
           </div>
+
+          <p className="mt-6 text-center text-sm text-(--color-text-muted)">
+            ¿Ya tienes cuenta?{' '}
+            <Link to="/login" className="font-semibold text-(--color-primary) hover:underline">
+              Iniciar sesión
+            </Link>
+          </p>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

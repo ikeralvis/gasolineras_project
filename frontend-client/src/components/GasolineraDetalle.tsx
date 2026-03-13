@@ -8,7 +8,7 @@ import FavoritoButton from "./FavoritoButton";
 import HorarioDisplay, { type HorarioParsed } from "./HorarioDisplay";
 
 // API URL
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
 // Importar logos
 import repsol from "../assets/logos/repsol.svg";
@@ -18,6 +18,10 @@ import shell from "../assets/logos/shell.png";
 import galp from "../assets/logos/galp.png";
 import eroski from "../assets/logos/eroski.svg";
 import moeve from "../assets/logos/moeve.png";
+import petronor from "../assets/logos/petronor.png";
+import costco from "../assets/logos/costco.png";
+import easygas from "../assets/logos/easygas.png";
+import petroprix from "../assets/logos/petroprix.png";
 
 interface Gasolinera {
   IDEESS: string;
@@ -37,9 +41,19 @@ interface Gasolinera {
   distancia?: number;
 }
 
+const normalizeStation = (g: any): Gasolinera => {
+  const rotulo = g?.["Rótulo"] ?? g?.Rotulo ?? "";
+  const direccion = g?.["Dirección"] ?? g?.Direccion;
+  return {
+    ...g,
+    "Rótulo": rotulo,
+    "Dirección": direccion,
+  };
+};
+
 // Función para obtener logo
-const getBrandLogo = (rotulo: string): string | null => {
-  const name = rotulo.toLowerCase();
+const getBrandLogo = (rotulo?: string): string | null => {
+  const name = (rotulo ?? "").toLowerCase();
   if (name.includes("repsol")) return repsol;
   if (name.includes("cepsa")) return cepsa;
   if (name.includes("bp")) return bp;
@@ -47,6 +61,10 @@ const getBrandLogo = (rotulo: string): string | null => {
   if (name.includes("galp")) return galp;
   if (name.includes("eroski")) return eroski;
   if (name.includes("moeve")) return moeve;
+  if (name.includes("petronor")) return petronor;
+  if (name.includes("costco")) return costco;
+  if (name.includes("easygas")) return easygas;
+  if (name.includes("petroprix")) return petroprix;
   return null;
 };
 
@@ -68,14 +86,16 @@ export default function GasolineraDetalle() {
   const [ordenCercanas, setOrdenCercanas] = useState<"distancia" | "precio">("distancia");
 
   useEffect(() => {
+    globalThis.scrollTo({ top: 0, behavior: "auto" });
+
     fetch(`${API_URL}/api/gasolineras/${id}`)
       .then(res => res.json())
-      .then(data => setGasolinera(data))
+      .then(data => setGasolinera(normalizeStation(data)))
       .catch(err => console.error(err));
 
     fetch(`${API_URL}/api/gasolineras/${id}/cercanas`)
       .then(res => res.json())
-      .then(data => setCercanas(data.gasolineras_cercanas ?? []))
+      .then(data => setCercanas((data.gasolineras_cercanas ?? []).map((g: any) => normalizeStation(g))))
       .catch(err => console.error(err));
   }, [id]);
 
@@ -100,6 +120,13 @@ export default function GasolineraDetalle() {
     { nombre: "Gasóleo B", precio: gasolinera["Precio Gasoleo B"], tipo: "diesel" as const },
     { nombre: "Gasóleo Premium", precio: gasolinera["Precio Gasoleo Premium"], tipo: "diesel" as const },
   ].filter(c => c.precio && c.precio.trim() !== "" && Number.parseFloat(c.precio.replace(",", ".")) > 0);
+
+  const combustiblesPrioritarios = combustibles.filter(
+    (c) => c.nombre === "Gasolina 95 E5" || c.nombre === "Gasóleo A"
+  );
+  const combustiblesSecundarios = combustibles.filter(
+    (c) => c.nombre !== "Gasolina 95 E5" && c.nombre !== "Gasóleo A"
+  );
 
   // Ordenar cercanas
   const cercanasOrdenadas = [...cercanas].sort((a, b) => {
@@ -147,7 +174,7 @@ export default function GasolineraDetalle() {
               />
             ) : (
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#000C74] flex items-center justify-center text-white font-bold text-xl shrink-0">
-                {gasolinera["Rótulo"].substring(0, 2).toUpperCase()}
+                {(gasolinera["Rótulo"] ?? "").substring(0, 2).toUpperCase()}
               </div>
             )}
 
@@ -168,13 +195,34 @@ export default function GasolineraDetalle() {
             </div>
           </div>
 
+          {/* RESUMEN RÁPIDO (primer fold) */}
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            {combustiblesPrioritarios.map((combustible) => (
+              <div
+                key={combustible.nombre}
+                className="relative rounded-xl border border-blue-100 bg-linear-to-br from-blue-50 to-white p-3"
+              >
+                <span className="text-[11px] text-blue-700 font-semibold uppercase tracking-wide block">{combustible.nombre}</span>
+                <div className="mt-1 flex items-baseline gap-1">
+                  <span className="text-2xl font-bold text-gray-900">{combustible.precio}</span>
+                  <span className="text-xs text-gray-500">€/L</span>
+                </div>
+                {combustible.precio && esPrecioBajo(combustible.precio, combustible.tipo) && (
+                  <span className="absolute top-2 right-2 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                    Bajo
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+
           {/* BOTONES DE ACCIÓN */}
           <div className="flex flex-wrap gap-2 mt-4">
             <a
               href={`https://www.google.com/maps/dir/?api=1&destination=${gasolinera.Latitud},${gasolinera.Longitud}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition text-sm font-medium"
+              className="flex-1 sm:flex-none inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
@@ -182,7 +230,7 @@ export default function GasolineraDetalle() {
               {t('detail.howToGet')}
             </a>
 
-            <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-sm font-medium text-gray-700">
+            <button className="flex-1 sm:flex-none inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
               </svg>
@@ -190,29 +238,25 @@ export default function GasolineraDetalle() {
             </button>
           </div>
 
-          {/* PRECIOS DE COMBUSTIBLES */}
-          <div className="mt-5">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">{t('detail.fuelPrices')}</h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
-              {combustibles.map((combustible) => (
-                <div
-                  key={combustible.nombre}
-                  className="relative rounded-xl border border-gray-100 bg-gray-50/60 p-3 sm:p-4"
-                >
-                  <span className="text-xs text-gray-500 font-medium leading-tight block">{combustible.nombre}</span>
-                  <div className="mt-1.5 flex items-baseline gap-0.5">
-                    <span className="text-2xl sm:text-3xl font-bold text-gray-900">
+          {/* Combustibles secundarios en bloque compacto */}
+          {combustiblesSecundarios.length > 0 && (
+            <details className="mt-4 rounded-xl border border-gray-100 bg-gray-50/50 p-3">
+              <summary className="cursor-pointer text-sm font-semibold text-[#000C74]">
+                Ver más combustibles ({combustiblesSecundarios.length})
+              </summary>
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {combustiblesSecundarios.map((combustible) => (
+                  <div key={combustible.nombre} className="rounded-lg border border-gray-100 bg-white p-2.5">
+                    <p className="text-xs text-gray-500">{combustible.nombre}</p>
+                    <p className="text-base font-bold text-gray-900">
                       {combustible.precio}
-                    </span>
-                    <span className="text-xs text-gray-400 mb-0.5">€/L</span>
+                      <span className="ml-1 text-xs font-normal text-gray-500">€/L</span>
+                    </p>
                   </div>
-                  {combustible.precio && esPrecioBajo(combustible.precio, combustible.tipo) && (
-                    <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-green-500" title={t('detail.lowPrice')} />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
 
         {/* HORARIO */}

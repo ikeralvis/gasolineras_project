@@ -139,9 +139,11 @@ async function buildServer() {
     throw new Error('❌ FATAL: DATABASE_URL no está definido en las variables de entorno');
   }
   // Ensure sslmode=require for Neon / cloud Postgres
-  const connectionString = databaseUrl.includes('sslmode')
-    ? databaseUrl
-    : databaseUrl + (databaseUrl.includes('?') ? '&' : '?') + 'sslmode=require';
+  let connectionString = databaseUrl;
+  if (!databaseUrl.includes('sslmode')) {
+    const separator = databaseUrl.includes('?') ? '&' : '?';
+    connectionString = `${databaseUrl}${separator}sslmode=require`;
+  }
   const pgConfig = {
     connectionString,
     ssl: { rejectUnauthorized: false },

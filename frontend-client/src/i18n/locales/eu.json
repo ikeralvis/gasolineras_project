@@ -154,6 +154,28 @@
     "deleteConfirm": "Ziur zaude zure kontua ezabatu nahi duzula? Ekintza hau ezin da desegin.",
     "accountDeleted": "Kontua behar bezala ezabatu da",
     "updateSuccess": "✅ Gogoko erregaia behar bezala gorde da",
+    "onboardingBanner": "Bete zure autoaren eta erregaiaren datuak Google bidez sartu ondoren aplikazioa pertsonalizatzeko.",
+    "vehicle": "Autoa",
+    "vehicleModel": "Auto eredua",
+    "vehicleModelPlaceholder": "Adib.: Seat Ibiza 1.9 TDI",
+    "vehicleFuel": "Autoaren erregaia",
+    "vehicleFuelType": "Autoaren erregai mota",
+    "selectOption": "Hautatu aukera bat",
+    "notDefined": "Zehaztu gabe",
+    "vehicleModelRequired": "Auto eredua adierazi behar duzu",
+    "vehicleFuelRequired": "Autoaren erregai mota adierazi behar duzu",
+    "errorLoadingUserData": "Errorea erabiltzailearen datuak kargatzean",
+    "errorLoadingProfile": "Ezin izan da profila kargatu",
+    "errorDeletingAccount": "Errorea kontua ezabatzean",
+    "networkErrorDeletingAccount": "Sareko errorea kontua ezabatzean",
+    "errorSavingPreference": "Errorea hobespena gordetzean",
+    "networkErrorSavingPreference": "Sareko errorea hobespena gordetzean",
+    "vehicleFuelOptions": {
+      "gasolina": "Gasolina",
+      "diesel": "Diesela",
+      "electrico": "Elektrikoa",
+      "hibrido": "Hibridoa"
+    },
     "language": "Hizkuntza"
   },
   "auth": {

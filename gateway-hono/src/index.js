@@ -3,6 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { swaggerUI } from "@hono/swagger-ui";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 
 // ========================================
 // 🔧 CONFIGURACIÓN
@@ -13,6 +14,10 @@ const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasol
 const RECOMENDACION_SERVICE = process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001";
 const EV_CHARGING_SERVICE = process.env.EV_CHARGING_SERVICE_URL || "http://ev-charging:8000";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+const FRONTEND_URLS = (process.env.FRONTEND_URLS || "")
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
 // Google OAuth config
@@ -33,6 +38,14 @@ const COOKIE_CONFIG = {
   path: "/",
   maxAge: 7 * 24 * 60 * 60 // 7 días en segundos
 };
+
+function getAuthTokenFromRequest(c) {
+  const authHeader = c.req.header("Authorization");
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.slice("Bearer ".length);
+  }
+  return getCookie(c, "authToken") || null;
+}
 
 // ========================================
 // 🚀 APLICACIÓN HONO
@@ -211,20 +224,24 @@ app.use(
   "*",
   cors({
     origin: (origin) => {
+      if (!origin) {
+        return FRONTEND_URL;
+      }
+
       // Permitir orígenes específicos para seguridad
-      const allowedOrigins = [
+      const allowedOrigins = new Set([
         FRONTEND_URL,
+        ...FRONTEND_URLS,
         "http://localhost:5173",
         "http://localhost:80",
         "http://localhost",
         "https://tankgo.onrender.com",
-        // Añadir cualquier subdominio de onrender.com
-      ];
+      ]);
       // También permitir cualquier origen *.onrender.com
       if (origin && origin.endsWith('.onrender.com')) {
         return origin;
       }
-      return allowedOrigins.includes(origin) ? origin : FRONTEND_URL;
+      return allowedOrigins.has(origin) ? origin : null;
     },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
@@ -390,7 +407,13 @@ app.post("/api/auth/google/verify", async (c) => {
     console.log(`✅ JWT generado para ${googleUser.email}`);
 
     // 🍪 Establecer token en cookie httpOnly (más seguro que localStorage)
-    c.header('Set-Cookie', `authToken=${token}; HttpOnly; ${COOKIE_CONFIG.secure ? 'Secure;' : ''} SameSite=${COOKIE_CONFIG.sameSite}; Path=${COOKIE_CONFIG.path}; Max-Age=${COOKIE_CONFIG.maxAge}`);
+    setCookie(c, 'authToken', token, {
+      httpOnly: COOKIE_CONFIG.httpOnly,
+      secure: COOKIE_CONFIG.secure,
+      sameSite: COOKIE_CONFIG.sameSite,
+      path: COOKIE_CONFIG.path,
+      maxAge: COOKIE_CONFIG.maxAge,
+    });
     
     // También devolver token en body para compatibilidad con frontend actual
     return c.json({ token, cookieSet: true });
@@ -399,6 +422,16 @@ app.post("/api/auth/google/verify", async (c) => {
     console.error("Error verificando token de Google:", err);
     return c.json({ error: "Error del servidor" }, 500);
   }
+});
+
+// POST /api/auth/logout - Limpiar cookie de sesión
+app.post('/api/auth/logout', (c) => {
+  deleteCookie(c, 'authToken', {
+    path: COOKIE_CONFIG.path,
+    secure: COOKIE_CONFIG.secure,
+    sameSite: COOKIE_CONFIG.sameSite,
+  });
+  return c.json({ ok: true });
 });
 
 // ========================================
@@ -416,12 +449,20 @@ app.all("/api/usuarios/*", async (c) => {
     
     console.log(`🔄 Proxy usuarios: ${c.req.method} ${url}`);
 
-    // Obtener headers y excluir host y accept-encoding (evitar problemas de compresión)
+    // Obtener headers y excluir host/cookie/accept-encoding (evitar fugas y problemas de compresión)
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
       const lowerKey = key.toLowerCase();
-      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding" && lowerKey !== "cookie") {
         headers[key] = value;
+      }
+    }
+
+    // Si no hay Authorization pero sí cookie authToken, inyectar Bearer para usuarios-service.
+    if (!headers.Authorization && !headers.authorization) {
+      const token = getAuthTokenFromRequest(c);
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
       }
     }
 
@@ -450,6 +491,18 @@ app.all("/api/usuarios/*", async (c) => {
     // Si es JSON, parsearlo y devolverlo (evita problemas de encoding)
     if (contentType?.includes("application/json")) {
       const data = await response.json();
+
+      // Unificar sesión en cookie cuando el login devuelve token en body.
+      if (c.req.method === 'POST' && c.req.path === '/api/usuarios/login' && data?.token) {
+        setCookie(c, 'authToken', data.token, {
+          httpOnly: COOKIE_CONFIG.httpOnly,
+          secure: COOKIE_CONFIG.secure,
+          sameSite: COOKIE_CONFIG.sameSite,
+          path: COOKIE_CONFIG.path,
+          maxAge: COOKIE_CONFIG.maxAge,
+        });
+      }
+
       return c.json(data, response.status);
     }
 
@@ -473,6 +526,16 @@ app.all("/api/usuarios/*", async (c) => {
 // ========================================
 app.all("/api/gasolineras/*", async (c) => {
   try {
+    const gasPath = c.req.path.replace('/api/gasolineras', '');
+
+    // Proteger endpoint de sincronización para uso interno únicamente.
+    if (gasPath === '/sync' && c.req.method === 'POST') {
+      const incomingSecret = c.req.header('X-Internal-Secret');
+      if (incomingSecret !== INTERNAL_SECRET) {
+        return c.json({ error: 'Forbidden' }, 403);
+      }
+    }
+
     const path = c.req.path.replace("/api/gasolineras", "/gasolineras");
     
     // Obtener query parameters correctamente
@@ -490,6 +553,11 @@ app.all("/api/gasolineras/*", async (c) => {
       if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
         headers[key] = value;
       }
+    }
+
+    // En llamadas internas sensibles, reenviar siempre el secreto interno del gateway.
+    if (gasPath === '/sync' && c.req.method === 'POST') {
+      headers['X-Internal-Secret'] = INTERNAL_SECRET;
     }
 
     const options = {

@@ -1,35 +1,30 @@
 import axios from 'axios';
+import type { RegisterData } from '../types/auth';
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const http = axios.create({
+  baseURL: API_URL,
+  withCredentials: true,
+});
 
 export const authAPI = {
-  async register(data: { nombre: string; email: string; password: string }) {
-    const res = await axios.post(`${API_URL}/api/usuarios/register`, data);
+  async register(data: RegisterData) {
+    const res = await http.post('/api/usuarios/register', data);
     return res.data;
   },
 
   async login(data: { email: string; password: string }) {
-    const res = await axios.post(`${API_URL}/api/usuarios/login`, data);
-    const { token } = res.data;
-    if (token) {
-      localStorage.setItem('authToken', token);
-      // Obtener el perfil del usuario después de hacer login
-      const user = await this.getProfile();
-      return { token, user };
-    }
-    throw new Error('No se recibió token');
+    const res = await http.post('/api/usuarios/login', data);
+    const user = await this.getProfile();
+    return { token: res.data?.token, user };
   },
 
   async getProfile() {
-    const token = localStorage.getItem('authToken');
-    if (!token) throw new Error('No token');
-    const res = await axios.get(`${API_URL}/api/usuarios/me`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const res = await http.get('/api/usuarios/me');
     return res.data;
   },
 
-  logout() {
-    localStorage.removeItem('authToken');
+  async logout() {
+    await http.post('/api/auth/logout');
   },
 };

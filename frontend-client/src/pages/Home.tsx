@@ -1,211 +1,257 @@
-import { Suspense, lazy } from 'react';
-import { useTranslation } from 'react-i18next';
+import type { ComponentType } from 'react';
+import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
+import {
+  ArrowRight,
+  BarChart3,
+  Compass,
+  MapPin,
+  Route,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+} from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 import logo from '../assets/logo.png';
 
-// Lazy load del componente 3D para mejor rendimiento inicial
-const GasStation3D = lazy(() => import('../components/GasStation3D'));
+type Feature = {
+  id: string;
+  title: string;
+  description: string;
+  icon: ComponentType<{ className?: string }>;
+};
+
+const features: Feature[] = [
+  {
+    id: 'gasolineras',
+    title: 'Gasolineras',
+    description: 'Compara precios por combustible y encuentra la mejor opción cerca de ti.',
+    icon: BarChart3,
+  },
+  {
+    id: 'electrolineras',
+    title: 'Electrolineras',
+    description: 'Descubre puntos de carga con mapa inteligente y vista progresiva por zoom.',
+    icon: Zap,
+  },
+  {
+    id: 'rutas',
+    title: 'Rutas',
+    description: 'Planifica trayectos y decide paradas según precio, ubicación y disponibilidad.',
+    icon: Route,
+  },
+];
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 22 },
+  visible: { opacity: 1, y: 0 },
+};
 
 export default function Home() {
-  const { t } = useTranslation();
-  
+  const { isAuthenticated, user } = useAuth();
+
   return (
-    <div className="relative overflow-x-hidden">
-      {/* Fondo 3D animado */}
-      <Suspense fallback={
-        <div className="fixed inset-0 bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF]" />
-      }>
-        <GasStation3D />
-      </Suspense>
-
-      {/* Overlay con gradiente para mejorar legibilidad */}
-      <div className="fixed inset-0 bg-linear-to-l from-white/70 via-white/40 to-transparent pointer-events-none" style={{ zIndex: 1 }} />
-
-      {/* Hero Section */}
-      <div className="relative min-h-screen flex items-center" style={{ zIndex: 2 }}>
-        <div className="container mx-auto px-5 sm:px-8 lg:px-16">
-          <div className="grid lg:grid-cols-2 gap-8 sm:gap-12 items-center">
-            {/* Columna izquierda - Contenido */}
-            <div className="text-left">
-              <div className="mb-6">
-                <img src={logo} alt="TankGo Logo" className="h-14 sm:h-20 w-auto drop-shadow-lg" />
-              </div>
-              
-              <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold text-[#000C74] leading-tight tracking-tight drop-shadow-lg mb-4">
-                {t('home.title')}
-              </h1>
-
-              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-semibold text-[#0A0F3D] leading-tight mb-5 sm:mb-6 drop-shadow-md">
-                {t('home.subtitle')}
-              </h2>
-
-              <p className="text-[#2C2F55] text-base sm:text-lg lg:text-xl mb-6 sm:mb-8 max-w-xl drop-shadow-sm">
-                {t('home.description')}
-              </p>
-
-              <div className="flex flex-col sm:flex-row gap-4">
-                <a
-                  href="/gasolineras"
-                  className="inline-flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 sm:py-4 bg-[#000C74] text-white font-medium rounded-full shadow-lg hover:shadow-xl hover:scale-[1.04] transition-all"
-                >
-                  {t('home.exploreStations')}
-                  {' '}
-                  <span className="text-xl">→</span>
-                </a>
-                <a
-                  href="/mapa"
-                  className="inline-flex items-center justify-center gap-3 px-6 sm:px-8 py-3.5 sm:py-4 bg-white text-[#000C74] font-medium rounded-full shadow-lg hover:shadow-xl hover:scale-[1.04] transition-all border-2 border-[#000C74]"
-                >
-                  {t('home.viewMap')}
-                  {' '}
-                  <span className="text-xl">🗺️</span>
-                </a>
-              </div>
-            </div>
-
-            {/* Columna derecha - vacía para dejar espacio al 3D */}
-            <div className="hidden lg:block"></div>
-          </div>
-        </div>
+    <div className="relative isolate min-h-screen overflow-hidden bg-(--color-bg) text-(--color-text)">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 -z-10"
+      >
+        <div className="landing-glow-1" />
+        <div className="landing-glow-2" />
+        <div className="landing-grid" />
       </div>
 
-      {/* Features Section */}
-      <section className="relative bg-white py-14 sm:py-20" style={{ zIndex: 2 }}>
-        <div className="container mx-auto px-5 sm:px-8 lg:px-16">
-          <div className="text-center mb-10 sm:mb-16">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#000C74] mb-4">
-              {t('home.features.title')}
-            </h2>
-            <p className="text-lg sm:text-xl text-[#2C2F55] max-w-2xl mx-auto">
-              {t('home.features.subtitle')}
-            </p>
+      <motion.section
+        initial="hidden"
+        animate="visible"
+        variants={fadeUp}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+        className="mx-auto w-full max-w-6xl px-4 pb-12 pt-8 sm:px-6 sm:pb-16 sm:pt-12"
+      >
+        <div className="landing-panel rounded-3xl p-5 sm:p-8">
+          <div className="mb-8 flex items-center justify-between gap-3 sm:mb-10">
+            <div className="flex items-center gap-3">
+              <img src={logo} alt="TankGo" className="h-9 w-auto sm:h-11" />
+              <span className="text-xs font-semibold tracking-[0.18em] text-(--color-text-muted) uppercase">
+                movilidad inteligente
+              </span>
+            </div>
+
+            {isAuthenticated ? (
+              <Link
+                to="/gasolineras"
+                className="inline-flex min-h-11 items-center rounded-full bg-(--color-primary) px-4 text-sm font-semibold text-white transition hover:bg-(--color-primary-strong) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary) focus-visible:ring-offset-2"
+              >
+                Entrar
+              </Link>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  to="/login"
+                  className="inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold text-(--color-primary) ring-1 ring-(--color-primary-soft) transition hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                >
+                  Iniciar sesion
+                </Link>
+                <Link
+                  to="/register"
+                  className="inline-flex min-h-11 items-center rounded-full bg-(--color-primary) px-4 text-sm font-semibold text-white transition hover:bg-(--color-primary-strong) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                >
+                  Crear cuenta
+                </Link>
+              </div>
+            )}
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Feature 1 */}
-            <div className="p-5 sm:p-8 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-              <div className="text-4xl sm:text-5xl mb-4">📊</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-[#000C74] mb-3">{t('home.features.realtime.title')}</h3>
-              <p className="text-[#2C2F55]">
-                {t('home.features.realtime.description')}
+          <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+            <div>
+              <p className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/65 px-3 py-1 text-xs font-medium text-(--color-text-muted)">
+                <Compass className="h-3.5 w-3.5" />
+                App mobile first
               </p>
+
+              <h1 className="text-balance text-3xl font-bold leading-tight text-(--color-primary-ink) sm:text-4xl lg:text-5xl">
+                Todo tu viaje en una sola app.
+              </h1>
+
+              <p className="mt-4 max-w-xl text-pretty text-sm leading-relaxed text-(--color-text-muted) sm:text-base">
+                Consulta gasolineras, electrolineras y rutas con una experiencia clara, rapida y adaptada a tu vehiculo.
+                Si no has iniciado sesion, te guiamos. Si ya tienes cuenta, entras directo a tus herramientas.
+              </p>
+
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                {isAuthenticated ? (
+                  <>
+                    <Link
+                      to="/gasolineras"
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-(--color-primary) px-5 text-sm font-semibold text-white transition hover:bg-(--color-primary-strong) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                    >
+                      Continuar como {user?.nombre ?? 'usuario'}
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      to="/recarga"
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-white/80 px-5 text-sm font-semibold text-(--color-primary) ring-1 ring-(--color-primary-soft) transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                    >
+                      Ver recarga
+                    </Link>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      to="/register"
+                      className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-(--color-primary) px-5 text-sm font-semibold text-white transition hover:bg-(--color-primary-strong) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                    >
+                      Empezar ahora
+                      <ArrowRight className="h-4 w-4" />
+                    </Link>
+                    <Link
+                      to="/login"
+                      className="inline-flex min-h-12 items-center justify-center rounded-2xl bg-white/80 px-5 text-sm font-semibold text-(--color-primary) ring-1 ring-(--color-primary-soft) transition hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+                    >
+                      Ya tengo cuenta
+                    </Link>
+                  </>
+                )}
+              </div>
             </div>
 
-            {/* Feature 2 */}
-            <div className="p-5 sm:p-8 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-              <div className="text-4xl sm:text-5xl mb-4">📍</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-[#000C74] mb-3">{t('home.features.location.title')}</h3>
-              <p className="text-[#2C2F55]">
-                {t('home.features.location.description')}
+            <motion.aside
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.12, duration: 0.4, ease: 'easeOut' }}
+              className="landing-panel-soft rounded-2xl p-4 sm:p-5"
+              aria-label="Vista previa"
+            >
+              <p className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-(--color-text-muted)">
+                Vista rapida
               </p>
-            </div>
-
-            {/* Feature 3 */}
-            <div className="p-5 sm:p-8 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-              <div className="text-4xl sm:text-5xl mb-4">💰</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-[#000C74] mb-3">{t('home.features.compare.title')}</h3>
-              <p className="text-[#2C2F55]">
-                {t('home.features.compare.description')}
-              </p>
-            </div>
-
-            {/* Feature 4 */}
-            <div className="p-5 sm:p-8 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-              <div className="text-4xl sm:text-5xl mb-4">⭐</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-[#000C74] mb-3">{t('home.features.favorites.title')}</h3>
-              <p className="text-[#2C2F55]">
-                {t('home.features.favorites.description')}
-              </p>
-            </div>
-
-            {/* Feature 5 */}
-            <div className="p-5 sm:p-8 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-              <div className="text-4xl sm:text-5xl mb-4">🗺️</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-[#000C74] mb-3">{t('home.features.map.title')}</h3>
-              <p className="text-[#2C2F55]">
-                {t('home.features.map.description')}
-              </p>
-            </div>
-
-            {/* Feature 6 */}
-            <div className="p-5 sm:p-8 bg-white border border-gray-100 rounded-2xl shadow-sm hover:shadow-md transition-all hover:-translate-y-1">
-              <div className="text-4xl sm:text-5xl mb-4">📈</div>
-              <h3 className="text-xl sm:text-2xl font-bold text-[#000C74] mb-3">{t('home.features.history.title')}</h3>
-              <p className="text-[#2C2F55]">
-                {t('home.features.history.description')}
-              </p>
-            </div>
+              <ul className="space-y-3">
+                <li className="rounded-xl bg-white/85 p-3 ring-1 ring-(--color-border)">
+                  <p className="text-xs text-(--color-text-muted)">Combustible favorito</p>
+                  <p className="mt-1 text-sm font-semibold text-(--color-text)">Precio Gasolina 95 E5</p>
+                </li>
+                <li className="rounded-xl bg-white/85 p-3 ring-1 ring-(--color-border)">
+                  <p className="text-xs text-(--color-text-muted)">Modo visual</p>
+                  <p className="mt-1 text-sm font-semibold text-(--color-text)">Tabla o mapa segun necesidad</p>
+                </li>
+                <li className="rounded-xl bg-white/85 p-3 ring-1 ring-(--color-border)">
+                  <p className="text-xs text-(--color-text-muted)">Detalle de estacion</p>
+                  <p className="mt-1 text-sm font-semibold text-(--color-text)">Precio, horario e historial de 30 dias</p>
+                </li>
+                <li className="rounded-xl bg-white/85 p-3 ring-1 ring-(--color-border)">
+                  <p className="text-xs text-(--color-text-muted)">Seguridad</p>
+                  <p className="mt-1 inline-flex items-center gap-1 text-sm font-semibold text-(--color-text)">
+                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                    Sesion segura con JWT
+                  </p>
+                </li>
+              </ul>
+            </motion.aside>
           </div>
         </div>
-      </section>
+      </motion.section>
 
-      {/* How it Works Section */}
-      <section className="relative bg-linear-to-br from-[#000C74] to-[#0A0F3D] text-white py-14 sm:py-20" style={{ zIndex: 2 }}>
-        <div className="container mx-auto px-5 sm:px-8 lg:px-16">
-          <div className="text-center mb-10 sm:mb-16">
-            <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4">
-              {t('home.howItWorks.title')}
-            </h2>
-            <p className="text-xl text-blue-200 max-w-2xl mx-auto">
-              {t('home.howItWorks.subtitle')}
-            </p>
-          </div>
+      <motion.section
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.25 }}
+        variants={fadeUp}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+        className="mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6"
+      >
+        <h2 className="mb-4 text-lg font-semibold text-(--color-primary-ink) sm:text-xl">
+          Que puedes hacer
+        </h2>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {features.map((feature) => {
+            const Icon = feature.icon;
+            return (
+              <motion.article
+                key={feature.id}
+                whileHover={{ y: -3 }}
+                transition={{ duration: 0.2 }}
+                className="landing-card rounded-2xl p-4 sm:p-5"
+              >
+                <div className="mb-3 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-(--color-primary-soft) text-(--color-primary)">
+                  <Icon className="h-5 w-5" />
+                </div>
+                <h3 className="text-base font-semibold text-(--color-text)">{feature.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-(--color-text-muted)">{feature.description}</p>
+              </motion.article>
+            );
+          })}
+        </div>
+      </motion.section>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {/* Step 1 */}
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#6A75FF] rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">
-                1
-              </div>
-              <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3">{t('home.howItWorks.step1.title')}</h3>
-              <p className="text-blue-200">
-                {t('home.howItWorks.step1.description')}
+      <motion.section
+        initial="hidden"
+        whileInView="visible"
+        viewport={{ once: true, amount: 0.2 }}
+        variants={fadeUp}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
+        className="mx-auto w-full max-w-6xl px-4 pb-20 sm:px-6"
+      >
+        <div className="landing-panel rounded-3xl p-6 sm:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-(--color-primary-ink) sm:text-2xl">
+                Minimalista, fluida y enfocada a tu movilidad
+              </h2>
+              <p className="mt-2 text-sm text-(--color-text-muted) sm:text-base">
+                Interfaz clara, buen contraste, controles tactiles y microinteracciones suaves.
               </p>
             </div>
-
-            {/* Step 2 */}
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#6A75FF] rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">
-                2
-              </div>
-              <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3">{t('home.howItWorks.step2.title')}</h3>
-              <p className="text-blue-200">
-                {t('home.howItWorks.step2.description')}
-              </p>
-            </div>
-
-            {/* Step 3 */}
-            <div className="text-center">
-              <div className="w-16 h-16 bg-[#6A75FF] rounded-full flex items-center justify-center text-3xl font-bold mx-auto mb-6">
-                3
-              </div>
-              <h3 className="text-xl sm:text-2xl font-bold mb-2 sm:mb-3">{t('home.howItWorks.step3.title')}</h3>
-              <p className="text-blue-200">
-                {t('home.howItWorks.step3.description')}
-              </p>
-            </div>
+            <Link
+              to={isAuthenticated ? '/mapa' : '/register'}
+              className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl bg-(--color-primary) px-5 text-sm font-semibold text-white transition hover:bg-(--color-primary-strong) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--color-primary)"
+            >
+              {isAuthenticated ? 'Ir al mapa' : 'Crear cuenta gratis'}
+              {isAuthenticated ? <MapPin className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+            </Link>
           </div>
         </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="relative bg-white py-14 sm:py-20" style={{ zIndex: 2 }}>
-        <div className="container mx-auto px-5 sm:px-8 lg:px-16 text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#000C74] mb-4 sm:mb-6">
-            {t('home.cta.title')}
-          </h2>
-          <p className="text-lg sm:text-xl text-[#2C2F55] mb-6 sm:mb-8 max-w-2xl mx-auto">
-            {t('home.cta.subtitle')}
-          </p>
-          <a
-            href="/register"
-            className="inline-flex items-center gap-3 px-7 sm:px-10 py-4 sm:py-5 bg-[#6A75FF] text-white text-base sm:text-lg font-semibold rounded-full shadow-xl hover:shadow-2xl hover:scale-[1.06] transition-all"
-          >
-            {t('home.cta.button')}
-            {' '}
-            <span className="text-2xl">🚀</span>
-          </a>
-        </div>
-      </section>
+      </motion.section>
     </div>
   );
 }
+
