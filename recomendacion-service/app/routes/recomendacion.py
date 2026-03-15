@@ -69,14 +69,20 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
 
     async with httpx.AsyncClient() as client:
         # 1. Calcular ruta base
-        route = await get_route(
-            body.origen.lat,
-            body.origen.lon,
-            body.destino.lat,
-            body.destino.lon,
-            evitar_peajes=body.evitar_peajes,
-            client=client,
-        )
+        try:
+            route = await get_route(
+                body.origen.lat,
+                body.origen.lon,
+                body.destino.lat,
+                body.destino.lon,
+                evitar_peajes=body.evitar_peajes,
+                client=client,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"No se pudo calcular la ruta en OpenRouteService: {exc}",
+            ) from exc
 
 
         if route.distancia_km < 0.1:
@@ -95,7 +101,7 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
         )
 
     # 3. Recomendar
-    result = build_recommendations(body, route, stations)
+    result = await build_recommendations(body, route, stations)
 
     # 4. Añadir metadatos
     ts_end = datetime.now(timezone.utc)

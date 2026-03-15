@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     # "osrm"  → usa OSRM (demo público o self-hosted, sin API key)
     # "ors"   → usa OpenRouteService (requiere ORS_API_KEY)
     ROUTING_BACKEND: Literal["osrm", "ors"] = "ors"
+    ROUTING_FAILOVER_TO_OSRM: bool = False
+    ALLOW_STRAIGHT_LINE_FALLBACK: bool = False
 
+    OSRM_BASE_URL: str = "http://router.project-osrm.org"
 
     # ORS (OpenRouteService) – gratis hasta 2000 req/día: https://openrouteservice.org/
     # GET /v2/directions/{profile}?api_key=KEY&start=lon,lat&end=lon,lat

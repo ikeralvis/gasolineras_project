@@ -302,7 +302,20 @@
     "minutes": "min",
     "starting": "(Departure)",
     "destination": "(Destination)",
-    "gasStationsNearRoute": "Gas stations along the route"
+    "gasStationsNearRoute": "Gas stations along the route",
+    "pickOriginOnMap": "Pick departure on map",
+    "pickDestinationOnMap": "Pick destination on map",
+    "mapPickOriginHint": "Tap the map to set the departure point",
+    "mapPickDestinationHint": "Tap the map to set the destination",
+    "stopOptions": "Stop options",
+    "fuelForComparison": "Fuel for comparison",
+    "profileFuelDetected": "Detected favorite fuel",
+    "genericRouteError": "Could not calculate the route",
+    "mapPoint": "Map point",
+    "extraMinutes": "Extra min",
+    "openInGoogle": "Open in Google Maps",
+    "openInGoogleWithStop": "Open in Google Maps with stop",
+    "selectStop": "Select stop"
   },
   "accessibility": {
     "clear": "Clear",

@@ -115,6 +115,10 @@ class GasolineraInternal(BaseModel):
 class RutaBase(BaseModel):
     distancia_km: float = Field(..., description="Distancia total de la ruta A→B en km")
     duracion_min: float = Field(..., description="Duración estimada de la ruta en minutos")
+    coordinates: List[List[float]] = Field(
+        default_factory=list,
+        description="Geometría de la ruta en formato [lon, lat] para pintar sobre mapa",
+    )
     origen: Coordenada
     destino: Coordenada
 
@@ -176,6 +180,10 @@ class RecomendacionResponse(BaseModel):
     estadisticas: EstadisticasRuta
     destacadas: GasolinerasDestacadas
     recomendaciones: List[RecomendacionItem]
+    opciones_parada: List[RecomendacionItem] = Field(
+        default_factory=list,
+        description="Tres opciones sugeridas para elegir parada: equilibrada, más barata y menor desvío",
+    )
     metadata: dict = Field(
         default_factory=dict,
         description="Información sobre el backend de routing usado y timestamps",

@@ -105,12 +105,14 @@ services:
       GASOLINERAS_API_URL: http://gateway:8080/api/gasolineras/?limit=20000
 
       ROUTING_BACKEND: ${ROUTING_BACKEND:-ors}
+      ROUTING_FAILOVER_TO_OSRM: ${ROUTING_FAILOVER_TO_OSRM:-false}
+      ALLOW_STRAIGHT_LINE_FALLBACK: ${ALLOW_STRAIGHT_LINE_FALLBACK:-false}
       OSRM_BASE_URL: ${OSRM_BASE_URL:-http://router.project-osrm.org}
       ORS_API_KEY: ${ORS_API_KEY}
       LOG_LEVEL: ${LOG_LEVEL:-info}
     depends_on:
       gateway:
-        condition: service_healthy
+        condition: service_started
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()" ]
       interval: 15s

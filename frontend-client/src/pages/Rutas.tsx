@@ -1,373 +1,641 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { MapContainer, TileLayer, Polyline, Marker, Popup } from "react-leaflet";
+import { MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
-import { LuMapPin } from "react-icons/lu";
-import RouteSearchBox, { LocationOption } from "../components/RouteSearchBox";
-import { useRouting } from "../hooks/useRouting";
-import "./Rutas.css";
+import {
+  LuArrowUpDown,
+  LuCrosshair,
+  LuLocateFixed,
+  LuMapPin,
+  LuNavigation,
+  LuPencil,
+  LuSearch,
+} from "react-icons/lu";
 
-interface RouteLocation {
+import { useAuth } from "../contexts/AuthContext";
+import {
+  requestRouteRecommendations,
+  type CombustibleTipo,
+  type RecomendacionResponse,
+} from "../api/recomendacion";
+import { reverseGeocode, searchLocations } from "../api/geocoding";
+
+type RouteLocation = {
   name: string;
   address: string;
   lat: number;
   lng: number;
-}
+};
 
-interface GasStation {
-  IDEESS: string;
-  rotulo: string;
+type GasStation = {
+  id: string;
+  nombre: string;
   direccion: string;
   municipio: string;
+  provincia: string;
   lat: number;
   lng: number;
-  gasolina95: number | null;
-  gasoleoA: number | null;
-  distancia_ruta?: number;
+  precio_litro: number;
+  desvio_km: number;
+  desvio_min_estimado: number;
+  score: number;
+  porcentaje_ruta: number;
+  ahorro_vs_mas_cara_eur?: number | null;
+};
+
+type PickMode = "origin" | "destination" | null;
+
+const fuelOptions: Array<{ value: CombustibleTipo; i18nKey: string }> = [
+  { value: "gasolina_95", i18nKey: "fuel.gasoline95" },
+  { value: "gasolina_98", i18nKey: "fuel.gasoline98" },
+  { value: "gasoleo_a", i18nKey: "fuel.dieselA" },
+  { value: "gasoleo_premium", i18nKey: "fuel.dieselPremium" },
+  { value: "glp", i18nKey: "fuel.glp" },
+  { value: "hidrogeno", i18nKey: "fuel.hydrogen" },
+];
+
+function mapProfileFuelToCombustible(
+  favoriteFuel?: string,
+  carFuelType?: "gasolina" | "diesel" | "electrico" | "hibrido"
+): CombustibleTipo {
+  const normalized = (favoriteFuel || "").toLowerCase();
+  if (normalized.includes("98")) return "gasolina_98";
+  if (normalized.includes("95")) return "gasolina_95";
+  if (normalized.includes("premium") && normalized.includes("gasoleo")) return "gasoleo_premium";
+  if (normalized.includes("gasoleo") || normalized.includes("gasóleo")) return "gasoleo_a";
+  if (normalized.includes("glp")) return "glp";
+  if (normalized.includes("hidrogen")) return "hidrogeno";
+
+  if (carFuelType === "diesel") return "gasoleo_a";
+  return "gasolina_95";
 }
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+function createMarkerIcon(kind: "origin" | "destination" | "station" | "selected") {
+  const spec: Record<string, { bg: string; ring: string; size: number }> = {
+    origin: { bg: "#2563eb", ring: "#bfdbfe", size: 22 },
+    destination: { bg: "#dc2626", ring: "#fecaca", size: 24 },
+    station: { bg: "#0f766e", ring: "#99f6e4", size: 18 },
+    selected: { bg: "#0f172a", ring: "#f59e0b", size: 22 },
+  };
+
+  const { bg, ring, size } = spec[kind];
+  return L.divIcon({
+    html: `<span style="display:block;width:${size}px;height:${size}px;border-radius:999px;background:${bg};border:3px solid white;box-shadow:0 0 0 3px ${ring},0 6px 16px rgba(15,23,42,.22)"></span>`,
+    className: "route-marker-icon",
+    iconSize: [size, size],
+    iconAnchor: [Math.round(size / 2), Math.round(size / 2)],
+  });
+}
+
+function FitRouteBounds({ coordinates }: { coordinates: [number, number][] }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (coordinates.length < 2) return;
+    map.fitBounds(coordinates, {
+      padding: [32, 32],
+      maxZoom: 14,
+    });
+  }, [coordinates, map]);
+
+  return null;
+}
+
+function MapPickMode({ pickMode, onPick }: { pickMode: PickMode; onPick: (lat: number, lng: number, mode: Exclude<PickMode, null>) => void }) {
+  useMapEvents({
+    click(e) {
+      if (!pickMode) return;
+      onPick(e.latlng.lat, e.latlng.lng, pickMode);
+    },
+  });
+
+  return null;
+}
 
 export default function Rutas() {
   const { t } = useTranslation();
-  const { getRoute, loading: routeLoading, error: routeError } = useRouting();
+  const { user } = useAuth();
 
   const [origin, setOrigin] = useState<RouteLocation | null>(null);
   const [destination, setDestination] = useState<RouteLocation | null>(null);
+  const [originInput, setOriginInput] = useState("");
+  const [destinationInput, setDestinationInput] = useState("");
+  const [originSuggestions, setOriginSuggestions] = useState<RouteLocation[]>([]);
+  const [destinationSuggestions, setDestinationSuggestions] = useState<RouteLocation[]>([]);
+  const [showOriginList, setShowOriginList] = useState(false);
+  const [showDestinationList, setShowDestinationList] = useState(false);
+  const [loadingOriginSearch, setLoadingOriginSearch] = useState(false);
+  const [loadingDestinationSearch, setLoadingDestinationSearch] = useState(false);
+  const [loadingOriginGeolocation, setLoadingOriginGeolocation] = useState(false);
+  const [showSearchPanel, setShowSearchPanel] = useState(true);
+
+  const [selectedFuel, setSelectedFuel] = useState<CombustibleTipo>(
+    mapProfileFuelToCombustible(user?.combustible_favorito, user?.tipo_combustible_coche)
+  );
+
+  const [pickMode, setPickMode] = useState<PickMode>(null);
+  const [loadingRoute, setLoadingRoute] = useState(false);
+  const [routeError, setRouteError] = useState<string | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
-  const [routeInfo, setRouteInfo] = useState<{
-    distance: number;
-    duration: number;
-  } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
   const [gasStationsNearRoute, setGasStationsNearRoute] = useState<GasStation[]>([]);
+  const [selectedStop, setSelectedStop] = useState<GasStation | null>(null);
 
-  // Crear icono personalizado para marcadores
-  const createMarkerIcon = (type: "origin" | "destination" | "station") => {
-    const colors: Record<string, string> = {
-      origin: "#10b981",
-      destination: "#ef4444",
-      station: "#f59e0b",
-    };
+  useEffect(() => {
+    setSelectedFuel(mapProfileFuelToCombustible(user?.combustible_favorito, user?.tipo_combustible_coche));
+  }, [user?.combustible_favorito, user?.tipo_combustible_coche]);
 
-    return L.divIcon({
-      html: `<div style="
-        background: ${colors[type]};
-        border: 3px solid white;
-        border-radius: 50%;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        font-size: 16px;
-      ">${
-        type === "origin"
-          ? "📍"
-          : type === "destination"
-            ? "🚩"
-            : type === "station"
-              ? "⛽"
-              : ""
-      }</div>`,
-      className: `marker-icon-${type}`,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -16],
-    });
+  const clearRouteResult = () => {
+    setRouteCoordinates([]);
+    setRouteInfo(null);
+    setGasStationsNearRoute([]);
+    setSelectedStop(null);
+    setRouteError(null);
   };
+
+  const mapApiItemToStation = (item: RecomendacionResponse["recomendaciones"][number]): GasStation => ({
+    id: item.gasolinera.id || `station-${item.posicion}`,
+    nombre: item.gasolinera.nombre || `Gasolinera ${item.posicion}`,
+    direccion: item.gasolinera.direccion || "",
+    municipio: item.gasolinera.municipio || "",
+    provincia: item.gasolinera.provincia || "",
+    lat: item.gasolinera.lat,
+    lng: item.gasolinera.lon,
+    precio_litro: item.precio_litro,
+    desvio_km: item.desvio_km,
+    desvio_min_estimado: item.desvio_min_estimado,
+    score: item.score,
+    porcentaje_ruta: item.porcentaje_ruta,
+    ahorro_vs_mas_cara_eur: item.ahorro_vs_mas_cara_eur,
+  });
+
+  const selectOrigin = (location: RouteLocation) => {
+    setOrigin(location);
+    setOriginInput(location.name);
+    setShowOriginList(false);
+    clearRouteResult();
+  };
+
+  const selectDestination = (location: RouteLocation) => {
+    setDestination(location);
+    setDestinationInput(location.name);
+    setShowDestinationList(false);
+    clearRouteResult();
+  };
+
+  const resolveCurrentPosition = () => {
+    if (!navigator.geolocation) {
+      setRouteError(t("accessibility.geolocationNotSupported"));
+      return;
+    }
+
+    setLoadingOriginGeolocation(true);
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { latitude, longitude } = position.coords;
+          const result = await reverseGeocode(latitude, longitude);
+          selectOrigin({
+            ...result,
+            name: result.name || t("routes.mapPoint"),
+          });
+        } catch (error) {
+          setRouteError(error instanceof Error ? error.message : t("accessibility.geolocationError"));
+        } finally {
+          setLoadingOriginGeolocation(false);
+        }
+      },
+      () => {
+        setLoadingOriginGeolocation(false);
+        setRouteError(t("accessibility.geolocationError"));
+      },
+      { enableHighAccuracy: true, timeout: 7000, maximumAge: 60000 }
+    );
+  };
+
+  useEffect(() => {
+    if (!origin) {
+      resolveCurrentPosition();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const query = destinationInput.trim();
+    if (query.length < 2) {
+      setDestinationSuggestions([]);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        setLoadingDestinationSearch(true);
+        const items = await searchLocations(query, 6);
+        setDestinationSuggestions(items);
+      } catch {
+        setDestinationSuggestions([]);
+      } finally {
+        setLoadingDestinationSearch(false);
+      }
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [destinationInput]);
+
+  useEffect(() => {
+    const query = originInput.trim();
+    if (query.length < 2) {
+      setOriginSuggestions([]);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      try {
+        setLoadingOriginSearch(true);
+        const items = await searchLocations(query, 6);
+        setOriginSuggestions(items);
+      } catch {
+        setOriginSuggestions([]);
+      } finally {
+        setLoadingOriginSearch(false);
+      }
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [originInput]);
 
   const calculateRoute = async () => {
     if (!origin || !destination) return;
 
-    const route = await getRoute(
-      {
-        name: origin.name,
-        address: origin.address,
-        lat: origin.lat,
-        lng: origin.lng,
-      },
-      {
-        name: destination.name,
-        address: destination.address,
-        lat: destination.lat,
-        lng: destination.lng,
-      }
-    );
+    setLoadingRoute(true);
+    setRouteError(null);
 
-    if (route) {
-      // Invertir coordenadas porque Leaflet usa [lat, lng] pero OSRM devuelve [lng, lat]
-      const leafletCoords = route.coordinates.map((coord) => [
-        coord[1],
-        coord[0],
-      ]) as [number, number][];
-      setRouteCoordinates(leafletCoords);
-      setRouteInfo({
-        distance: route.distance,
-        duration: route.duration,
+    try {
+      const data = await requestRouteRecommendations({
+        origen: { lat: origin.lat, lon: origin.lng, nombre: origin.name },
+        destino: { lat: destination.lat, lon: destination.lng, nombre: destination.name },
+        combustible: selectedFuel,
+        max_desvio_km: 8,
+        top_n: 10,
+        peso_precio: 0.6,
+        peso_desvio: 0.4,
+        litros_deposito: 50,
       });
 
-      // Buscar gasolineras cercanas a la ruta
-      // TODO: Implementar búsqueda más inteligente considerando proximidad a la ruta
-      fetchGasStationsNearRoute(leafletCoords);
-    }
-  };
+      const leafletCoords: [number, number][] = (data.ruta_base.coordinates || [])
+        .filter((coord) => Array.isArray(coord) && coord.length >= 2)
+        .map((coord) => [coord[1], coord[0]] as [number, number]);
 
-  const fetchGasStationsNearRoute = async (coords: [number, number][]) => {
-    try {
-      // Calcular bounding box aproximado de la ruta
-      const lats = coords.map((c) => c[0]);
-      const lngs = coords.map((c) => c[1]);
-      const minLat = Math.min(...lats);
-      const maxLat = Math.max(...lats);
-      const minLng = Math.min(...lngs);
-      const maxLng = Math.max(...lngs);
+      const fullList = data.recomendaciones?.map(mapApiItemToStation) ?? [];
+      const options = (data.opciones_parada?.length ? data.opciones_parada : data.recomendaciones?.slice(0, 3)) ?? [];
+      const optionList = options.map(mapApiItemToStation);
 
-      // Expandir bbox un 10% para incluir más gasolineras
-      const expandFactor = 0.1;
-      const latRange = maxLat - minLat;
-      const lngRange = maxLng - minLng;
-
-      const response = await fetch(
-        `${API_BASE_URL}/api/gasolineras?bbox=${minLat - latRange * expandFactor},${minLng - lngRange * expandFactor},${maxLat + latRange * expandFactor},${maxLng + lngRange * expandFactor}`
-      );
-
-      const data = await response.json();
-      setGasStationsNearRoute(data.gasolineras || []);
+      setRouteCoordinates(leafletCoords);
+      setRouteInfo({
+        distanceKm: data.ruta_base.distancia_km,
+        durationMin: data.ruta_base.duracion_min,
+      });
+      setGasStationsNearRoute(fullList);
+      setSelectedStop(optionList[0] || fullList[0] || null);
+      setShowSearchPanel(false);
     } catch (error) {
-      console.error("Error fetching gas stations:", error);
+      setRouteError(error instanceof Error ? error.message : t("routes.genericRouteError"));
+      clearRouteResult();
+    } finally {
+      setLoadingRoute(false);
     }
   };
 
-  const handleSwap = () => {
-    const temp = origin;
-    setOrigin(destination);
-    setDestination(temp);
-    setRouteCoordinates([]);
-    setRouteInfo(null);
-    setGasStationsNearRoute([]);
+  const handlePickFromMap = async (lat: number, lng: number, mode: Exclude<PickMode, null>) => {
+    try {
+      const location = await reverseGeocode(lat, lng);
+      const normalized: RouteLocation = {
+        ...location,
+        name: location.name || t("routes.mapPoint"),
+      };
+      if (mode === "origin") {
+        selectOrigin(normalized);
+      } else {
+        selectDestination(normalized);
+      }
+      setPickMode(null);
+    } catch {
+      setRouteError(t("routes.genericRouteError"));
+    }
   };
 
-  const handleOriginSelect = (location: LocationOption) => {
-    setOrigin({
-      name: location.name,
-      address: location.address,
-      lat: location.lat,
-      lng: location.lng,
-    });
-    setRouteCoordinates([]);
-    setRouteInfo(null);
-    setGasStationsNearRoute([]);
+  const openGoogleMaps = () => {
+    if (!origin || !destination) return;
+
+    const url = new URL("https://www.google.com/maps/dir/");
+    url.searchParams.set("api", "1");
+    url.searchParams.set("origin", `${origin.lat},${origin.lng}`);
+    url.searchParams.set("destination", `${destination.lat},${destination.lng}`);
+    url.searchParams.set("travelmode", "driving");
+
+    if (selectedStop) {
+      url.searchParams.set("waypoints", `${selectedStop.lat},${selectedStop.lng}`);
+    }
+
+    window.open(url.toString(), "_blank", "noopener,noreferrer");
   };
 
-  const handleDestinationSelect = (location: LocationOption) => {
-    setDestination({
-      name: location.name,
-      address: location.address,
-      lat: location.lat,
-      lng: location.lng,
-    });
-    setRouteCoordinates([]);
-    setRouteInfo(null);
-    setGasStationsNearRoute([]);
-  };
-
-  // Centro del mapa
   const mapCenter = useMemo(() => {
-    if (origin && destination) {
-      return [
-        (origin.lat + destination.lat) / 2,
-        (origin.lng + destination.lng) / 2,
-      ] as [number, number];
-    }
-    if (origin) {
-      return [origin.lat, origin.lng] as [number, number];
-    }
-    return [40.4637, -3.7492] as [number, number]; // Centro de España
-  }, [origin, destination]);
+    if (selectedStop) return [selectedStop.lat, selectedStop.lng] as [number, number];
+    if (destination) return [destination.lat, destination.lng] as [number, number];
+    if (origin) return [origin.lat, origin.lng] as [number, number];
+    return [40.4168, -3.7038] as [number, number];
+  }, [selectedStop, destination, origin]);
 
-  // Calcular zoom automático
-  const mapZoom = useMemo(() => {
-    if (routeCoordinates.length > 0) return 13;
-    if (origin && destination) return 10;
-    if (origin) return 12;
-    return 6;
-  }, [origin, destination, routeCoordinates]);
+  const stopOptions = useMemo(() => {
+    if (!gasStationsNearRoute.length) return [];
+
+    const byScore = [...gasStationsNearRoute].sort((a, b) => b.score - a.score)[0];
+    const byPrice = [...gasStationsNearRoute].sort((a, b) => a.precio_litro - b.precio_litro)[0];
+    const byDetour = [...gasStationsNearRoute].sort((a, b) => a.desvio_km - b.desvio_km)[0];
+
+    return [byScore, byPrice, byDetour].filter(
+      (station, index, array) => station && array.findIndex((s) => s.id === station.id) === index
+    );
+  }, [gasStationsNearRoute]);
 
   return (
-    <div className="rutas-container">
-      <div className="rutas-header">
-        <h1>{t("routes.title")}</h1>
-        <p>{t("routes.subtitle")}</p>
-      </div>
+    <div className="relative min-h-[calc(100vh-60px)] overflow-hidden bg-[#edf2ff]">
+      <MapContainer
+        center={mapCenter}
+        zoom={12}
+        style={{ height: "calc(100vh - 60px)", width: "100%" }}
+        scrollWheelZoom
+        className="z-0"
+      >
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          maxZoom={19}
+        />
 
-      <div className="rutas-content">
-        <div className="rutas-search-panel">
-          <RouteSearchBox
-            onOriginSelect={handleOriginSelect}
-            onDestinationSelect={handleDestinationSelect}
-            onSwap={handleSwap}
-            originValue={origin?.name || ""}
-            destinationValue={destination?.name || ""}
+        <FitRouteBounds coordinates={routeCoordinates} />
+        <MapPickMode pickMode={pickMode} onPick={handlePickFromMap} />
+
+        {routeCoordinates.length > 0 && (
+          <Polyline positions={routeCoordinates} color="#2563eb" weight={5} opacity={0.9} />
+        )}
+
+        {origin && <Marker position={[origin.lat, origin.lng]} icon={createMarkerIcon("origin")} />}
+        {destination && <Marker position={[destination.lat, destination.lng]} icon={createMarkerIcon("destination")} />}
+
+        {gasStationsNearRoute.map((station) => (
+          <Marker
+            key={station.id}
+            position={[station.lat, station.lng]}
+            icon={createMarkerIcon(selectedStop?.id === station.id ? "selected" : "station")}
+            eventHandlers={{
+              click: () => setSelectedStop(station),
+            }}
           />
+        ))}
+      </MapContainer>
 
-          <button
-            className="rutas-calculate-btn"
-            onClick={calculateRoute}
-            disabled={!origin || !destination || routeLoading}
-            aria-label={t("routes.calculateRoute")}
-          >
-            {routeLoading ? (
-              <>
-                <span className="loading-spinner"></span>
-                {t("routes.calculating")}
-              </>
-            ) : (
-              <>
-                <LuMapPin size={18} aria-hidden="true" />
-                {t("routes.calculateRoute")}
-              </>
-            )}
-          </button>
-
-          {routeError && (
-            <div className="rutas-error" role="alert">
-              {routeError}
-            </div>
-          )}
-
-          {routeInfo && (
-            <div className="rutas-info">
-              <div className="info-item">
-                <span className="info-label">{t("routes.distance")}:</span>
-                <span className="info-value">{(routeInfo.distance / 1000).toFixed(1)} km</span>
-              </div>
-              <div className="info-item">
-                <span className="info-label">{t("routes.duration")}:</span>
-                <span className="info-value">
-                  {Math.round(routeInfo.duration / 60)} {t("routes.minutes")}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {gasStationsNearRoute.length > 0 && (
-            <div className="rutas-stations">
-              <h3>{t("routes.gasStationsNearRoute")}</h3>
-              <div className="stations-list">
-                {gasStationsNearRoute.slice(0, 5).map((station) => (
-                  <div key={station.IDEESS} className="station-card">
-                    <div className="station-header">
-                      <h4>{station.rotulo}</h4>
-                      <span className="station-distance">
-                        {station.distancia_ruta
-                          ? `${station.distancia_ruta.toFixed(1)} km`
-                          : "–"}
-                      </span>
-                    </div>
-                    <p className="station-address">{station.direccion}</p>
-                    <p className="station-location">{station.municipio}</p>
-                    <div className="station-prices">
-                      {station.gasolina95 !== null && (
-                        <div className="price-item">
-                          <span className="price-label">95</span>
-                          <span className="price-value">€{station.gasolina95.toFixed(3)}</span>
-                        </div>
-                      )}
-                      {station.gasoleoA !== null && (
-                        <div className="price-item">
-                          <span className="price-label">Diesel</span>
-                          <span className="price-value">€{station.gasoleoA.toFixed(3)}</span>
-                        </div>
-                      )}
-                    </div>
+      <section className="pointer-events-none absolute inset-x-0 top-0 z-[1100] px-3 pt-3 md:px-5 md:pt-4">
+        <div className="mx-auto w-full max-w-4xl pointer-events-auto">
+          {showSearchPanel ? (
+            <div className="rounded-2xl border border-[#d7e2f5] bg-white/96 p-3 shadow-xl shadow-[#1e3a8a]/12 backdrop-blur md:p-4">
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto]">
+                <div className="relative">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.to")}</label>
+                  <div className="relative">
+                    <LuSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5b77ad]" />
+                    <input
+                      className="w-full rounded-xl border border-[#cdd9ee] bg-[#f8fbff] py-2.5 pl-9 pr-3 text-sm text-[#13295b] outline-none ring-[#1d4ed8]/20 focus:ring-3"
+                      placeholder={t("routes.toPlaceholder")}
+                      value={destinationInput}
+                      onFocus={() => setShowDestinationList(true)}
+                      onChange={(e) => {
+                        setDestinationInput(e.target.value);
+                        setShowDestinationList(true);
+                      }}
+                    />
                   </div>
-                ))}
+                  {showDestinationList && destinationSuggestions.length > 0 && (
+                    <ul className="absolute z-[1200] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#cfdbf1] bg-white py-1 shadow-lg">
+                      {destinationSuggestions.map((item, idx) => (
+                        <li key={`${item.lat}-${item.lng}-${idx}`}>
+                          <button
+                            type="button"
+                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[#f3f7ff]"
+                            onClick={() => selectDestination(item)}
+                          >
+                            <LuMapPin className="mt-1 shrink-0 text-[#3b63a8]" size={15} />
+                            <span className="block min-w-0">
+                              <span className="block truncate text-sm font-semibold text-[#16326d]">{item.name}</span>
+                              <span className="block truncate text-xs text-[#637da9]">{item.address}</span>
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {loadingDestinationSearch && <p className="pt-1 text-xs text-[#617aab]">{t("routes.searching")}</p>}
+                </div>
+
+                <div className="relative">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.from")}</label>
+                  <div className="relative">
+                    <LuLocateFixed className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5b77ad]" />
+                    <input
+                      className="w-full rounded-xl border border-[#cdd9ee] bg-[#f8fbff] py-2.5 pl-9 pr-11 text-sm text-[#13295b] outline-none ring-[#1d4ed8]/20 focus:ring-3"
+                      placeholder={t("routes.fromPlaceholder")}
+                      value={originInput}
+                      onFocus={() => setShowOriginList(true)}
+                      onChange={(e) => {
+                        setOriginInput(e.target.value);
+                        setShowOriginList(true);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={resolveCurrentPosition}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[#1f4f99] hover:bg-[#e7efff]"
+                      title={t("routes.useCurrentLocation")}
+                      aria-label={t("routes.useCurrentLocation")}
+                    >
+                      <LuCrosshair size={16} />
+                    </button>
+                  </div>
+                  {showOriginList && originSuggestions.length > 0 && (
+                    <ul className="absolute z-[1200] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#cfdbf1] bg-white py-1 shadow-lg">
+                      {originSuggestions.map((item, idx) => (
+                        <li key={`${item.lat}-${item.lng}-${idx}`}>
+                          <button
+                            type="button"
+                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[#f3f7ff]"
+                            onClick={() => selectOrigin(item)}
+                          >
+                            <LuMapPin className="mt-1 shrink-0 text-[#3b63a8]" size={15} />
+                            <span className="block min-w-0">
+                              <span className="block truncate text-sm font-semibold text-[#16326d]">{item.name}</span>
+                              <span className="block truncate text-xs text-[#637da9]">{item.address}</span>
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {(loadingOriginSearch || loadingOriginGeolocation) && (
+                    <p className="pt-1 text-xs text-[#617aab]">{t("routes.searching")}</p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 md:grid-cols-1">
+                  <button
+                    type="button"
+                    className="rounded-xl border border-[#c8d6ef] bg-white px-3 py-2 text-xs font-semibold text-[#1a3b7a] hover:bg-[#f3f7ff]"
+                    onClick={() => {
+                      const oldOrigin = origin;
+                      setOrigin(destination);
+                      setDestination(oldOrigin);
+                      setOriginInput(destination?.name || "");
+                      setDestinationInput(oldOrigin?.name || "");
+                      clearRouteResult();
+                    }}
+                    title={t("routes.swap")}
+                    aria-label={t("routes.swap")}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      <LuArrowUpDown size={14} />
+                      {t("routes.swap")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`rounded-xl border px-3 py-2 text-xs font-semibold ${pickMode === "destination" ? "border-[#1d4ed8] bg-[#eaf1ff] text-[#1c3f81]" : "border-[#c8d6ef] bg-white text-[#1a3b7a] hover:bg-[#f3f7ff]"}`}
+                    onClick={() => setPickMode((prev) => (prev === "destination" ? null : "destination"))}
+                  >
+                    {t("routes.pickDestinationOnMap")}
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-xl bg-[#1f4fa0] px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
+                    disabled={!origin || !destination || loadingRoute}
+                    onClick={calculateRoute}
+                  >
+                    {loadingRoute ? t("routes.calculating") : t("routes.calculateRoute")}
+                  </button>
+                </div>
               </div>
+
+              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+                    {t("routes.fuelForComparison")}
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                    value={selectedFuel}
+                    onChange={(e) => {
+                      setSelectedFuel(e.target.value as CombustibleTipo);
+                      clearRouteResult();
+                    }}
+                  >
+                    {fuelOptions.map((fuel) => (
+                      <option key={fuel.value} value={fuel.value}>
+                        {t(fuel.i18nKey)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className="rounded-xl border border-[#c7d8f8] bg-[#edf4ff] px-3 py-2 text-sm font-semibold text-[#1f427f] disabled:opacity-60"
+                  onClick={openGoogleMaps}
+                  disabled={!origin || !destination}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <LuNavigation size={14} />
+                    {selectedStop ? t("routes.openInGoogleWithStop") : t("routes.openInGoogle")}
+                  </span>
+                </button>
+              </div>
+
+              {pickMode && (
+                <p className="mt-2 rounded-lg border border-dashed border-[#9eb7e4] bg-[#edf4ff] px-2 py-1.5 text-xs text-[#355286]">
+                  {pickMode === "origin" ? t("routes.mapPickOriginHint") : t("routes.mapPickDestinationHint")}
+                </p>
+              )}
             </div>
+          ) : (
+            <button
+              type="button"
+              className="inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white/95 px-4 py-2 text-sm font-semibold text-[#16356f] shadow-lg"
+              onClick={() => setShowSearchPanel(true)}
+            >
+              <LuPencil size={15} />
+              {t("routes.editSearch", { defaultValue: "Editar búsqueda" })}
+            </button>
           )}
         </div>
+      </section>
 
-        <div className="rutas-map-panel">
-          <MapContainer
-            center={mapCenter}
-            zoom={mapZoom}
-            style={{ height: "100%", width: "100%" }}
-            scrollWheelZoom={true}
-          >
-            <TileLayer
-              url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-              maxZoom={19}
-            />
-
-            {/* Ruta */}
-            {routeCoordinates.length > 0 && (
-              <Polyline
-                positions={routeCoordinates}
-                color="#6366f1"
-                weight={4}
-                opacity={0.8}
-                dashArray="5, 5"
-              />
-            )}
-
-            {/* Marcador Origen */}
-            {origin && (
-              <Marker
-                position={[origin.lat, origin.lng]}
-                icon={createMarkerIcon("origin")}
-              >
-                <Popup>
-                  <div className="popup-content">
-                    <strong>{origin.name}</strong>
-                    <p>{origin.address}</p>
-                    <p className="popup-label">{t("routes.starting")} </p>
-                  </div>
-                </Popup>
-              </Marker>
-            )}
-
-            {/* Marcador Destino */}
-            {destination && (
-              <Marker
-                position={[destination.lat, destination.lng]}
-                icon={createMarkerIcon("destination")}
-              >
-                <Popup>
-                  <div className="popup-content">
-                    <strong>{destination.name}</strong>
-                    <p>{destination.address}</p>
-                    <p className="popup-label">{t("routes.destination")}</p>
-                  </div>
-                </Popup>
-              </Marker>
-            )}
-
-            {/* Gasolineras */}
-            {gasStationsNearRoute.map((station) => (
-              <Marker
-                key={station.IDEESS}
-                position={[station.lat, station.lng]}
-                icon={createMarkerIcon("station")}
-              >
-                <Popup>
-                  <div className="popup-content">
-                    <strong>{station.rotulo}</strong>
-                    <p>{station.direccion}</p>
-                    {station.gasolina95 !== null && (
-                      <p>95: €{station.gasolina95.toFixed(3)}</p>
-                    )}
-                    {station.gasoleoA !== null && (
-                      <p>Diesel: €{station.gasoleoA.toFixed(3)}</p>
-                    )}
-                  </div>
-                </Popup>
-              </Marker>
-            ))}
-          </MapContainer>
+      {routeError && (
+        <div className="absolute left-3 right-3 top-24 z-[1200] rounded-xl border border-[#ffd1d8] bg-[#fff0f0] px-3 py-2 text-sm text-[#b42234] md:left-auto md:right-5 md:top-20 md:w-[420px]" role="alert">
+          {routeError}
         </div>
-      </div>
+      )}
+
+      {routeInfo && (
+        <section className="pointer-events-none absolute bottom-0 left-0 right-0 z-[1150] p-2 md:left-auto md:right-5 md:top-24 md:w-[430px] md:bottom-auto md:p-0">
+          <div className="pointer-events-auto rounded-t-3xl border border-[#cad8ef] bg-white/97 p-3 shadow-[0_-14px_40px_rgba(30,58,138,.16)] md:rounded-2xl">
+            <div className="mb-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl bg-[#edf4ff] px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#5573a7]">{t("routes.distance")}</p>
+                <p className="text-lg font-extrabold text-[#17396f]">{routeInfo.distanceKm.toFixed(1)} km</p>
+              </div>
+              <div className="rounded-xl bg-[#edf4ff] px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-[#5573a7]">{t("routes.duration")}</p>
+                <p className="text-lg font-extrabold text-[#17396f]">{Math.round(routeInfo.durationMin)} {t("routes.minutes")}</p>
+              </div>
+            </div>
+
+            <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-[#4d638e]">{t("routes.stopOptions")}</h3>
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+              {stopOptions.map((station) => (
+                <button
+                  key={station.id}
+                  type="button"
+                  className={`min-w-[220px] rounded-xl border px-3 py-2 text-left ${selectedStop?.id === station.id ? "border-[#1d4ed8] bg-[#eef4ff]" : "border-[#d5e2f7] bg-white"}`}
+                  onClick={() => setSelectedStop(station)}
+                >
+                  <p className="truncate text-sm font-bold text-[#12316a]">{station.nombre}</p>
+                  <p className="truncate text-xs text-[#6782b0]">{station.municipio} {station.provincia ? `· ${station.provincia}` : ""}</p>
+                  <p className="mt-1 text-xs font-semibold text-[#23467f]">€{station.precio_litro.toFixed(3)} · +{station.desvio_km.toFixed(1)} km</p>
+                </button>
+              ))}
+            </div>
+
+            {selectedStop && (
+              <article className="rounded-xl border border-[#cad9f3] bg-[#f8fbff] p-3">
+                <p className="text-base font-extrabold text-[#0f2f67]">{selectedStop.nombre}</p>
+                <p className="text-sm text-[#4c6698]">{selectedStop.direccion}</p>
+                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-lg bg-white px-2 py-1.5">
+                    <p className="text-[11px] text-[#6a84b1]">€/L</p>
+                    <p className="text-sm font-bold text-[#17386f]">{selectedStop.precio_litro.toFixed(3)}</p>
+                  </div>
+                  <div className="rounded-lg bg-white px-2 py-1.5">
+                    <p className="text-[11px] text-[#6a84b1]">+km</p>
+                    <p className="text-sm font-bold text-[#17386f]">{selectedStop.desvio_km.toFixed(1)}</p>
+                  </div>
+                  <div className="rounded-lg bg-white px-2 py-1.5">
+                    <p className="text-[11px] text-[#6a84b1]">{t("routes.extraMinutes")}</p>
+                    <p className="text-sm font-bold text-[#17386f]">{selectedStop.desvio_min_estimado.toFixed(0)}</p>
+                  </div>
+                </div>
+              </article>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

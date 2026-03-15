@@ -14,6 +14,8 @@ const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasol
 const RECOMENDACION_SERVICE = process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001";
 const EV_CHARGING_SERVICE = process.env.EV_CHARGING_SERVICE_URL || "http://ev-charging:8000";
 const PREDICTION_SERVICE = process.env.PREDICTION_SERVICE_URL || "";
+const GEOCODING_BASE_URL = process.env.GEOCODING_BASE_URL || "https://nominatim.openstreetmap.org";
+const GEOCODING_USER_AGENT = process.env.GEOCODING_USER_AGENT || "TankGo/1.0 (geocoding proxy)";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 const GATEWAY_PUBLIC_URL = process.env.GATEWAY_PUBLIC_URL || "";
 const FRONTEND_URLS = (process.env.FRONTEND_URLS || "")
@@ -84,6 +86,47 @@ function getAuthTokenFromRequest(c) {
 // 🚀 APLICACIÓN HONO
 // ========================================
 const app = new Hono();
+
+const geocodingCache = new Map();
+
+function cacheGet(key) {
+  const entry = geocodingCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) {
+    geocodingCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function cacheSet(key, data, ttlMs = 5 * 60 * 1000) {
+  geocodingCache.set(key, {
+    data,
+    expiresAt: Date.now() + ttlMs,
+  });
+}
+
+async function fetchGeocodingJson(url) {
+  const cached = cacheGet(url);
+  if (cached) return cached;
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      "User-Agent": GEOCODING_USER_AGENT,
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 300);
+    throw new Error(`Geocoding HTTP ${response.status}: ${detail}`);
+  }
+
+  const data = await response.json();
+  cacheSet(url, data);
+  return data;
+}
 
 // ========================================
 // 📡 AGREGACIÓN DE OPENAPI DE MICROSERVICIOS
@@ -349,10 +392,75 @@ app.get("/", (c) => {
       usuarios: "/api/usuarios/*",
       gasolineras: "/api/gasolineras/*",
       recomendaciones: "/api/recomendacion/* o /api/recomendaciones/*",
+      geocoding: "/api/geocoding/search y /api/geocoding/reverse",
       evCharging: "/api/charging/*",
       prediction: "/api/prediction/*",
     },
   });
+});
+
+// ========================================
+// 🌍 GEOCODING PROXY: NOMINATIM
+// ========================================
+app.get("/api/geocoding/search", async (c) => {
+  try {
+    const query = (c.req.query("q") || "").trim();
+    if (query.length < 2) {
+      return c.json([]);
+    }
+
+    const limit = Number(c.req.query("limit") || "5");
+    const countrycodes = (c.req.query("countrycodes") || "es").trim();
+
+    const url = new URL(`${GEOCODING_BASE_URL}/search`);
+    url.searchParams.set("q", query);
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("limit", String(Math.min(Math.max(limit, 1), 8)));
+    if (countrycodes) {
+      url.searchParams.set("countrycodes", countrycodes);
+    }
+
+    const data = await fetchGeocodingJson(url.toString());
+    return c.json(Array.isArray(data) ? data : []);
+  } catch (error) {
+    console.error("Error geocoding search:", error);
+    return c.json(
+      {
+        error: "Geocoding search failed",
+        message: error.message,
+      },
+      503
+    );
+  }
+});
+
+app.get("/api/geocoding/reverse", async (c) => {
+  try {
+    const lat = c.req.query("lat");
+    const lon = c.req.query("lon");
+    if (!lat || !lon) {
+      return c.json({ error: "lat and lon are required" }, 400);
+    }
+
+    const url = new URL(`${GEOCODING_BASE_URL}/reverse`);
+    url.searchParams.set("format", "jsonv2");
+    url.searchParams.set("addressdetails", "1");
+    url.searchParams.set("lat", lat);
+    url.searchParams.set("lon", lon);
+
+    const data = await fetchGeocodingJson(url.toString());
+    return c.json(data || {});
+  } catch (error) {
+    console.error("Error geocoding reverse:", error);
+    return c.json(
+      {
+        error: "Geocoding reverse failed",
+        message: error.message,
+      },
+      503
+    );
+  }
 });
 
 // ========================================

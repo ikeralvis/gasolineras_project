@@ -18,6 +18,7 @@ Por qué haversine en Fase 2 y no una llamada OSRM por candidato:
     `use_real_routing` en futuros endpoints (cada candidato llamaría a OSRM).
 """
 import logging
+import asyncio
 from typing import List, Tuple, Optional
 
 from shapely.geometry import LineString, Point
@@ -35,6 +36,7 @@ from app.models.schemas import (
     GasolinerasDestacadas,
 )
 from app.services.routing import haversine_km
+from app.services.routing import get_route_via_stop
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +97,6 @@ def _calc_detour(
     station_lon: float,
     dest_lat: float,
     dest_lon: float,
-    route_dist_km: float,
 ) -> float:
     """
     Estima el desvío en km para parar en una gasolinera usando haversine.
@@ -179,7 +180,25 @@ def _score_candidates(
 # Función principal
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_recommendations(
+def _build_stop_options(items: List[RecomendacionItem]) -> List[RecomendacionItem]:
+    if not items:
+        return []
+
+    best_overall = max(items, key=lambda x: x.score)
+    cheapest = min(items, key=lambda x: x.precio_litro)
+    shortest_detour = min(items, key=lambda x: x.desvio_km)
+
+    options: List[RecomendacionItem] = []
+    for candidate in [best_overall, cheapest, shortest_detour]:
+        if candidate.posicion not in {o.posicion for o in options}:
+            options.append(candidate)
+        if len(options) == 3:
+            break
+
+    return options
+
+
+async def build_recommendations(
     req: RecomendacionRequest,
     route: RouteResult,
     stations: List[GasolineraInternal],
@@ -227,7 +246,6 @@ def build_recommendations(
             origin.lat, origin.lon,
             s.lat, s.lon,
             dest.lat, dest.lon,
-            route_dist_km,
         )
 
         if detour > req.max_desvio_km:
@@ -258,6 +276,34 @@ def build_recommendations(
         req.max_desvio_km,
         len(enriched),
     )
+
+    # Refinar desvío con ruta real A→S→B para los candidatos más prometedores.
+    # Esto mejora la precisión sin lanzar cientos de peticiones al motor de routing.
+    if enriched:
+        approx_sorted = sorted(enriched, key=lambda c: (c["desvio_km"], c["precio"]))
+        refine_limit = min(len(approx_sorted), max(req.top_n * 4, 12))
+        refine_pool = approx_sorted[:refine_limit]
+
+        semaphore = asyncio.Semaphore(8)
+
+        async def _refine(item: dict):
+            async with semaphore:
+                s: GasolineraInternal = item["station"]
+                via_route = await get_route_via_stop(
+                    origin_lat=origin.lat,
+                    origin_lon=origin.lon,
+                    stop_lat=s.lat,
+                    stop_lon=s.lon,
+                    dest_lat=dest.lat,
+                    dest_lon=dest.lon,
+                    evitar_peajes=req.evitar_peajes,
+                )
+                real_detour = max(0.0, via_route.distancia_km - route_dist_km)
+                item["desvio_km"] = round(real_detour, 2)
+                item["desvio_min"] = round((real_detour / AVG_SPEED_KMH) * 60, 1)
+
+        await asyncio.gather(*[_refine(item) for item in refine_pool], return_exceptions=True)
+        enriched = [item for item in enriched if item["desvio_km"] <= req.max_desvio_km]
 
     # ── Puntuación ────────────────────────────────────────────────────────────
     scored = _score_candidates(enriched, req.peso_precio, req.peso_desvio)
@@ -311,11 +357,13 @@ def build_recommendations(
         mas_barata=min(items, key=lambda x: x.precio_litro) if items else None,
         mas_cercana=min(items, key=lambda x: x.desvio_km) if items else None,
     )
+    opciones_parada = _build_stop_options(items)
 
     return RecomendacionResponse(
         ruta_base=RutaBase(
             distancia_km=round(route_dist_km, 2),
             duracion_min=round(route.duracion_min, 1),
+            coordinates=route.coordinates,
             origen=Coordenada(
                 lat=origin.lat,
                 lon=origin.lon,
@@ -336,5 +384,6 @@ def build_recommendations(
         ),
         destacadas=destacadas,
         recomendaciones=items,
+        opciones_parada=opciones_parada,
         metadata={},
     )
