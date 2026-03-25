@@ -14,6 +14,53 @@ const VOICE_MAX_AUDIO_BASE64_CHARS = Number(process.env.VOICE_MAX_AUDIO_BASE64_C
 const VOICE_MAX_KM = Number(process.env.VOICE_MAX_KM || 25);
 const VOICE_ENABLE_TTS_AUDIO = String(process.env.VOICE_ENABLE_TTS_AUDIO || "true").toLowerCase() === "true";
 
+const FUEL_FIELDS = [
+  "Precio Gasolina 95 E5",
+  "Precio Gasolina 98 E5",
+  "Precio Gasoleo A",
+  "Precio Gasoleo B",
+  "Precio Gasoleo Premium",
+];
+
+function priceToSpeech(rawValue) {
+  if (rawValue == null) return null;
+  const source = String(rawValue).trim().replace(",", ".");
+  const match = source.match(/\d+(?:\.\d+)?/);
+  if (!match) return null;
+
+  const [eurosPart, decimalsPart = ""] = match[0].split(".");
+  const euros = Number.parseInt(eurosPart, 10);
+  if (!Number.isFinite(euros)) return null;
+
+  const centsRaw = `${decimalsPart}00`.slice(0, 2);
+  const cents = Number.parseInt(centsRaw, 10);
+  if (!Number.isFinite(cents)) return null;
+
+  const euroWord = euros === 1 ? "euro" : "euros";
+  const centsWord = cents === 1 ? "centimo" : "centimos";
+  return `${euros} ${euroWord} con ${cents} ${centsWord} por litro`;
+}
+
+function buildNearestSpeechHints(station) {
+  if (!station || typeof station !== "object") {
+    return null;
+  }
+
+  const pricesWhenSpeaking = {};
+  for (const field of FUEL_FIELDS) {
+    const normalized = priceToSpeech(station[field]);
+    if (normalized) {
+      pricesWhenSpeaking[field] = normalized;
+    }
+  }
+
+  return {
+    stationName: station.Rótulo || station.Rotulo || station.rotulo || "",
+    pricesWhenSpeaking,
+    pronunciationRule: "Cuando veas precios tipo 1,585, leelo como decimal: 1 euro con 58 centimos por litro.",
+  };
+}
+
 const requestCounters = new Map();
 
 app.use(express.json({ limit: "12mb" }));
@@ -118,6 +165,7 @@ app.post("/voice/intent", async (req, res) => {
         intent,
         handled: true,
         ...nearest,
+        speechHints: buildNearestSpeechHints(nearest?.station),
       };
     }
 

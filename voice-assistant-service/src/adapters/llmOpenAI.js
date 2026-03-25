@@ -18,6 +18,9 @@ export async function buildAnswerWithOpenAI({ userText, toolResult }) {
     "Responde en español, muy breve, apto para voz.",
     "No inventes datos que no estén en el resultado de herramientas.",
     "Si faltan datos, dilo explícitamente y sugiere una acción corta.",
+    "Si existe toolResult.speechHints, prioriza exactamente esos textos para leer precios.",
+    "Los precios de combustible son decimales: 1,585 nunca se lee como mil quinientos ochenta y cinco.",
+    "Pronuncia en formato natural: 1 euro con 58 centimos por litro.",
   ].join(" ");
 
   const user = [

@@ -1,7 +1,7 @@
 const OPENAI_BASE_URL = (process.env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
 const OPENAI_TTS_MODEL = process.env.OPENAI_TTS_MODEL || "gpt-4o-mini-tts";
-const OPENAI_TTS_VOICE = process.env.OPENAI_TTS_VOICE || "alloy";
+const OPENAI_TTS_VOICE = process.env.OPENAI_TTS_VOICE || "nova";
 const OPENAI_TTS_FORMAT = process.env.OPENAI_TTS_FORMAT || "mp3";
 
 export async function synthesizeSpeechWithOpenAI(text, { includeAudio = false } = {}) {
