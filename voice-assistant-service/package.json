@@ -1,0 +1,18 @@
+{
+  "name": "voice-assistant-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Servicio desacoplado de voz + IA para asistentes sobre herramientas MCP",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
