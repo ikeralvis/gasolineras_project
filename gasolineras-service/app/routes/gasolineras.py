@@ -3,10 +3,12 @@ Rutas de la API de Gasolineras - PostgreSQL/PostGIS (Neon)
 """
 import logging
 import os
+import threading
 import traceback
 import httpx
 from typing import Optional, Set
 from datetime import datetime, timezone, timedelta, date
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, HTTPException, status, Header
 from psycopg2.extras import execute_values, Json
@@ -20,6 +22,17 @@ logger = logging.getLogger(__name__)
 
 USUARIOS_SERVICE_URL = os.getenv("USUARIOS_SERVICE_URL", "http://usuarios:3001")
 INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "dev-internal-secret-change-in-production")
+AUTO_SYNC_ON_READ = os.getenv("AUTO_SYNC_ON_READ", "false").lower() == "true"
+AUTO_SYNC_COOLDOWN_MINUTES = int(os.getenv("AUTO_SYNC_COOLDOWN_MINUTES", "30"))
+HISTORICAL_SCOPE = os.getenv("HISTORICAL_SCOPE", "all").lower()
+
+_sync_lock = threading.Lock()
+_last_auto_sync_attempt: Optional[datetime] = None
+
+try:
+    SPAIN_TZ = ZoneInfo("Europe/Madrid")
+except Exception:
+    SPAIN_TZ = timezone.utc
 
 router = APIRouter(prefix="/gasolineras", tags=["Gasolineras"])
 
@@ -65,17 +78,222 @@ def _row_to_api(row: dict) -> dict:
 
 def _grid_size_for_zoom(zoom: int) -> Optional[float]:
     """Tamano de celda en grados para clustering segun zoom."""
+    if zoom <= 5:
+        return 0.45
     if zoom <= 6:
-        return 0.35
+        return 0.32
+    if zoom <= 7:
+        return 0.24
     if zoom <= 8:
-        return 0.18
+        return 0.16
+    if zoom <= 9:
+        return 0.11
     if zoom <= 10:
-        return 0.08
+        return 0.075
+    if zoom <= 11:
+        return 0.05
     if zoom <= 12:
-        return 0.035
+        return 0.032
+    if zoom <= 13:
+        return 0.02
     if zoom <= 14:
-        return 0.015
+        return 0.012
+    if zoom <= 15:
+        return 0.007
     return None
+
+
+def _get_snapshot_state() -> dict:
+    with get_db_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute(
+                """
+                SELECT COUNT(*) AS total, MAX(actualizado_en) AS last_sync_at
+                FROM gasolineras
+                """
+            )
+            row = dict(cur.fetchone())
+
+    total = int(row.get("total") or 0)
+    last_sync_at = row.get("last_sync_at")
+    today_local = datetime.now(SPAIN_TZ).date()
+    snapshot_date_local = None
+    is_current = False
+    if last_sync_at is not None:
+        snapshot_date_local = last_sync_at.astimezone(SPAIN_TZ).date()
+        is_current = snapshot_date_local == today_local
+
+    return {
+        "total": total,
+        "last_sync_at": last_sync_at,
+        "snapshot_date_local": snapshot_date_local,
+        "today_local": today_local,
+        "is_current": is_current,
+    }
+
+
+def _perform_sync(trigger: str = "manual") -> dict:
+    logger.info(f"🔄 Iniciando sincronización de gasolineras (trigger={trigger})...")
+
+    datos = fetch_data_gobierno()
+    if not datos:
+        raise HTTPException(status_code=503, detail="No se pudieron obtener datos desde la API del gobierno")
+
+    logger.info(f"📦 Datos recibidos: {len(datos)} registros")
+
+    datos_validos = [g for g in datos if g.get("Latitud") is not None and g.get("Longitud") is not None]
+    logger.info(f"🔢 Válidos con coordenadas: {len(datos_validos)} / {len(datos)}")
+
+    if not datos_validos:
+        raise HTTPException(status_code=500, detail="No se encontraron gasolineras con coordenadas válidas")
+
+    fecha_sync = datetime.now(timezone.utc)
+
+    rows = [
+        (
+            g.get("IDEESS"),
+            (g.get("Rótulo") or "").strip(),
+            (g.get("Municipio") or "").strip(),
+            (g.get("Provincia") or "").strip(),
+            (g.get("Dirección") or "").strip(),
+            parse_float(g.get("Precio Gasolina 95 E5") or ""),
+            parse_float(g.get("Precio Gasolina 98 E5") or ""),
+            parse_float(g.get("Precio Gasoleo A") or ""),
+            parse_float(g.get("Precio Gasoleo B") or ""),
+            parse_float(g.get("Precio Gasóleo Premium") or ""),
+            g.get("Latitud"),
+            g.get("Longitud"),
+            f"POINT({g['Longitud']} {g['Latitud']})",
+            g.get("Horario"),
+            Json(g["Horario_parsed"]) if g.get("Horario_parsed") else None,
+            fecha_sync,
+        )
+        for g in datos_validos
+    ]
+
+    with get_db_conn() as conn:
+        with get_cursor(conn) as cur:
+            cur.execute("DELETE FROM gasolineras")
+            deleted_count = cur.rowcount
+
+            execute_values(
+                cur,
+                """
+                INSERT INTO gasolineras
+                    (ideess, rotulo, municipio, provincia, direccion,
+                     precio_95_e5, precio_98_e5, precio_gasoleo_a,
+                     precio_gasoleo_b, precio_gasoleo_premium,
+                     latitud, longitud, geom,
+                     horario, horario_parsed,
+                     actualizado_en)
+                VALUES %s
+                """,
+                rows,
+                template=(
+                    "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
+                    " ST_GeomFromText(%s, 4326)::geography, %s, %s, %s)"
+                ),
+            )
+            inserted_count = len(rows)
+            logger.info(f"✅ Insertadas {inserted_count} gasolineras (eliminadas {deleted_count})")
+
+            cur.execute(
+                "DELETE FROM precios_historicos WHERE fecha < %s",
+                [fecha_sync.date() - timedelta(days=30)],
+            )
+
+    favoritas_ids: Set[str] = set()
+    if HISTORICAL_SCOPE == "favoritas":
+        try:
+            response = httpx.get(
+                f"{USUARIOS_SERVICE_URL}/api/usuarios/favoritos/all-ideess",
+                headers={"X-Internal-Secret": INTERNAL_API_SECRET},
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                favoritas_ids = set(response.json().get("ideess", []))
+                logger.info(f"📌 {len(favoritas_ids)} IDEESS favoritos para histórico")
+            else:
+                logger.warning(f"⚠️ No se pudieron obtener favoritos: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"⚠️ Error obteniendo favoritos (continuando sin histórico): {e}")
+
+    fecha_hoy: date = fecha_sync.date()
+    historico_rows = [
+        (
+            g.get("IDEESS"),
+            fecha_hoy,
+            parse_float(g.get("Precio Gasolina 95 E5") or ""),
+            parse_float(g.get("Precio Gasolina 98 E5") or ""),
+            parse_float(g.get("Precio Gasoleo A") or ""),
+            parse_float(g.get("Precio Gasoleo B") or ""),
+            parse_float(g.get("Precio Gasóleo Premium") or ""),
+        )
+        for g in datos_validos
+        if HISTORICAL_SCOPE != "favoritas" or g.get("IDEESS") in favoritas_ids
+    ]
+
+    historico_count = 0
+    if historico_rows:
+        with get_db_conn() as conn:
+            with get_cursor(conn) as cur:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO precios_historicos
+                        (ideess, fecha, p95, p98, pa, pb, pp)
+                    VALUES %s
+                    ON CONFLICT (ideess, fecha) DO UPDATE SET
+                        p95 = EXCLUDED.p95,
+                        p98 = EXCLUDED.p98,
+                        pa  = EXCLUDED.pa,
+                        pb  = EXCLUDED.pb,
+                        pp  = EXCLUDED.pp
+                    """,
+                    historico_rows,
+                )
+            historico_count = len(historico_rows)
+            logger.info(f"📊 Guardados {historico_count} registros históricos para {fecha_hoy}")
+
+    return {
+        "mensaje": "Datos sincronizados correctamente 🚀",
+        "registros_eliminados": deleted_count,
+        "registros_insertados": inserted_count,
+        "registros_historicos": historico_count,
+        "historico_scope": HISTORICAL_SCOPE,
+        "favoritas_totales": len(favoritas_ids),
+        "fecha_snapshot": fecha_sync.date().isoformat(),
+        "total": inserted_count,
+        "trigger": trigger,
+    }
+
+
+def _maybe_auto_sync_on_read(reason: str):
+    global _last_auto_sync_attempt
+
+    if not AUTO_SYNC_ON_READ:
+        return
+
+    with _sync_lock:
+        now = datetime.now(timezone.utc)
+        if _last_auto_sync_attempt is not None:
+            elapsed = now - _last_auto_sync_attempt
+            if elapsed < timedelta(minutes=AUTO_SYNC_COOLDOWN_MINUTES):
+                return
+
+        state = _get_snapshot_state()
+        if state["total"] > 0 and state["is_current"]:
+            return
+
+        _last_auto_sync_attempt = now
+        logger.warning(
+            "⚠️ Snapshot no vigente (total=%s, snapshot=%s, hoy=%s). Ejecutando autosync (%s)",
+            state["total"],
+            state["snapshot_date_local"],
+            state["today_local"],
+            reason,
+        )
+        _perform_sync(trigger=f"auto-read:{reason}")
 
 
 @router.post(
@@ -86,6 +304,8 @@ def _grid_size_for_zoom(zoom: int) -> Optional[float]:
 )
 def get_gasolineras_markers(viewport: MarkersViewport):
     try:
+        _maybe_auto_sync_on_read("markers")
+
         if viewport.lat_sw >= viewport.lat_ne:
             raise HTTPException(status_code=400, detail="lat_sw must be lower than lat_ne")
         if viewport.lon_sw >= viewport.lon_ne:
@@ -211,6 +431,8 @@ def get_gasolineras(
 ):
     """Obtiene la lista de gasolineras con filtros opcionales"""
     try:
+        _maybe_auto_sync_on_read("list")
+
         # Construir query de filtros
         conditions: list[str] = []
         params: list = []
@@ -264,6 +486,8 @@ def gasolineras_cerca(
     limit: int = Query(100, ge=1, le=500),
 ):
     try:
+        _maybe_auto_sync_on_read("nearby")
+
         sql = """
             SELECT
                 ideess, rotulo, municipio, provincia, direccion,
@@ -316,147 +540,8 @@ def sync_gasolineras(x_internal_secret: Optional[str] = Header(default=None, ali
         raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
-        logger.info("\U0001f504 Iniciando sincronizaci\u00f3n de gasolineras...")
-
-        datos = fetch_data_gobierno()
-        if not datos:
-            raise HTTPException(status_code=503, detail="No se pudieron obtener datos desde la API del gobierno")
-
-        logger.info(f"\U0001f4e6 Datos recibidos: {len(datos)} registros")
-
-        datos_validos = [g for g in datos if g.get("Latitud") is not None and g.get("Longitud") is not None]
-        logger.info(f"\U0001f522 V\u00e1lidos con coordenadas: {len(datos_validos)} / {len(datos)}")
-
-        if not datos_validos:
-            raise HTTPException(status_code=500, detail="No se encontraron gasolineras con coordenadas v\u00e1lidas")
-
-        fecha_sync = datetime.now(timezone.utc)
-
-        # ---------------------------------------------------------------
-        # Batch INSERT con PostGIS
-        # geom: WKT "POINT(lon lat)" -> ST_GeomFromText(%s, 4326)::geography
-        # Nota: la API devuelve campos con nombres en espanol con tildes.
-        # fetch_gobierno.py los guarda tal cual; aqui se accede por alias
-        # sin tilde para compatibilidad con el resultado de parse_gasolinera.
-        # ---------------------------------------------------------------
-        rows = [
-            (
-                g.get("IDEESS"),
-                (g.get("R\u00f3tulo") or "").strip(),
-                (g.get("Municipio") or "").strip(),
-                (g.get("Provincia") or "").strip(),
-                (g.get("Direcci\u00f3n") or "").strip(),
-                parse_float(g.get("Precio Gasolina 95 E5") or ""),
-                parse_float(g.get("Precio Gasolina 98 E5") or ""),
-                parse_float(g.get("Precio Gasoleo A") or ""),
-                parse_float(g.get("Precio Gasoleo B") or ""),
-                parse_float(g.get("Precio Gas\u00f3leo Premium") or ""),
-                g.get("Latitud"),
-                g.get("Longitud"),
-                f"POINT({g['Longitud']} {g['Latitud']})",
-                g.get("Horario"),
-                Json(g["Horario_parsed"]) if g.get("Horario_parsed") else None,
-                fecha_sync,
-            )
-            for g in datos_validos
-        ]
-
-        with get_db_conn() as conn:
-            with get_cursor(conn) as cur:
-                cur.execute("DELETE FROM gasolineras")
-                deleted_count = cur.rowcount
-
-                execute_values(
-                    cur,
-                    """
-                    INSERT INTO gasolineras
-                        (ideess, rotulo, municipio, provincia, direccion,
-                         precio_95_e5, precio_98_e5, precio_gasoleo_a,
-                         precio_gasoleo_b, precio_gasoleo_premium,
-                         latitud, longitud, geom,
-                         horario, horario_parsed,
-                         actualizado_en)
-                    VALUES %s
-                    """,
-                    rows,
-                    template=(
-                        "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-                        " ST_GeomFromText(%s, 4326)::geography, %s, %s, %s)"
-                    ),
-                )
-                inserted_count = len(rows)
-                logger.info(f"\u2705 Insertadas {inserted_count} gasolineras (eliminadas {deleted_count})")
-
-                cur.execute(
-                    "DELETE FROM precios_historicos WHERE fecha < %s",
-                    [fecha_sync.date() - timedelta(days=30)],
-                )
-
-        # ---------------------------------------------------------------
-        # Hist\u00f3rico - solo favoritas
-        # ---------------------------------------------------------------
-        favoritas_ids: Set[str] = set()
-        try:
-            response = httpx.get(
-                f"{USUARIOS_SERVICE_URL}/api/usuarios/favoritos/all-ideess",
-                headers={"X-Internal-Secret": INTERNAL_API_SECRET},
-                timeout=10.0,
-            )
-            if response.status_code == 200:
-                favoritas_ids = set(response.json().get("ideess", []))
-                logger.info(f"\U0001f4cc {len(favoritas_ids)} IDEESS favoritos para hist\u00f3rico")
-            else:
-                logger.warning(f"\u26a0\ufe0f No se pudieron obtener favoritos: {response.status_code}")
-        except Exception as e:
-            logger.warning(f"\u26a0\ufe0f Error obteniendo favoritos (continuando sin hist\u00f3rico): {e}")
-
-        historico_count = 0
-        if favoritas_ids:
-            fecha_hoy: date = fecha_sync.date()
-            historico_rows = [
-                (
-                    g.get("IDEESS"),
-                    fecha_hoy,
-                    parse_float(g.get("Precio Gasolina 95 E5") or ""),
-                    parse_float(g.get("Precio Gasolina 98 E5") or ""),
-                    parse_float(g.get("Precio Gasoleo A") or ""),
-                    parse_float(g.get("Precio Gasoleo B") or ""),
-                    parse_float(g.get("Precio Gas\u00f3leo Premium") or ""),
-                )
-                for g in datos_validos
-                if g.get("IDEESS") in favoritas_ids
-            ]
-
-            if historico_rows:
-                with get_db_conn() as conn:
-                    with get_cursor(conn) as cur:
-                        execute_values(
-                            cur,
-                            """
-                            INSERT INTO precios_historicos
-                                (ideess, fecha, p95, p98, pa, pb, pp)
-                            VALUES %s
-                            ON CONFLICT (ideess, fecha) DO UPDATE SET
-                                p95 = EXCLUDED.p95,
-                                p98 = EXCLUDED.p98,
-                                pa  = EXCLUDED.pa,
-                                pb  = EXCLUDED.pb,
-                                pp  = EXCLUDED.pp
-                            """,
-                            historico_rows,
-                        )
-                    historico_count = len(historico_rows)
-                    logger.info(f"\U0001f4ca Guardados {historico_count} registros hist\u00f3ricos para {fecha_hoy}")
-
-        return {
-            "mensaje": "Datos sincronizados correctamente \U0001f680",
-            "registros_eliminados": deleted_count,
-            "registros_insertados": inserted_count,
-            "registros_historicos": historico_count,
-            "favoritas_totales": len(favoritas_ids),
-            "fecha_snapshot": fecha_sync.date().isoformat(),
-            "total": inserted_count,
-        }
+        with _sync_lock:
+            return _perform_sync(trigger="manual")
 
     except HTTPException:
         raise
@@ -482,6 +567,50 @@ def count_gasolineras():
         raise HTTPException(status_code=500, detail=f"Error al contar gasolineras: {e}")
 
 
+@router.get("/snapshot", response_model=dict, summary="Estado de frescura del snapshot")
+def snapshot_status():
+    try:
+        state = _get_snapshot_state()
+        return {
+            "total": state["total"],
+            "is_current": state["is_current"],
+            "today_local": state["today_local"].isoformat(),
+            "snapshot_date_local": state["snapshot_date_local"].isoformat() if state["snapshot_date_local"] else None,
+            "last_sync_at": state["last_sync_at"].isoformat() if state["last_sync_at"] else None,
+            "timezone": "Europe/Madrid",
+        }
+    except Exception as e:
+        logger.error(f"❌ Error al obtener estado de snapshot: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al obtener snapshot: {e}")
+
+
+@router.post("/ensure-fresh", response_model=dict, summary="Sincroniza solo si faltan datos actuales")
+def ensure_fresh_gasolineras(x_internal_secret: Optional[str] = Header(default=None, alias="X-Internal-Secret")):
+    if x_internal_secret != INTERNAL_API_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    try:
+        with _sync_lock:
+            state = _get_snapshot_state()
+            if state["total"] > 0 and state["is_current"]:
+                return {
+                    "synced": False,
+                    "reason": "snapshot-current",
+                    "total": state["total"],
+                    "snapshot_date_local": state["snapshot_date_local"].isoformat() if state["snapshot_date_local"] else None,
+                    "today_local": state["today_local"].isoformat(),
+                }
+
+            result = _perform_sync(trigger="ensure-fresh")
+            return {"synced": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error en ensure-fresh: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error al asegurar frescura: {e}")
+
+
 # ---------------------------------------------------------------------------
 # GET /gasolineras/estadisticas
 # ---------------------------------------------------------------------------
@@ -491,6 +620,8 @@ def obtener_estadisticas(
     municipio: Optional[str] = Query(None),
 ):
     try:
+        _maybe_auto_sync_on_read("stats")
+
         conditions: list[str] = []
         params: list = []
         if provincia:
@@ -561,6 +692,8 @@ def obtener_estadisticas(
 @router.get("/{id}", response_model=Gasolinera, summary="Obtener detalles de una gasolinera por ID")
 def get_gasolinera_por_id(id: str):
     try:
+        _maybe_auto_sync_on_read("detail")
+
         with get_db_conn() as conn:
             with get_cursor(conn) as cur:
                 cur.execute("SELECT * FROM gasolineras WHERE ideess = %s", [id])
@@ -584,6 +717,8 @@ def get_gasolinera_por_id(id: str):
 @router.get("/{id}/cercanas", summary="Obtener gasolineras cercanas a otra gasolinera")
 def get_gasolineras_cercanas(id: str, radio_km: float = 5):
     try:
+        _maybe_auto_sync_on_read("nearby-by-id")
+
         sql = """
             SELECT
                 g.ideess, g.rotulo, g.municipio, g.provincia, g.direccion,
@@ -657,6 +792,13 @@ def get_historial_precios(id: str, dias: int = Query(default=30, ge=1, le=365)):
         for r in registros:
             if isinstance(r.get("fecha"), date):
                 r["fecha"] = r["fecha"].isoformat()
+            r["precios"] = {
+                "Gasolina 95 E5": _fmt(r.get("p95")),
+                "Gasolina 98 E5": _fmt(r.get("p98")),
+                "Gasóleo A": _fmt(r.get("pa")),
+                "Gasóleo B": _fmt(r.get("pb")),
+                "Gasóleo Premium": _fmt(r.get("pp")),
+            }
 
         return {
             "IDEESS": id,

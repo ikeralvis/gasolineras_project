@@ -31,6 +31,54 @@ https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/
 
 ---
 
+## ✅ Contrato de Endpoints (actual)
+
+Todos los endpoints funcionales viven bajo prefijo `/gasolineras`:
+
+- `GET /gasolineras/`:
+  - obtener listado con filtros opcionales (`provincia`, `municipio`, `precio_max`, `skip`, `limit`)
+  - funciona también sin filtros
+- `GET /gasolineras/cerca`:
+  - obtener estaciones cercanas por `lat`, `lon`, `km`, `limit`
+- `GET /gasolineras/{id}`:
+  - detalle de estación
+- `GET /gasolineras/{id}/cercanas`:
+  - cercanas respecto a una estación
+- `GET /gasolineras/{id}/historial`:
+  - histórico de precios para gráfico
+- `POST /gasolineras/markers`:
+  - datos de mapa por viewport (clusters o estaciones)
+- `POST /gasolineras/sync`:
+  - carga snapshot desde API oficial y guarda en BD (requiere `X-Internal-Secret`)
+- `POST /gasolineras/ensure-fresh`:
+  - sincroniza solo si no hay snapshot vigente del día (requiere `X-Internal-Secret`)
+- `GET /gasolineras/snapshot`:
+  - estado de frescura (último sync, fecha local, vigente/no vigente)
+
+---
+
+## 🔄 Frescura de datos (operación cloud)
+
+Estrategia recomendada de producción para evitar datos desactualizados:
+
+- `startup guard`:
+  - al arrancar `gasolineras-service`, si no hay snapshot vigente del día, ejecuta sync automático
+  - controlado por `AUTO_ENSURE_FRESH_ON_STARTUP=true`
+- `scheduler interno en gateway`:
+  - el gateway llama periódicamente a `POST /gasolineras/ensure-fresh`
+  - variables: `GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED`, `GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES`
+- `read-time autosync` (opcional):
+  - si activas `AUTO_SYNC_ON_READ=true`, al leer datos (listado/markers/etc.) intenta refrescar si no hay snapshot del día
+  - recomendado como fallback, no como mecanismo principal
+
+Patrón profesional recomendado:
+
+- principal: scheduler (Cloud Scheduler / EventBridge / cron)
+- respaldo: startup guard
+- opcional: read-time fallback para resiliencia
+
+---
+
 ### ✨ Características
 
 ### 🔧 Técnicas

@@ -8,7 +8,12 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routes.gasolineras import router as gasolineras_router
+from app.routes.gasolineras import (
+    router as gasolineras_router,
+    _get_snapshot_state,
+    _perform_sync,
+    _sync_lock,
+)
 from app.db.connection import close_db_connection, test_db_connection
 
 # Configuración de logging
@@ -17,6 +22,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+AUTO_ENSURE_FRESH_ON_STARTUP = os.getenv("AUTO_ENSURE_FRESH_ON_STARTUP", "true").lower() == "true"
 
 # Lifespan events para gestionar la conexión a la BD
 @asynccontextmanager
@@ -27,6 +33,31 @@ async def lifespan(app: FastAPI):
     try:
         test_db_connection()
         logger.info("✅ Conexión a PostgreSQL (Neon) establecida")
+
+        if AUTO_ENSURE_FRESH_ON_STARTUP:
+            with _sync_lock:
+                snapshot = _get_snapshot_state()
+                if snapshot["total"] > 0 and snapshot["is_current"]:
+                    logger.info(
+                        "ℹ️ Snapshot vigente al arrancar (total=%s, fecha=%s)",
+                        snapshot["total"],
+                        snapshot["snapshot_date_local"],
+                    )
+                else:
+                    logger.warning(
+                        "⚠️ Snapshot no vigente al arrancar (total=%s, snapshot=%s, hoy=%s). Sincronizando...",
+                        snapshot["total"],
+                        snapshot["snapshot_date_local"],
+                        snapshot["today_local"],
+                    )
+                    result = _perform_sync(trigger="startup")
+                    logger.info(
+                        "✅ Startup sync completado: total=%s, fecha_snapshot=%s",
+                        result.get("total"),
+                        result.get("fecha_snapshot"),
+                    )
+        else:
+            logger.info("ℹ️ AUTO_ENSURE_FRESH_ON_STARTUP=false: no se evalúa frescura en startup")
     except Exception as e:
         logger.error(f"❌ Error al conectar con PostgreSQL: {e}")
     
