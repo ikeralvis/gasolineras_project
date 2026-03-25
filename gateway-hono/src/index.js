@@ -13,6 +13,7 @@ const USUARIOS_SERVICE = process.env.USUARIOS_SERVICE_URL || "http://usuarios:30
 const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000";
 const RECOMENDACION_SERVICE = process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001";
 const EV_CHARGING_SERVICE = process.env.EV_CHARGING_SERVICE_URL || "http://ev-charging:8000";
+const VOICE_ASSISTANT_SERVICE = process.env.VOICE_ASSISTANT_SERVICE_URL || "http://voice-assistant:8090";
 const PREDICTION_SERVICE = process.env.PREDICTION_SERVICE_URL || "";
 const GEOCODING_BASE_URL = process.env.GEOCODING_BASE_URL || "https://nominatim.openstreetmap.org";
 const GEOCODING_USER_AGENT = process.env.GEOCODING_USER_AGENT || "TankGo/1.0 (geocoding proxy)";
@@ -25,6 +26,9 @@ const FRONTEND_URLS = (process.env.FRONTEND_URLS || "")
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const OPENAPI_TIMEOUT_MS = Number(process.env.OPENAPI_TIMEOUT_MS || 12000);
 const HEALTH_TIMEOUT_MS = Number(process.env.HEALTH_TIMEOUT_MS || 12000);
+const GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED = (process.env.GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED || "true").toLowerCase() === "true";
+const GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES = Number(process.env.GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES || 60);
+const GASOLINERAS_STARTUP_ENSURE_FRESH = (process.env.GASOLINERAS_STARTUP_ENSURE_FRESH || "true").toLowerCase() === "true";
 
 const SERVICE_REGISTRY = {
   usuarios: {
@@ -948,6 +952,58 @@ app.all("/api/charging", proxyCharging);
 app.all("/api/charging/*", proxyCharging);
 
 // ========================================
+// 🗣️ PROXY: VOICE ASSISTANT SERVICE
+// ========================================
+async function proxyVoice(c) {
+  try {
+    const path = c.req.path === "/api/voice/health"
+      ? "/health"
+      : c.req.path.replace("/api/voice", "/voice");
+    const searchParams = new URL(c.req.url).searchParams;
+    const queryString = searchParams.toString();
+    const querySuffix = queryString ? `?${queryString}` : "";
+    const url = `${VOICE_ASSISTANT_SERVICE}${path}${querySuffix}`;
+
+    console.log(`🗣️ Proxy voice: ${c.req.method} ${url}`);
+
+    const headers = {};
+    for (const [key, value] of c.req.raw.headers) {
+      const lowerKey = key.toLowerCase();
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
+        headers[key] = value;
+      }
+    }
+
+    const options = { method: c.req.method, headers };
+    if (["POST", "PUT", "PATCH"].includes(c.req.method)) {
+      options.body = await c.req.text();
+    }
+
+    const response = await fetch(url, options);
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      const data = await response.json();
+      return c.json(data, response.status);
+    }
+
+    return c.text(await response.text(), response.status);
+  } catch (error) {
+    console.error("Error en proxy de voice assistant:", error);
+    return c.json(
+      {
+        error: "Error al comunicarse con el servicio de voz",
+        message: error.message,
+      },
+      503
+    );
+  }
+}
+
+app.all("/api/voice", proxyVoice);
+app.all("/api/voice/*", proxyVoice);
+
+// ========================================
 // ❌ MANEJO DE RUTAS NO ENCONTRADAS
 // ========================================
 app.notFound((c) => {
@@ -976,10 +1032,55 @@ app.onError((err, c) => {
   );
 });
 
+async function ensureGasolinerasFresh(reason = "scheduler") {
+  try {
+    if (!GASOLINERAS_SERVICE) {
+      return;
+    }
+    const response = await fetch(`${GASOLINERAS_SERVICE}/gasolineras/ensure-fresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Secret": INTERNAL_SECRET,
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.warn(`⚠️ ensure-fresh falló (${reason}) status=${response.status}`, payload);
+      return;
+    }
+
+    if (payload.synced) {
+      console.log(`✅ ensure-fresh ejecutó sincronización (${reason}):`, {
+        total: payload.total,
+        fecha_snapshot: payload.fecha_snapshot,
+      });
+    } else {
+      console.log(`ℹ️ ensure-fresh no sincroniza (${reason}): snapshot vigente`);
+    }
+  } catch (error) {
+    console.warn(`⚠️ Error ejecutando ensure-fresh (${reason}):`, error.message);
+  }
+}
+
 // ========================================
 // 🚀 INICIAR SERVIDOR
 // ========================================
 serve({ fetch: app.fetch, port: PORT });
+
+if (GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED) {
+  if (GASOLINERAS_STARTUP_ENSURE_FRESH) {
+    setTimeout(() => {
+      ensureGasolinerasFresh("startup");
+    }, 4000);
+  }
+
+  const intervalMs = Math.max(5, GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES) * 60 * 1000;
+  setInterval(() => {
+    ensureGasolinerasFresh("interval");
+  }, intervalMs);
+}
 
 const startupBaseUrl = GATEWAY_PUBLIC_URL || `http://localhost:${PORT}`;
 
