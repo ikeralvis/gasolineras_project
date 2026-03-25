@@ -39,6 +39,13 @@ const formatearFecha = (isoString: string): string => {
   return fecha.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
 };
 
+const formatTooltipValue = (value: number | string | ReadonlyArray<number | string> | undefined): [string, string] => {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = typeof raw === "number" ? raw : Number.parseFloat(String(raw ?? "").replace(",", "."));
+  const amount = Number.isFinite(parsed) ? parsed.toFixed(3) : "";
+  return [`${amount} €/L`, ""];
+};
+
 export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosProps>) {
   const { t } = useTranslation();
   const [datos, setDatos] = useState<DatosGrafico[]>([]);
@@ -192,7 +199,7 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
               borderRadius: "8px",
               padding: "12px",
             }}
-            formatter={(value: number | undefined) => [`${value != null ? value.toFixed(3) : ''} €/L`, ""]}
+            formatter={formatTooltipValue}
             labelFormatter={(label) => `${t('history.dateLabel')}: ${label}`}
           />
           <Legend

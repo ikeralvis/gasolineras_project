@@ -71,20 +71,20 @@ interface GasolineraDetail extends Gasolinera {
 function createIcon(imageUrl?: string | null) {
   if (!imageUrl) {
     return L.divIcon({
-      html: `<div style="width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:#0F766E;border-radius:50%;border:2.5px solid white;box-shadow:0 3px 10px rgba(0,0,0,0.35)"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12"/><path d="M5 22V6.5A2.5 2.5 0 0 1 7.5 4h6A2.5 2.5 0 0 1 16 6.5V22"/><path d="M16 9h2.5A1.5 1.5 0 0 1 20 10.5V14"/></svg></div>`,
+      html: `<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:#0F766E;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12"/><path d="M5 22V6.5A2.5 2.5 0 0 1 7.5 4h6A2.5 2.5 0 0 1 16 6.5V22"/><path d="M16 9h2.5A1.5 1.5 0 0 1 20 10.5V14"/></svg></div>`,
       className: "",
-      iconSize: [42, 42],
-      iconAnchor: [21, 42],
-      popupAnchor: [0, -42],
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+      popupAnchor: [0, -12],
     });
   }
 
   return L.divIcon({
-    html: `<div style="width:44px;height:44px;display:flex;align-items:center;justify-content:center"><img src="${imageUrl}" style="width:40px;height:40px;object-fit:contain;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));" /></div>`,
+    html: `<div style="width:32px;height:32px;display:flex;align-items:center;justify-content:center"><img src="${imageUrl}" style="width:28px;height:28px;object-fit:contain;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.45));" /></div>`,
     className: "",
-    iconSize: [44, 44],
-    iconAnchor: [22, 44],
-    popupAnchor: [0, -44],
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -18],
   });
 }
 
@@ -134,19 +134,22 @@ function MapUpdater({ center }: { center: [number, number] }) {
 interface GasMapControllerProps {
   onMarkersUpdate: (markers: GasMarker[]) => void;
   onLoading: (loading: boolean) => void;
+  onZoomChange: (zoom: number) => void;
 }
 
-function GasMapController({ onMarkersUpdate, onLoading }: Readonly<GasMapControllerProps>) {
+function GasMapController({ onMarkersUpdate, onLoading, onZoomChange }: Readonly<GasMapControllerProps>) {
   const map = useMap();
-  const abortRef = useRef<AbortController | null>(null);
+  const fetchSeqRef = useRef(0);
 
   const fetchMarkers = useCallback(async () => {
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
+    const currentSeq = ++fetchSeqRef.current;
 
     const bounds = map.getBounds();
     const ne = bounds.getNorthEast();
     const sw = bounds.getSouthWest();
+    const zoom = map.getZoom();
+
+    onZoomChange(zoom);
 
     onLoading(true);
     try {
@@ -155,26 +158,44 @@ function GasMapController({ onMarkersUpdate, onLoading }: Readonly<GasMapControl
         lon_ne: ne.lng,
         lat_sw: sw.lat,
         lon_sw: sw.lng,
-        zoom: map.getZoom(),
+        zoom,
       });
-      onMarkersUpdate(markers);
+      if (currentSeq === fetchSeqRef.current) {
+        onMarkersUpdate(markers);
+      }
     } catch (err) {
       console.error("Gas markers fetch error:", err);
-      onMarkersUpdate([]);
+      if (currentSeq === fetchSeqRef.current) {
+        onMarkersUpdate([]);
+      }
     } finally {
-      onLoading(false);
+      if (currentSeq === fetchSeqRef.current) {
+        onLoading(false);
+      }
     }
-  }, [map, onMarkersUpdate, onLoading]);
+  }, [map, onMarkersUpdate, onLoading, onZoomChange]);
 
   useEffect(() => {
     map.whenReady(() => {
+      map.invalidateSize();
       fetchMarkers();
-      setTimeout(() => fetchMarkers(), 220);
     });
-  }, [fetchMarkers]);
+
+    const onResize = () => {
+      map.invalidateSize();
+    };
+
+    globalThis.addEventListener("resize", onResize);
+    return () => {
+      globalThis.removeEventListener("resize", onResize);
+    };
+  }, [map, fetchMarkers]);
 
   useMapEvents({
     moveend: () => {
+      fetchMarkers();
+    },
+    zoomend: () => {
       fetchMarkers();
     },
   });
@@ -183,14 +204,29 @@ function GasMapController({ onMarkersUpdate, onLoading }: Readonly<GasMapControl
 }
 
 function createClusterDivIcon(count: number): L.DivIcon {
-  const size = Math.min(34 + Math.log2(count + 1) * 5, 58);
+  const size = Math.min(28 + Math.log2(count + 1) * 4, 46);
   const label = count > 999 ? "999+" : String(count);
   return L.divIcon({
-    html: `<div style="width:${size}px;height:${size}px;background:#0F766E;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;font-weight:700;border:2.5px solid white;box-shadow:0 2px 10px rgba(0,0,0,0.35);cursor:pointer">${label}</div>`,
+    html: `<div style="width:${size}px;height:${size}px;background:#0F766E;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:700;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:pointer">${label}</div>`,
     className: "",
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
   });
+}
+
+const SPAIN_BOUNDS: [[number, number], [number, number]] = [[35.7, -9.7], [43.9, 3.4]];
+
+function DefaultSpainViewController({ enabled }: Readonly<{ enabled: boolean }>) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    map.fitBounds(SPAIN_BOUNDS, { padding: [24, 24] });
+  }, [enabled, map]);
+
+  return null;
 }
 
 interface ClusterCircleProps {
@@ -472,10 +508,11 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
 export default function MapaGasolineras() {
   const { t } = useTranslation();
   const [markers, setMarkers] = useState<GasMarker[]>([]);
-  const [userLocation, setUserLocation] = useState<[number, number]>([40.4168, -3.7038]);
+  const [userLocation, setUserLocation] = useState<[number, number]>([40.2, -3.5]);
   const [loading, setLoading] = useState(false);
   const [locationGranted, setLocationGranted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mapZoom, setMapZoom] = useState(6);
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -494,6 +531,7 @@ export default function MapaGasolineras() {
 
   const stationMarkers = markers.filter((m): m is { type: "station"; station: Gasolinera } => m.type === "station");
   const clusterMarkers = markers.filter((m): m is GasClusterMarker => m.type === "cluster");
+  const showBrandLogos = mapZoom >= 16;
 
   const getStatusMessage = () => {
     if (loading) return t("map.loadingLocation");
@@ -529,7 +567,7 @@ export default function MapaGasolineras() {
 
       <MapContainer
         center={userLocation}
-        zoom={locationGranted ? 13 : 6}
+        zoom={locationGranted ? 12 : 6}
         className="flex-1 z-0"
         style={{ zIndex: 0 }}
       >
@@ -539,10 +577,12 @@ export default function MapaGasolineras() {
           />
 
           <MapUpdater center={userLocation} />
+          <DefaultSpainViewController enabled={!locationGranted} />
 
           <GasMapController
             onMarkersUpdate={setMarkers}
             onLoading={setLoading}
+            onZoomChange={setMapZoom}
           />
 
           {locationGranted && (
@@ -566,7 +606,9 @@ export default function MapaGasolineras() {
             <Marker
               key={g.station.IDEESS}
               position={[g.station.Latitud, g.station.Longitud]}
-              icon={createIcon(getBrandIcon(g.station["Rótulo"] ?? (g.station as any).Rotulo))}
+              icon={createIcon(
+                showBrandLogos ? getBrandIcon(g.station["Rótulo"] ?? (g.station as any).Rotulo) : null
+              )}
               eventHandlers={{
                 click: () => setSelectedId(g.station.IDEESS),
               }}

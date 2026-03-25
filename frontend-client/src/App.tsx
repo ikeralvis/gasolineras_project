@@ -13,6 +13,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
 import Favoritos from "./pages/Favoritos";
+import VoiceAssistantWidget from "./components/VoiceAssistantWidget";
 
 function RequireAuth({ children }: Readonly<{ children: ReactElement }>) {
   const { isAuthenticated, loading } = useAuth();
@@ -53,6 +54,7 @@ function AppContent() {
           <Route path="*" element={<Navigate to={isAuthenticated ? "/gasolineras" : "/"} replace />} />
         </Routes>
       </main>
+      {isAuthenticated && !isAuthPage && <VoiceAssistantWidget />}
     </>
   );
 }
