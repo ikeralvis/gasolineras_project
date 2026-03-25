@@ -14,6 +14,10 @@ services:
       PORT: 8000
       USUARIOS_SERVICE_URL: http://usuarios:3001
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
+      AUTO_ENSURE_FRESH_ON_STARTUP: ${AUTO_ENSURE_FRESH_ON_STARTUP:-true}
+      AUTO_SYNC_ON_READ: ${AUTO_SYNC_ON_READ:-false}
+      AUTO_SYNC_COOLDOWN_MINUTES: ${AUTO_SYNC_COOLDOWN_MINUTES:-30}
+      HISTORICAL_SCOPE: ${HISTORICAL_SCOPE:-all}
     healthcheck:
       test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/').read()" ]
       interval: 10s
@@ -73,6 +77,7 @@ services:
       GASOLINERAS_SERVICE_URL: http://gasolineras:8000
       RECOMENDACION_SERVICE_URL: http://recomendacion:8001
       EV_CHARGING_SERVICE_URL: http://ev-charging:8000
+      VOICE_ASSISTANT_SERVICE_URL: http://voice-assistant:8090
       PREDICTION_SERVICE_URL: ${PREDICTION_SERVICE_URL:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:80}
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:8080}
@@ -80,6 +85,9 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
       NODE_ENV: ${NODE_ENV:-development}
+      GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED: ${GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED:-true}
+      GASOLINERAS_STARTUP_ENSURE_FRESH: ${GASOLINERAS_STARTUP_ENSURE_FRESH:-true}
+      GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES: ${GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES:-60}
     depends_on:
       usuarios:
         condition: service_healthy
@@ -90,9 +98,9 @@ services:
     healthcheck:
       test: [ "CMD", "node", "-e", "require('http').get('http://localhost:8080/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})" ]
       interval: 30s
-      timeout: 3s
-      retries: 3
-      start_period: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 40s
 
   recomendacion:
     build: ./recomendacion-service
@@ -129,6 +137,53 @@ services:
     container_name: frontend-client
     ports:
       - "${FRONTEND_PORT}:80"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  mcp-gasolineras:
+    profiles: ["ai"]
+    build: ./mcp-gasolineras-server
+    container_name: mcp-gasolineras-server
+    env_file:
+      - .env
+    environment:
+      GATEWAY_BASE_URL: http://gateway:8080
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
+      HTTP_TIMEOUT_MS: ${MCP_HTTP_TIMEOUT_MS:-10000}
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  voice-assistant:
+    profiles: ["ai"]
+    build: ./voice-assistant-service
+    container_name: voice-assistant-service
+    env_file:
+      - .env
+    ports:
+      - "${VOICE_ASSISTANT_PORT:-8090}:8090"
+    environment:
+      PORT: 8090
+      GATEWAY_BASE_URL: http://gateway:8080
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-dev-internal-secret-change-in-production}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_ROUTER_MODEL: ${OPENAI_ROUTER_MODEL:-gpt-4o-mini}
+      OPENAI_LLM_MODEL: ${OPENAI_LLM_MODEL:-gpt-4o-mini}
+      OPENAI_STT_MODEL: ${OPENAI_STT_MODEL:-whisper-1}
+      OPENAI_TTS_MODEL: ${OPENAI_TTS_MODEL:-gpt-4o-mini-tts}
+      OPENAI_TTS_VOICE: ${OPENAI_TTS_VOICE:-alloy}
+      OPENAI_TTS_FORMAT: ${OPENAI_TTS_FORMAT:-mp3}
+      OPENAI_TIMEOUT_MS: ${OPENAI_TIMEOUT_MS:-12000}
+      OPENAI_ROUTER_MAX_TOKENS: ${OPENAI_ROUTER_MAX_TOKENS:-80}
+      OPENAI_LLM_MAX_TOKENS: ${OPENAI_LLM_MAX_TOKENS:-180}
+      VOICE_RATE_LIMIT_WINDOW_MS: ${VOICE_RATE_LIMIT_WINDOW_MS:-60000}
+      VOICE_RATE_LIMIT_MAX_REQUESTS: ${VOICE_RATE_LIMIT_MAX_REQUESTS:-40}
+      VOICE_MAX_TEXT_CHARS: ${VOICE_MAX_TEXT_CHARS:-450}
+      VOICE_MAX_AUDIO_BASE64_CHARS: ${VOICE_MAX_AUDIO_BASE64_CHARS:-5500000}
+      VOICE_MAX_KM: ${VOICE_MAX_KM:-25}
+      VOICE_ENABLE_TTS_AUDIO: ${VOICE_ENABLE_TTS_AUDIO:-true}
     depends_on:
       gateway:
         condition: service_healthy
