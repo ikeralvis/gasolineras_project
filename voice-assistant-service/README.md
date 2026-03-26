@@ -24,6 +24,13 @@ Servicio de voz desacoplado para investigación y despliegue empresarial.
 
 Ver `.env.example`.
 
+Estrategia MCP/REST en runtime:
+
+- `MCP_GATEWAY_MODE=mcp-first`: intenta tools MCP y si falla usa gateway REST.
+- `MCP_GATEWAY_MODE=rest`: usa solo gateway REST.
+- `MCP_GATEWAY_MODE=mcp-only`: falla si MCP no responde.
+- `MCP_SERVER_COMMAND` y `MCP_SERVER_ARGS`: comando para levantar/conectar cliente MCP por stdio.
+
 Guardrails recomendados para controlar coste:
 
 - `VOICE_RATE_LIMIT_WINDOW_MS`: ventana de rate limit.

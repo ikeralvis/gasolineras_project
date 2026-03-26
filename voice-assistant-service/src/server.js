@@ -122,6 +122,8 @@ app.post("/voice/transcribe", async (req, res) => {
 app.post("/voice/intent", async (req, res) => {
   try {
     const { text, location, includeAudio = false } = req.body || {};
+    const authHeader = req.headers.authorization || "";
+    const authToken = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : null;
     console.log(`[voice][${req.requestId}] /voice/intent incoming textLen=${typeof text === "string" ? text.length : 0} includeAudio=${Boolean(includeAudio)}`);
     if (!text || typeof text !== "string") {
       return res.status(400).json({ error: "text is required" });
@@ -159,6 +161,7 @@ app.post("/voice/intent", async (req, res) => {
         lon: location.lon,
         km: requestedKm,
         limit: 5,
+        authToken,
       });
 
       toolResult = {
