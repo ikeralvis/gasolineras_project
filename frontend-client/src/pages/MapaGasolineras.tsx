@@ -67,14 +67,15 @@ interface GasolineraDetail extends Gasolinera {
   horario_parsed?: HorarioParsed;
 }
 
-// Crear icono transparente con drop-shadow
-function createIcon(imageUrl?: string | null) {
+// Crear icono de estacion. En zoom detalle prioriza logo de marca.
+function createIcon(imageUrl?: string | null, stationName?: string) {
   if (!imageUrl) {
+    const initials = (stationName || "GS").split(/\s+/).join(" ").trim().slice(0, 2).toUpperCase();
     return L.divIcon({
-      html: `<div style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;background:#0F766E;border-radius:50%;border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.35)"><svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 22h12"/><path d="M5 22V6.5A2.5 2.5 0 0 1 7.5 4h6A2.5 2.5 0 0 1 16 6.5V22"/><path d="M16 9h2.5A1.5 1.5 0 0 1 20 10.5V14"/></svg></div>`,
+      html: `<div style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:#111827;color:white;border-radius:50%;border:2px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.35);font-size:9px;font-weight:700;letter-spacing:0.02em">${initials}</div>`,
       className: "",
-      iconSize: [22, 22],
-      iconAnchor: [11, 11],
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
       popupAnchor: [0, -12],
     });
   }
@@ -513,6 +514,7 @@ export default function MapaGasolineras() {
   const [locationGranted, setLocationGranted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapZoom, setMapZoom] = useState(6);
+  const [wheelZoomEnabled, setWheelZoomEnabled] = useState(false);
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -531,7 +533,7 @@ export default function MapaGasolineras() {
 
   const stationMarkers = markers.filter((m): m is { type: "station"; station: Gasolinera } => m.type === "station");
   const clusterMarkers = markers.filter((m): m is GasClusterMarker => m.type === "cluster");
-  const showBrandLogos = mapZoom >= 16;
+  const showBrandLogos = mapZoom >= 14;
 
   const getStatusMessage = () => {
     if (loading) return t("map.loadingLocation");
@@ -561,6 +563,17 @@ export default function MapaGasolineras() {
                 <span className="text-xs font-medium text-green-300">{t("map.locationDetected")}</span>
               </div>
             )}
+            <button
+              type="button"
+              onClick={() => setWheelZoomEnabled((prev) => !prev)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition ${
+                wheelZoomEnabled
+                  ? 'bg-white text-[#000C74] border-white/80'
+                  : 'bg-white/10 text-white border-white/35 hover:bg-white/20'
+              }`}
+            >
+              {wheelZoomEnabled ? 'Scroll zoom ON' : 'Scroll zoom OFF'}
+            </button>
           </div>
         </div>
       </div>
@@ -568,6 +581,8 @@ export default function MapaGasolineras() {
       <MapContainer
         center={userLocation}
         zoom={locationGranted ? 12 : 6}
+        scrollWheelZoom={wheelZoomEnabled}
+        wheelPxPerZoomLevel={160}
         className="flex-1 z-0"
         style={{ zIndex: 0 }}
       >
@@ -607,7 +622,8 @@ export default function MapaGasolineras() {
               key={g.station.IDEESS}
               position={[g.station.Latitud, g.station.Longitud]}
               icon={createIcon(
-                showBrandLogos ? getBrandIcon(g.station["Rótulo"] ?? (g.station as any).Rotulo) : null
+                showBrandLogos ? getBrandIcon(g.station["Rótulo"] ?? (g.station as any).Rotulo) : null,
+                g.station["Rótulo"] ?? (g.station as any).Rotulo
               )}
               eventHandlers={{
                 click: () => setSelectedId(g.station.IDEESS),

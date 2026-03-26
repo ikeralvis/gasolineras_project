@@ -321,41 +321,41 @@ export default function Gasolineras() {
 
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-8 md:py-12">
-            <div className="mb-6">
-                <h1 className="text-3xl md:text-4xl font-bold text-[#000C74] mb-2">
+        <div className="max-w-7xl mx-auto px-4 py-6 md:py-10">
+            <div className="mb-5 md:mb-6">
+                <h1 className="text-2xl md:text-3xl font-semibold text-[#0f172a] mb-1.5 tracking-tight">
                     {t('gasStations.title')}
                 </h1>
-                <p className="text-gray-600">
+                <p className="text-sm md:text-base text-gray-500">
                     {t('gasStations.subtitle')}
                 </p>
             </div>
 
             {/* Panel de Filtros con Acordeón */}
-            <div className="bg-white shadow-lg border border-[#D9DBF2]/70 rounded-2xl overflow-hidden">
+            <div className="bg-white shadow-sm border border-gray-200 rounded-2xl overflow-hidden">
                 {/* Cabecera del acordeón - siempre visible */}
                 <button
                     type="button"
                     onClick={() => setFiltrosAbiertos(!filtrosAbiertos)}
-                    className="w-full flex items-center justify-between p-4 md:p-6 hover:bg-gray-50 transition-colors"
+                    className="w-full flex items-center justify-between p-4 md:p-5 hover:bg-gray-50 transition-colors"
                     aria-expanded={filtrosAbiertos}
                     aria-controls="panel-filtros"
                 >
                     <div className="flex items-center gap-3">
-                        <div className="p-2 bg-[#000C74]/10 rounded-lg">
-                            <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <div className="p-2 bg-gray-100 rounded-lg">
+                            <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
                             </svg>
                         </div>
                         <div className="text-left">
-                            <h3 className="text-lg font-semibold text-gray-900">{t('common.filter')}</h3>
+                            <h3 className="text-base md:text-lg font-semibold text-gray-900">{t('common.filter')}</h3>
                             <p className="text-sm text-gray-500 hidden md:block">{t('gasStations.customizeSearch')}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-3">
                         {/* Badge de filtros activos */}
                         {(provincia || municipio || nombre || precioMax || marcasSeleccionadas.length > 0) && (
-                            <span className="px-2 py-1 bg-[#000C74] text-white text-xs font-medium rounded-full">
+                            <span className="px-2 py-1 bg-gray-900 text-white text-xs font-medium rounded-full">
                                 {[provincia, municipio, nombre, precioMax].filter(Boolean).length + marcasSeleccionadas.length} {t('gasStations.filtersActive')}
                             </span>
                         )}
@@ -379,7 +379,7 @@ export default function Gasolineras() {
                         <div className="flex items-center justify-end mb-4">
                             <button
                                 onClick={limpiarFiltros}
-                                className="text-sm text-[#000C74] hover:text-[#0A128C] font-medium flex items-center gap-1"
+                                className="text-sm text-gray-700 hover:text-gray-900 font-medium flex items-center gap-1"
                             >
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -389,8 +389,8 @@ export default function Gasolineras() {
                         </div>
 
                         {/* SELECTOR DE COMBUSTIBLE - DESTACADO */}
-                        <div className="mb-6 p-4 bg-linear-to-r from-[#000C74]/5 to-[#4A52D9]/5 rounded-xl border-2 border-[#000C74]/20">
-                            <label htmlFor="combustible-select" className="text-sm font-bold text-[#000C74] mb-3 flex items-center gap-2">
+                        <div className="mb-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                            <label htmlFor="combustible-select" className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                                 </svg>
@@ -400,7 +400,7 @@ export default function Gasolineras() {
                                 id="combustible-select"
                                 value={combustibleSeleccionado}
                                 onChange={(e) => setCombustibleSeleccionado(e.target.value)}
-                                className="w-full border-2 border-[#000C74]/30 focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
+                                className="w-full border border-gray-300 focus:border-gray-500 focus:ring-2 focus:ring-gray-200 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
                             >
                                 <option value="Precio Gasolina 95 E5">{t('fuel.gasoline95')}</option>
                                 <option value="Precio Gasolina 98 E5">{t('fuel.gasoline98')}</option>
@@ -414,7 +414,7 @@ export default function Gasolineras() {
                             {/* PROVINCIA CON AUTOCOMPLETE */}
                             <div className="relative">
                                 <label htmlFor="provincia" className="block text-sm font-medium text-gray-700 mb-2">
-                                    🏙️ {t('filter.province')}
+                                    {t('filter.province')}
                                 </label>
                                 <input
                                     id="provincia"
@@ -460,7 +460,7 @@ export default function Gasolineras() {
                             {/* MUNICIPIO CON AUTOCOMPLETE */}
                             <div className="relative">
                                 <label htmlFor="municipio" className="block text-sm font-medium text-gray-700 mb-2">
-                                    📍 {t('filter.municipality')}
+                                    {t('filter.municipality')}
                                 </label>
                                 <input
                                     id="municipio"
@@ -505,7 +505,7 @@ export default function Gasolineras() {
 
                             <div>
                                 <label htmlFor="nombre" className="block text-sm font-medium text-gray-700 mb-2">
-                                    🏢 {t('filter.brandName')}
+                                    {t('filter.brandName')}
                                 </label>
                                 <input
                                     id="nombre"
@@ -519,7 +519,7 @@ export default function Gasolineras() {
 
                             <div>
                                 <label htmlFor="precioMax" className="block text-sm font-medium text-gray-700 mb-2">
-                                    💰 {t('gasStations.maxPrice')}
+                                    {t('gasStations.maxPrice')}
                                 </label>
                                 <input
                                     id="precioMax"
@@ -537,7 +537,7 @@ export default function Gasolineras() {
                         <button
                             type="button"
                             onClick={() => setMostrarFiltrosAvanzados(!mostrarFiltrosAvanzados)}
-                            className="mt-4 flex items-center gap-2 text-sm font-medium text-[#000C74] hover:text-[#0A128C] transition"
+                            className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900 transition"
                             aria-expanded={mostrarFiltrosAvanzados}
                         >
                             <svg 
@@ -553,7 +553,7 @@ export default function Gasolineras() {
 
                         {/* Filtros avanzados */}
                         {mostrarFiltrosAvanzados && (
-                            <div className="mt-4 p-4 bg-gray-50 rounded-xl border border-gray-200">
+                            <div className="mt-4 p-4 bg-gray-50/80 rounded-xl border border-gray-200">
                                 {/* Filtro por marcas */}
                                 <div className="mb-4">
                                     <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
@@ -601,11 +601,11 @@ export default function Gasolineras() {
             </div>
 
             {/* Barra de información y ordenación - Rediseñada con mejor separación */}
-            <div className="bg-white shadow-md border border-gray-200 rounded-xl p-4 mt-6">
+            <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-4 mt-5 md:mt-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div className="flex flex-wrap items-center gap-3">
-                        <span className="text-sm font-semibold text-[#000C74] bg-[#000C74]/10 px-3 py-2 rounded-lg">
-                            ⛽ {combustibleSeleccionado.replace("Precio ", "")}
+                        <span className="text-sm font-semibold text-gray-900 bg-gray-100 px-3 py-2 rounded-lg">
+                            {combustibleSeleccionado.replace("Precio ", "")}
                         </span>
                         <span className="text-sm text-gray-600 font-medium">
                             {filtered.length} {t('gasStations.foundStations')}
@@ -620,7 +620,7 @@ export default function Gasolineras() {
                         )}
                     </div>
                     <button
-                        className="w-full sm:w-auto px-5 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#0A128C] transition shadow-md font-medium flex items-center justify-center gap-2 text-sm"
+                        className="w-full sm:w-auto px-5 py-2.5 bg-gray-900 text-white rounded-xl hover:bg-black transition shadow-sm font-medium flex items-center justify-center gap-2 text-sm"
                         onClick={ordenarPorPrecio}
                     >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

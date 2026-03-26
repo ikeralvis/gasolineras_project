@@ -170,7 +170,7 @@ export default function GasolineraDetalle() {
               <img
                 src={logo}
                 alt={gasolinera["Rótulo"]}
-                className="w-14 h-14 sm:w-16 sm:h-16 object-contain shrink-0"
+                className="w-14 h-14 sm:w-16 sm:h-16 object-contain shrink-0 rounded-xl bg-white border border-gray-200 p-1.5 shadow-sm"
               />
             ) : (
               <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-[#000C74] flex items-center justify-center text-white font-bold text-xl shrink-0">
@@ -359,7 +359,7 @@ export default function GasolineraDetalle() {
                       {index + 1}
                     </span>
                     {logoC ? (
-                      <img src={logoC} alt="" className="w-9 h-9 object-contain shrink-0" />
+                      <img src={logoC} alt="" className="w-9 h-9 object-contain shrink-0 rounded-lg bg-white border border-gray-200 p-1 shadow-sm" />
                     ) : (
                       <div className="w-9 h-9 rounded-xl bg-[#000C74] flex items-center justify-center text-white font-bold text-xs shrink-0">
                         {g["Rótulo"].substring(0, 2).toUpperCase()}
