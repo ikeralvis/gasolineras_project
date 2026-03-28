@@ -82,6 +82,16 @@ const favSchemas = {
  * Rutas de favoritos (Requiere JWT)
  */
 export async function favoritesRoutes(fastify) {
+    const validateInternalSecret = async (request, reply) => {
+        const internalSecret = request.headers['x-internal-secret'];
+        const expectedSecret = process.env.INTERNAL_API_SECRET || 'dev-internal-secret-change-in-production';
+
+        if (!internalSecret || internalSecret !== expectedSecret) {
+            fastify.log.warn('⚠️ Intento de acceso a endpoint interno sin secret válido');
+            return reply.code(403).send({ error: 'Forbidden: Invalid internal secret' });
+        }
+    };
+
     // POST /favoritos (PROTEGIDA)
     fastify.post('/favoritos', {
         schema: {
@@ -203,15 +213,7 @@ export async function favoritesRoutes(fastify) {
             }
         },
         // 🔐 Validar secret interno
-        onRequest: async (request, reply) => {
-            const internalSecret = request.headers['x-internal-secret'];
-            const expectedSecret = process.env.INTERNAL_API_SECRET || 'dev-internal-secret-change-in-production';
-            
-            if (!internalSecret || internalSecret !== expectedSecret) {
-                fastify.log.warn('⚠️ Intento de acceso a /favoritos/all-ideess sin secret válido');
-                return reply.code(403).send({ error: 'Forbidden: Invalid internal secret' });
-            }
-        }
+        onRequest: validateInternalSecret
     }, async (request, reply) => {
         try {
             // Obtener todos los IDEESS únicos de favoritos
@@ -228,6 +230,80 @@ export async function favoritesRoutes(fastify) {
             });
         } catch (error) {
             fastify.log.error('Error obteniendo IDEESS favoritos:', error);
+            return reply.code(500).send({ error: 'Error interno del servidor.' });
+        }
+    });
+
+    // GET /favoritos/stats - Obtener IDEESS con número de favoritos (interno)
+    // Soporta filtros de top N y mínimo de favoritos para selección de estaciones objetivo.
+    fastify.get('/favoritos/stats', {
+        schema: {
+            tags: ['Favoritos'],
+            summary: 'Obtener estadísticas de favoritos por IDEESS (interno)',
+            description: 'Devuelve IDEESS con conteo de favoritos, ordenados descendentemente por popularidad',
+            querystring: {
+                type: 'object',
+                properties: {
+                    top_n: { type: 'integer', minimum: 1, maximum: 5000, default: 500 },
+                    min_favorites: { type: 'integer', minimum: 1, maximum: 100000, default: 1 }
+                }
+            },
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        count: { type: 'integer' },
+                        top_n: { type: 'integer' },
+                        min_favorites: { type: 'integer' },
+                        stations: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    ideess: { type: 'string' },
+                                    favorites_count: { type: 'integer' }
+                                }
+                            }
+                        }
+                    }
+                },
+                403: { type: 'object', properties: { error: { type: 'string' } } },
+                500: { type: 'object', properties: { error: { type: 'string' } } }
+            }
+        },
+        onRequest: validateInternalSecret
+    }, async (request, reply) => {
+        try {
+            const topN = Number.parseInt(String(request.query?.top_n ?? 500), 10);
+            const minFavorites = Number.parseInt(String(request.query?.min_favorites ?? 1), 10);
+            const safeTopN = Number.isNaN(topN) ? 500 : Math.min(Math.max(topN, 1), 5000);
+            const safeMinFavorites = Number.isNaN(minFavorites) ? 1 : Math.min(Math.max(minFavorites, 1), 100000);
+
+            const query = `
+                SELECT ideess, COUNT(*)::int AS favorites_count
+                FROM user_favorites
+                GROUP BY ideess
+                HAVING COUNT(*) >= $1
+                ORDER BY favorites_count DESC, ideess ASC
+                LIMIT $2;
+            `;
+
+            const result = await fastify.pg.query(query, [safeMinFavorites, safeTopN]);
+            const stations = result.rows.map((row) => ({
+                ideess: row.ideess,
+                favorites_count: Number(row.favorites_count),
+            }));
+
+            fastify.log.info(`📊 Favoritos stats: ${stations.length} IDEESS (top_n=${safeTopN}, min_favorites=${safeMinFavorites})`);
+
+            return reply.code(200).send({
+                count: stations.length,
+                top_n: safeTopN,
+                min_favorites: safeMinFavorites,
+                stations,
+            });
+        } catch (error) {
+            fastify.log.error('Error obteniendo estadísticas de favoritos:', error);
             return reply.code(500).send({ error: 'Error interno del servidor.' });
         }
     });
