@@ -1,0 +1,383 @@
+import { swaggerUI } from "@hono/swagger-ui";
+
+function buildLoadingSpec() {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "API Gateway - Gasolineras",
+      version: "1.0.0",
+      description: "Cargando especificaciones de microservicios...",
+    },
+    paths: {},
+  };
+}
+
+function buildDegradedSpec() {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "API Gateway - Gasolineras",
+      version: "1.0.0",
+      description: "Gateway en modo degradado. No se pudieron cargar los specs de los microservicios.",
+    },
+    paths: {},
+  };
+}
+
+function buildBaseAggregatedSpec() {
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "API Gateway - Gasolineras",
+      version: "1.0.0",
+      description:
+        "Gateway centralizado que unifica las APIs de usuarios, gasolineras, recomendaciones, EV charging y prediccion. Esta documentacion agrega automaticamente los endpoints de todos los microservicios.",
+      contact: {
+        name: "Equipo de desarrollo",
+        email: "dev@gasolineras.com",
+      },
+    },
+    servers: [
+      {
+        url: "/",
+        description: "API Gateway (punto de entrada unico)",
+      },
+    ],
+    paths: {
+      "/health": {
+        get: {
+          summary: "Health Check del Gateway",
+          description: "Verifica el estado del Gateway y todos los microservicios conectados",
+          tags: ["Gateway"],
+          responses: {
+            200: {
+              description: "Todos los servicios operativos",
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      status: { type: "string", enum: ["UP", "DEGRADED"] },
+                      timestamp: { type: "string", format: "date-time" },
+                      services: {
+                        type: "object",
+                        additionalProperties: {
+                          type: "object",
+                          properties: {
+                            status: { type: "string", enum: ["UP", "DOWN", "NOT_CONFIGURED"] },
+                            url: { type: "string" },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            503: {
+              description: "Uno o mas servicios caidos",
+            },
+          },
+        },
+      },
+      "/api/geocoding/search": {
+        get: {
+          summary: "Busqueda geocoding",
+          description: "Proxy de busqueda de ubicaciones via Nominatim",
+          tags: ["Gateway"],
+          parameters: [
+            { name: "q", in: "query", required: true, schema: { type: "string" } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 8 } },
+            { name: "countrycodes", in: "query", required: false, schema: { type: "string" } },
+          ],
+          responses: {
+            200: { description: "Resultados de geocoding" },
+            503: { description: "Servicio de geocoding no disponible" },
+          },
+        },
+      },
+      "/api/geocoding/reverse": {
+        get: {
+          summary: "Reverse geocoding",
+          description: "Proxy de reverse geocoding via Nominatim",
+          tags: ["Gateway"],
+          parameters: [
+            { name: "lat", in: "query", required: true, schema: { type: "number" } },
+            { name: "lon", in: "query", required: true, schema: { type: "number" } },
+          ],
+          responses: {
+            200: { description: "Resultado reverse geocoding" },
+            400: { description: "Parametros invalidos" },
+            503: { description: "Servicio de geocoding no disponible" },
+          },
+        },
+      },
+      "/api/auth/google/verify": {
+        post: {
+          summary: "Login con Google",
+          description: "Verifica credencial de Google y crea sesion",
+          tags: ["Auth"],
+          responses: {
+            200: { description: "Login correcto" },
+            400: { description: "Credencial invalida o ausente" },
+            401: { description: "Token de Google no valido" },
+            500: { description: "Error interno" },
+          },
+        },
+      },
+      "/api/auth/logout": {
+        post: {
+          summary: "Cerrar sesion",
+          description: "Elimina la cookie de autenticacion",
+          tags: ["Auth"],
+          responses: {
+            200: { description: "Logout correcto" },
+          },
+        },
+      },
+      "/api/voice/health": {
+        get: {
+          summary: "Health de voice-assistant",
+          description: "Proxy de health del servicio de voz",
+          tags: ["Health"],
+          responses: {
+            200: { description: "Servicio de voz operativo" },
+            503: { description: "Servicio de voz no disponible" },
+          },
+        },
+      },
+    },
+    components: {
+      securitySchemes: {},
+    },
+    tags: [
+      { name: "Gateway", description: "Endpoints del Gateway" },
+      { name: "Auth", description: "Autenticacion y gestion de usuarios (proxeado a usuarios-service)" },
+      { name: "Favoritos", description: "Gestion de gasolineras favoritas (proxeado a usuarios-service)" },
+      { name: "Gasolineras", description: "Informacion de gasolineras (proxeado a gasolineras-service)" },
+      {
+        name: "Recomendaciones",
+        description: "Recomendaciones de gasolineras (proxeado a recomendaciones-service)",
+      },
+      { name: "EV Charging", description: "Puntos de recarga electrica (integrado en gasolineras-service)" },
+      {
+        name: "Prediction",
+        description: "Prediccion de precios (proxeado a prediction-service cuando este configurado)",
+      },
+      { name: "Health", description: "Health checks y monitoreo" },
+    ],
+  };
+}
+
+function mapUsuariosPaths(aggregatedSpec, spec) {
+  if (!spec?.paths) {
+    return;
+  }
+
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    const gatewayPath = path.startsWith("/api/usuarios") ? path : `/api/usuarios${path}`;
+    aggregatedSpec.paths[gatewayPath] = methods;
+  }
+}
+
+function mapGasolinerasPaths(aggregatedSpec, spec) {
+  if (!spec?.paths) {
+    return;
+  }
+
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    let gatewayPath;
+    if (path.startsWith("/api/charging")) {
+      gatewayPath = path;
+    } else if (path === "/" || path === "") {
+      gatewayPath = "/api/gasolineras";
+    } else if (path.startsWith("/gasolineras")) {
+      gatewayPath = `/api${path}`;
+    } else {
+      gatewayPath = `/api/gasolineras${path}`;
+    }
+    aggregatedSpec.paths[gatewayPath] = methods;
+  }
+}
+
+function mapRecomendacionPaths(aggregatedSpec, spec) {
+  if (!spec?.paths) {
+    return;
+  }
+
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    if (path.startsWith("/recomendacion")) {
+      aggregatedSpec.paths[`/api${path}`] = methods;
+      aggregatedSpec.paths[path.replace("/recomendacion", "/api/recomendaciones")] = methods;
+    } else {
+      aggregatedSpec.paths[`/api/recomendacion${path}`] = methods;
+      aggregatedSpec.paths[`/api/recomendaciones${path}`] = methods;
+    }
+  }
+}
+
+function mapEvChargingPaths(aggregatedSpec, spec) {
+  if (!spec?.paths) {
+    return;
+  }
+
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    if (path.startsWith("/api/charging")) {
+      aggregatedSpec.paths[path] = methods;
+    } else if (path.startsWith("/charging")) {
+      aggregatedSpec.paths[`/api${path}`] = methods;
+    } else {
+      aggregatedSpec.paths[`/api/charging${path}`] = methods;
+    }
+  }
+}
+
+function mapPredictionPaths(aggregatedSpec, spec) {
+  if (!spec?.paths) {
+    return;
+  }
+
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    const gatewayPath = path.startsWith("/api/prediction") ? path : `/api/prediction${path}`;
+    aggregatedSpec.paths[gatewayPath] = methods;
+  }
+}
+
+function mergeSecuritySchemes(aggregatedSpec, specs) {
+  for (const spec of Object.values(specs)) {
+    if (spec?.components?.securitySchemes) {
+      Object.assign(aggregatedSpec.components.securitySchemes, spec.components.securitySchemes);
+    }
+  }
+}
+
+export function setupOpenApiModule(app, {
+  serviceRegistry,
+  openapiTimeoutMs,
+  openapiRetryMs,
+  openapiRefreshMs,
+}) {
+  let aggregatedSpec = null;
+  let openapiRefreshTimer = null;
+  let openapiRefreshInProgress = false;
+
+  async function fetchAndAggregateSpecs() {
+    let specEntries = [];
+    try {
+      console.log("📚 Agregando documentacion OpenAPI de microservicios...");
+
+      specEntries = Object.entries(serviceRegistry).filter(([, service]) => Boolean(service.url && service.openapiPath));
+      const specRequests = specEntries.map(([, service]) =>
+        fetch(`${service.url}${service.openapiPath}`, { signal: AbortSignal.timeout(openapiTimeoutMs) })
+      );
+      const specResponses = await Promise.allSettled(specRequests);
+
+      const specs = {};
+      const loadedServices = [];
+      const missingServices = [];
+      for (let i = 0; i < specEntries.length; i += 1) {
+        const [serviceName] = specEntries[i];
+        const response = specResponses[i];
+
+        if (response.status === "fulfilled" && response.value.ok) {
+          specs[serviceName] = await response.value.json();
+          loadedServices.push(serviceName);
+          console.log(`  ✅ ${serviceName} OpenAPI cargado`);
+        } else {
+          console.warn(`  ⚠️  ${serviceName} OpenAPI no disponible`);
+          specs[serviceName] = null;
+          missingServices.push(serviceName);
+        }
+      }
+
+      aggregatedSpec = buildBaseAggregatedSpec();
+      mapUsuariosPaths(aggregatedSpec, specs.usuarios);
+      mapGasolinerasPaths(aggregatedSpec, specs.gasolineras);
+      mapRecomendacionPaths(aggregatedSpec, specs.recomendacion);
+      mapEvChargingPaths(aggregatedSpec, specs.ev_charging);
+      mapPredictionPaths(aggregatedSpec, specs.prediction);
+      mergeSecuritySchemes(aggregatedSpec, specs);
+
+      console.log(`📋 Documentacion agregada: ${Object.keys(aggregatedSpec.paths).length} endpoints`);
+      const missingRequiredServices = missingServices.filter((serviceName) => !serviceRegistry[serviceName]?.optional);
+      return {
+        loadedServices,
+        missingServices,
+        missingRequiredServices,
+        pathCount: Object.keys(aggregatedSpec.paths).length,
+      };
+    } catch (error) {
+      console.error("❌ Error al agregar specs:", error);
+      aggregatedSpec = buildDegradedSpec();
+
+      const missingServices = specEntries.map(([serviceName]) => serviceName);
+      const missingRequiredServices = missingServices.filter((serviceName) => !serviceRegistry[serviceName]?.optional);
+      return {
+        loadedServices: [],
+        missingServices,
+        missingRequiredServices,
+        pathCount: 0,
+      };
+    }
+  }
+
+  function scheduleOpenApiRefresh(delayMs, reason) {
+    if (openapiRefreshTimer) {
+      clearTimeout(openapiRefreshTimer);
+    }
+
+    const safeDelayMs = Math.max(1000, delayMs);
+    console.log(`🗓️ Proxima recarga OpenAPI en ${Math.round(safeDelayMs / 1000)}s (${reason})`);
+
+    openapiRefreshTimer = setTimeout(() => {
+      refreshAggregatedSpecs(`timer:${reason}`);
+    }, safeDelayMs);
+  }
+
+  async function refreshAggregatedSpecs(reason = "manual") {
+    if (openapiRefreshInProgress) {
+      console.log(`⏭️ Recarga OpenAPI omitida: ya hay una en curso (${reason})`);
+      return;
+    }
+
+    openapiRefreshInProgress = true;
+    try {
+      const result = await fetchAndAggregateSpecs();
+      const missingRequiredCount = result?.missingRequiredServices?.length || 0;
+
+      if (missingRequiredCount > 0) {
+        console.warn(
+          `⚠️ OpenAPI incompleta (${reason}). Faltan servicios requeridos: ${result.missingRequiredServices.join(", ")}`
+        );
+        scheduleOpenApiRefresh(openapiRetryMs, "missing-required-services");
+        return;
+      }
+
+      if ((result?.missingServices?.length || 0) > 0) {
+        console.warn(`ℹ️ OpenAPI parcial (${reason}). Faltan servicios opcionales: ${result.missingServices.join(", ")}`);
+      }
+
+      scheduleOpenApiRefresh(openapiRefreshMs, "periodic-refresh");
+    } finally {
+      openapiRefreshInProgress = false;
+    }
+  }
+
+  app.get("/openapi.json", (c) => {
+    if (!aggregatedSpec) {
+      return c.json(buildLoadingSpec());
+    }
+    return c.json(aggregatedSpec);
+  });
+
+  app.get(
+    "/docs",
+    swaggerUI({
+      url: "/openapi.json",
+    })
+  );
+
+  return {
+    refreshAggregatedSpecs,
+  };
+}

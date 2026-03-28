@@ -1,6 +1,6 @@
 # 🚀 API Gateway - TankGo
 
-El **API Gateway** es el punto de entrada único para la aplicación TankGo. Centraliza y gestiona las solicitudes hacia los microservicios de usuarios, gasolineras, recomendación, EV charging y predicción (cuando aplica), proporcionando una capa adicional de seguridad, abstracción y monitoreo.
+El **API Gateway** es el punto de entrada único para la aplicación TankGo. Centraliza y gestiona las solicitudes hacia los microservicios de usuarios, gasolineras (incluyendo EV integrado), recomendación y predicción (cuando aplica), proporcionando una capa adicional de seguridad, abstracción y monitoreo.
 
 ---
 
@@ -32,16 +32,18 @@ GATEWAY_PUBLIC_URL=https://tu-gateway.example.com
 USUARIOS_SERVICE_URL=https://usuarios.internal
 GASOLINERAS_SERVICE_URL=https://gasolineras.internal
 RECOMENDACION_SERVICE_URL=https://recomendacion.internal
-EV_CHARGING_SERVICE_URL=https://ev-charging.internal
 # Opcional:
 # PREDICTION_SERVICE_URL=https://prediction.internal
 INTERNAL_API_SECRET=un-secreto-largo-y-unico
 NODE_ENV=production
+OPENAPI_RETRY_MS=10000
+OPENAPI_REFRESH_MS=300000
 ```
 
 Notas:
 - Usa HTTPS extremo a extremo para que `Secure` cookies funcionen en navegador.
 - Manten `INTERNAL_API_SECRET` igual en gateway y servicios internos que validan sincronizacion.
+- El gateway reintenta cargar OpenAPI mientras falte algun servicio requerido y refresca periodicamente la especificacion agregada.
 
 ---
 
@@ -77,9 +79,12 @@ El gateway redirige las solicitudes relacionadas con usuarios al microservicio `
 |--------|----------------------------|------------------------------|
 | POST   | `/api/usuarios/register`   | Registrar un nuevo usuario.  |
 | POST   | `/api/usuarios/login`      | Iniciar sesión.              |
-| GET    | `/api/usuarios/favorites`  | Obtener favoritos (requiere auth). |
-| POST   | `/api/usuarios/favorites`  | Agregar un favorito (requiere auth). |
-| DELETE | `/api/usuarios/favorites/:id` | Eliminar un favorito (requiere auth). |
+| GET    | `/api/usuarios/favoritos`  | Obtener favoritos (requiere auth). |
+| POST   | `/api/usuarios/favoritos`  | Agregar un favorito (requiere auth). |
+| DELETE | `/api/usuarios/favoritos/:id` | Eliminar un favorito (requiere auth). |
+| GET    | `/api/usuarios/health`     | Health check de usuarios (mapeado a `/health` real). |
+| GET    | `/api/usuarios/ready`      | Readiness de usuarios (mapeado a `/ready`). |
+| GET    | `/api/usuarios/live`       | Liveness de usuarios (mapeado a `/live`). |
 
 ### Gasolineras
 
@@ -100,7 +105,7 @@ El gateway redirige las solicitudes relacionadas con gasolineras al microservici
 
 | Método | Endpoint                                | Descripción                           |
 |--------|-----------------------------------------|---------------------------------------|
-| ALL    | `/api/charging/*`                       | Proxy hacia puntos de recarga EV.     |
+| ALL    | `/api/charging/*`                       | Proxy EV integrado en `gasolineras-service`. |
 
 ### Prediction
 
@@ -130,6 +135,12 @@ El endpoint `/health` verifica el estado del gateway y la conectividad con los m
   }
 }
 ```
+
+Adicionalmente, el gateway expone health/readiness/liveness de usuarios en:
+
+- `/api/usuarios/health`
+- `/api/usuarios/ready`
+- `/api/usuarios/live`
 
 ---
 

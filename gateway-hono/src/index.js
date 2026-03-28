@@ -2,8 +2,10 @@ import { serve } from "@hono/node-server";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
-import { swaggerUI } from "@hono/swagger-ui";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { setupOpenApiModule } from "./modules/openapi.js";
+import { registerHealthRoute } from "./modules/health.js";
+import { registerUsuariosRoutes } from "./modules/proxyUsuarios.js";
 
 // ========================================
 // 🔧 CONFIGURACIÓN
@@ -12,7 +14,6 @@ const PORT = process.env.PORT || 8080;
 const USUARIOS_SERVICE = process.env.USUARIOS_SERVICE_URL || "http://usuarios:3001";
 const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000";
 const RECOMENDACION_SERVICE = process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001";
-const EV_CHARGING_SERVICE = process.env.EV_CHARGING_SERVICE_URL || "http://ev-charging:8000";
 const VOICE_ASSISTANT_SERVICE = process.env.VOICE_ASSISTANT_SERVICE_URL || "http://voice-assistant:8090";
 const PREDICTION_SERVICE = process.env.PREDICTION_SERVICE_URL || "";
 const GEOCODING_BASE_URL = process.env.GEOCODING_BASE_URL || "https://nominatim.openstreetmap.org";
@@ -25,6 +26,8 @@ const FRONTEND_URLS = (process.env.FRONTEND_URLS || "")
   .filter(Boolean);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const OPENAPI_TIMEOUT_MS = Number(process.env.OPENAPI_TIMEOUT_MS || 12000);
+const OPENAPI_RETRY_MS = Number(process.env.OPENAPI_RETRY_MS || 10000);
+const OPENAPI_REFRESH_MS = Number(process.env.OPENAPI_REFRESH_MS || 300000);
 const HEALTH_TIMEOUT_MS = Number(process.env.HEALTH_TIMEOUT_MS || 12000);
 const GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED = (process.env.GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED || "true").toLowerCase() === "true";
 const GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES = Number(process.env.GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES || 60);
@@ -34,7 +37,7 @@ const SERVICE_REGISTRY = {
   usuarios: {
     url: USUARIOS_SERVICE,
     openapiPath: "/openapi.json",
-    healthPaths: ["/health", "/api/usuarios/health"],
+    healthPaths: ["/health", "/ready", "/live"],
   },
   gasolineras: {
     url: GASOLINERAS_SERVICE,
@@ -46,10 +49,11 @@ const SERVICE_REGISTRY = {
     openapiPath: "/openapi.json",
     healthPaths: ["/health", "/"],
   },
-  ev_charging: {
-    url: EV_CHARGING_SERVICE,
-    openapiPath: "/openapi.json",
-    healthPaths: ["/", "/health"],
+  voice_assistant: {
+    url: VOICE_ASSISTANT_SERVICE,
+    openapiPath: null,
+    healthPaths: ["/health"],
+    optional: true,
   },
   prediction: {
     url: PREDICTION_SERVICE,
@@ -132,195 +136,14 @@ async function fetchGeocodingJson(url) {
   return data;
 }
 
-// ========================================
-// 📡 AGREGACIÓN DE OPENAPI DE MICROSERVICIOS
-// ========================================
-let aggregatedSpec = null;
+const openApiModule = setupOpenApiModule(app, {
+  serviceRegistry: SERVICE_REGISTRY,
+  openapiTimeoutMs: OPENAPI_TIMEOUT_MS,
+  openapiRetryMs: OPENAPI_RETRY_MS,
+  openapiRefreshMs: OPENAPI_REFRESH_MS,
+});
 
-async function fetchAndAggregateSpecs() {
-  try {
-    console.log("📚 Agregando documentación OpenAPI de microservicios...");
-
-    const specEntries = Object.entries(SERVICE_REGISTRY).filter(([, service]) => Boolean(service.url));
-    const specRequests = specEntries.map(([, service]) =>
-      fetch(`${service.url}${service.openapiPath}`, { signal: AbortSignal.timeout(OPENAPI_TIMEOUT_MS) })
-    );
-    const specResponses = await Promise.allSettled(specRequests);
-
-    const specs = {};
-    for (let i = 0; i < specEntries.length; i += 1) {
-      const [serviceName] = specEntries[i];
-      const response = specResponses[i];
-
-      if (response.status === "fulfilled" && response.value.ok) {
-        specs[serviceName] = await response.value.json();
-        console.log(`  ✅ ${serviceName} OpenAPI cargado`);
-      } else {
-        console.warn(`  ⚠️  ${serviceName} OpenAPI no disponible`);
-        specs[serviceName] = null;
-      }
-    }
-
-    // Crear spec agregado
-    aggregatedSpec = {
-      openapi: "3.1.0",
-      info: {
-        title: "API Gateway - Gasolineras",
-        version: "1.0.0",
-        description: "Gateway centralizado que unifica las APIs de usuarios, gasolineras, recomendaciones, EV charging y predicción. Esta documentación agrega automáticamente los endpoints de todos los microservicios.",
-        contact: {
-          name: "Equipo de desarrollo",
-          email: "dev@gasolineras.com",
-        },
-      },
-      servers: [
-        {
-          url: "/",
-          description: "API Gateway (punto de entrada único)",
-        },
-      ],
-      paths: {
-        "/health": {
-          get: {
-            summary: "Health Check del Gateway",
-            description: "Verifica el estado del Gateway y todos los microservicios conectados",
-            tags: ["Gateway"],
-            responses: {
-              200: {
-                description: "Todos los servicios operativos",
-                content: {
-                  "application/json": {
-                    schema: {
-                      type: "object",
-                      properties: {
-                        status: { type: "string", enum: ["UP", "DEGRADED"] },
-                        timestamp: { type: "string", format: "date-time" },
-                        services: { 
-                          type: "object",
-                          additionalProperties: {
-                            type: "object",
-                            properties: {
-                              status: { type: "string", enum: ["UP", "DOWN", "NOT_CONFIGURED"] },
-                              url: { type: "string" }
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-                }
-              },
-              503: {
-                description: "Uno o más servicios caídos"
-              }
-            }
-          }
-        }
-      },
-      components: {
-        securitySchemes: {}
-      },
-      tags: [
-        { name: "Gateway", description: "Endpoints del Gateway" },
-        { name: "Auth", description: "Autenticación y gestión de usuarios (proxeado a usuarios-service)" },
-        { name: "Favoritos", description: "Gestión de gasolineras favoritas (proxeado a usuarios-service)" },
-        { name: "Gasolineras", description: "Información de gasolineras (proxeado a gasolineras-service)" },
-        { name: "Recomendaciones", description: "Recomendaciones de gasolineras (proxeado a recomendaciones-service)" },
-        { name: "EV Charging", description: "Puntos de recarga eléctrica (proxeado a ev-charging-service)" },
-        { name: "Prediction", description: "Predicción de precios (proxeado a prediction-service cuando esté configurado)" },
-        { name: "Health", description: "Health checks y monitoreo" }
-      ]
-    };
-
-    // Agregar paths de usuarios con prefijo /api/usuarios
-    if (specs.usuarios?.paths) {
-      for (const [path, methods] of Object.entries(specs.usuarios.paths)) {
-        // Ajustar path: si ya tiene /api/usuarios, dejarlo; si no, agregarlo
-        const gatewayPath = path.startsWith("/api/usuarios") ? path : `/api/usuarios${path}`;
-        aggregatedSpec.paths[gatewayPath] = methods;
-      }
-    }
-
-    // Agregar paths de gasolineras con prefijo /api/gasolineras
-    if (specs.gasolineras?.paths) {
-      for (const [path, methods] of Object.entries(specs.gasolineras.paths)) {
-        // Si el path es "/" o "/gasolineras", convertirlo a /api/gasolineras
-        let gatewayPath;
-        if (path === "/" || path === "") {
-          gatewayPath = "/api/gasolineras";
-        } else if (path.startsWith("/gasolineras")) {
-          gatewayPath = `/api${path}`;
-        } else {
-          gatewayPath = `/api/gasolineras${path}`;
-        }
-        aggregatedSpec.paths[gatewayPath] = methods;
-      }
-    }
-
-    if (specs.recomendacion?.paths) {
-      for (const [path, methods] of Object.entries(specs.recomendacion.paths)) {
-        if (path.startsWith("/recomendacion")) {
-          aggregatedSpec.paths[`/api${path}`] = methods;
-          aggregatedSpec.paths[path.replace("/recomendacion", "/api/recomendaciones")] = methods;
-        } else {
-          aggregatedSpec.paths[`/api/recomendacion${path}`] = methods;
-          aggregatedSpec.paths[`/api/recomendaciones${path}`] = methods;
-        }
-      }
-    }
-
-    if (specs.ev_charging?.paths) {
-      for (const [path, methods] of Object.entries(specs.ev_charging.paths)) {
-        if (path.startsWith("/api/charging")) {
-          aggregatedSpec.paths[path] = methods;
-        } else if (path.startsWith("/charging")) {
-          aggregatedSpec.paths[`/api${path}`] = methods;
-        } else {
-          aggregatedSpec.paths[`/api/charging${path}`] = methods;
-        }
-      }
-    }
-
-    if (specs.prediction?.paths) {
-      for (const [path, methods] of Object.entries(specs.prediction.paths)) {
-        const gatewayPath = path.startsWith("/api/prediction") ? path : `/api/prediction${path}`;
-        aggregatedSpec.paths[gatewayPath] = methods;
-      }
-    }
-
-    // Combinar securitySchemes de ambos servicios
-    for (const spec of Object.values(specs)) {
-      if (spec?.components?.securitySchemes) {
-        Object.assign(aggregatedSpec.components.securitySchemes, spec.components.securitySchemes);
-      }
-    }
-
-    console.log(`📋 Documentación agregada: ${Object.keys(aggregatedSpec.paths).length} endpoints`);
-    
-  } catch (error) {
-    console.error("❌ Error al agregar specs:", error);
-    // Fallback a spec básico
-    aggregatedSpec = {
-      openapi: "3.1.0",
-      info: {
-        title: "API Gateway - Gasolineras",
-        version: "1.0.0",
-        description: "Gateway en modo degradado. No se pudieron cargar los specs de los microservicios."
-      },
-      paths: {}
-    };
-  }
-}
-
-// Cargar specs al iniciar (con retry cada 10s si falla)
-const tryLoadSpecs = async () => {
-  await fetchAndAggregateSpecs();
-  if (!aggregatedSpec || Object.keys(aggregatedSpec.paths).length <= 1) {
-    console.log("🔄 Reintentando carga de specs en 10 segundos...");
-    setTimeout(tryLoadSpecs, 10000);
-  }
-};
-tryLoadSpecs();
+await openApiModule.refreshAggregatedSpecs("startup");
 
 // ========================================
 // 🛡️ MIDDLEWARES GLOBALES
@@ -357,31 +180,6 @@ app.use("*", async (c, next) => {
   // Permitir popups de Google Sign-In
   c.res.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
 });
-
-// ========================================
-// RUTAS DE DOCUMENTACIÓN (AGREGADA)
-// ========================================
-app.get("/openapi.json", (c) => {
-  if (!aggregatedSpec) {
-    return c.json({
-      openapi: "3.1.0",
-      info: {
-        title: "API Gateway - Gasolineras",
-        version: "1.0.0",
-        description: "Cargando especificaciones de microservicios..."
-      },
-      paths: {}
-    });
-  }
-  return c.json(aggregatedSpec);
-});
-
-app.get(
-  "/docs",
-  swaggerUI({
-    url: "/openapi.json",
-  })
-);
 
 app.get("/", (c) => {
   const requestUrl = new URL(c.req.url);
@@ -467,71 +265,9 @@ app.get("/api/geocoding/reverse", async (c) => {
   }
 });
 
-// ========================================
-// 🏥 HEALTH CHECK
-// ========================================
-app.get("/health", async (c) => {
-  const services = {};
-
-  for (const [serviceName, serviceConfig] of Object.entries(SERVICE_REGISTRY)) {
-    if (!serviceConfig.url) {
-      services[serviceName] = {
-        status: serviceConfig.optional ? "NOT_CONFIGURED" : "DOWN",
-        url: null,
-      };
-      continue;
-    }
-
-    const healthCandidates = serviceConfig.healthPaths || ["/health", "/"];
-    let probeOk = false;
-    let lastError = null;
-
-    try {
-      for (const healthPath of healthCandidates) {
-        const healthRes = await fetch(`${serviceConfig.url}${healthPath}`, {
-          signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
-        });
-
-        if (healthRes.ok) {
-          services[serviceName] = {
-            status: "UP",
-            url: serviceConfig.url,
-            healthPath,
-          };
-          probeOk = true;
-          break;
-        }
-
-        lastError = `HTTP ${healthRes.status} en ${healthPath}`;
-      }
-
-      if (!probeOk) {
-        services[serviceName] = {
-          status: "DOWN",
-          url: serviceConfig.url,
-          error: lastError,
-        };
-      }
-    } catch (error) {
-      services[serviceName] = {
-        status: "DOWN",
-        url: serviceConfig.url,
-        error: error?.message || "Health probe failed",
-      };
-    }
-  }
-
-  const requiredServices = Object.entries(SERVICE_REGISTRY).filter(([, service]) => !service.optional);
-  const allRequiredServicesUp = requiredServices.every(([name]) => services[name]?.status === "UP");
-
-  return c.json(
-    {
-      status: allRequiredServicesUp ? "UP" : "DEGRADED",
-      timestamp: new Date().toISOString(),
-      services,
-    },
-    allRequiredServicesUp ? 200 : 503
-  );
+registerHealthRoute(app, {
+  serviceRegistry: SERVICE_REGISTRY,
+  healthTimeoutMs: HEALTH_TIMEOUT_MS,
 });
 
 // ========================================
@@ -622,91 +358,11 @@ app.post('/api/auth/logout', (c) => {
   return c.json({ ok: true });
 });
 
-// ========================================
-// 🔀 PROXY: MICROSERVICIO DE USUARIOS
-// ========================================
-app.all("/api/usuarios/*", async (c) => {
-  try {
-    const path = c.req.path.replace("/api/usuarios", "/api/usuarios");
-    
-    // Obtener query parameters
-    const searchParams = new URL(c.req.url).searchParams;
-    const queryString = searchParams.toString();
-    
-    const url = `${USUARIOS_SERVICE}${path}${queryString ? '?' + queryString : ''}`;
-    
-    console.log(`🔄 Proxy usuarios: ${c.req.method} ${url}`);
-
-    // Obtener headers y excluir host/cookie/accept-encoding (evitar fugas y problemas de compresión)
-    const headers = {};
-    for (const [key, value] of c.req.raw.headers) {
-      const lowerKey = key.toLowerCase();
-      if (lowerKey !== "host" && lowerKey !== "accept-encoding" && lowerKey !== "cookie") {
-        headers[key] = value;
-      }
-    }
-
-    // Si no hay Authorization pero sí cookie authToken, inyectar Bearer para usuarios-service.
-    if (!headers.Authorization && !headers.authorization) {
-      const token = getAuthTokenFromRequest(c);
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-    }
-
-    const options = {
-      method: c.req.method,
-      headers,
-      redirect: 'manual', // ⬅️ MUY IMPORTANTE: No seguir redirecciones automáticamente
-    };
-
-    // Si hay body, añadirlo
-    if (["POST", "PUT", "PATCH"].includes(c.req.method)) {
-      options.body = await c.req.text();
-    }
-
-    const response = await fetch(url, options);
-    
-    // ✅ Si es una redirección (301, 302, 303, 307, 308), pasarla al cliente
-    if ([301, 302, 303, 307, 308].includes(response.status)) {
-      const location = response.headers.get('location');
-      console.log(`↪️ Redirigiendo a: ${location}`);
-      return c.redirect(location, response.status);
-    }
-    
-    const contentType = response.headers.get("content-type");
-
-    // Si es JSON, parsearlo y devolverlo (evita problemas de encoding)
-    if (contentType?.includes("application/json")) {
-      const data = await response.json();
-
-      // Unificar sesión en cookie cuando el login devuelve token en body.
-      if (c.req.method === 'POST' && c.req.path === '/api/usuarios/login' && data?.token) {
-        setCookie(c, 'authToken', data.token, {
-          httpOnly: COOKIE_CONFIG.httpOnly,
-          secure: COOKIE_CONFIG.secure,
-          sameSite: COOKIE_CONFIG.sameSite,
-          path: COOKIE_CONFIG.path,
-          maxAge: COOKIE_CONFIG.maxAge,
-        });
-      }
-
-      return c.json(data, response.status);
-    }
-
-    // Si es texto u otro formato
-    const text = await response.text();
-    return c.text(text, response.status);
-  } catch (error) {
-    console.error("Error en proxy de usuarios:", error);
-    return c.json(
-      {
-        error: "Error al comunicarse con el servicio de usuarios",
-        message: error.message,
-      },
-      503
-    );
-  }
+registerUsuariosRoutes(app, {
+  usuariosService: USUARIOS_SERVICE,
+  healthTimeoutMs: HEALTH_TIMEOUT_MS,
+  cookieConfig: COOKIE_CONFIG,
+  getAuthTokenFromRequest,
 });
 
 // ========================================
@@ -914,9 +570,9 @@ async function proxyCharging(c) {
     const path = c.req.path.replace("/api/charging", "/api/charging");
     const searchParams = new URL(c.req.url).searchParams;
     const queryString = searchParams.toString();
-    const url = `${EV_CHARGING_SERVICE}${path}${queryString ? '?' + queryString : ''}`;
+    const url = `${GASOLINERAS_SERVICE}${path}${queryString ? '?' + queryString : ''}`;
 
-    console.log(`🔋 Proxy ev-charging: ${c.req.method} ${url}`);
+    console.log(`🔋 Proxy EV integrado (gasolineras-service): ${c.req.method} ${url}`);
 
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
@@ -1098,7 +754,7 @@ console.log(`
 ║      • Usuarios:     ${USUARIOS_SERVICE}                 ║
 ║      • Gasolineras:  ${GASOLINERAS_SERVICE}              ║
 ║      • Recomendación: ${RECOMENDACION_SERVICE}           ║
-║      • EV Charging:   ${EV_CHARGING_SERVICE}             ║
+║      • EV Charging:   Integrado en Gasolineras           ║
 ║      • Prediction:    ${PREDICTION_SERVICE || "(no configurado)"}      ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
