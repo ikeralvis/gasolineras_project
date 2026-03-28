@@ -4,10 +4,17 @@ Gestión de conexión a PostgreSQL (Neon / local)
 import os
 import logging
 from contextlib import contextmanager
+from typing import Any
 
-import psycopg2
-import psycopg2.pool
-from psycopg2.extras import RealDictCursor
+try:
+    import psycopg2
+    import psycopg2.pool
+    from psycopg2.extras import RealDictCursor
+    _HAS_PSYCOPG2 = True
+except Exception:  # pragma: no cover - depende del entorno
+    psycopg2 = None
+    RealDictCursor = None
+    _HAS_PSYCOPG2 = False
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +24,22 @@ logger = logging.getLogger(__name__)
 # En local con Docker puedes poner ?sslmode=disable en DATABASE_URL.
 # -------------------------------------------------------------------
 DATABASE_URL = os.environ.get("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError(
-        "DATABASE_URL env var is not set. "
-        "Set it to your Neon / Supabase PostgreSQL connection string."
-    )
-
-_pool: psycopg2.pool.ThreadedConnectionPool | None = None
 
 
-def _build_pool() -> psycopg2.pool.ThreadedConnectionPool:
+def is_db_configured() -> bool:
+    """Indica si hay configuración para PostgreSQL en el entorno."""
+    return _HAS_PSYCOPG2 and bool(DATABASE_URL)
+
+_pool: Any | None = None
+
+
+def _build_pool():
     """Crea el pool de conexiones."""
+    if not _HAS_PSYCOPG2:
+        raise RuntimeError("psycopg2 no está disponible en este entorno")
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL env var is not set")
+
     dsn = DATABASE_URL
     # Añadimos sslmode=require para Neon si no está ya especificado
     if "sslmode" not in dsn:
@@ -42,15 +54,18 @@ def _build_pool() -> psycopg2.pool.ThreadedConnectionPool:
     )
 
 
-def get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+def get_pool():
     """Obtiene (o crea) el pool de conexiones."""
     global _pool
+    if not is_db_configured():
+        raise RuntimeError("PostgreSQL no configurado (DATABASE_URL/psycopg2)")
+
     if _pool is None or _pool.closed:
         _pool = _build_pool()
     return _pool
 
 
-def _acquire_connection() -> psycopg2.extensions.connection:
+def _acquire_connection():
     """Obtiene una conexión viva del pool y recrea el pool si quedó inválido."""
     pool = get_pool()
     conn = pool.getconn()
@@ -96,6 +111,8 @@ def get_db_conn():
 
 def get_cursor(conn):
     """Devuelve un cursor que retorna filas como diccionarios."""
+    if RealDictCursor is None:
+        raise RuntimeError("RealDictCursor no disponible (psycopg2 no instalado)")
     return conn.cursor(cursor_factory=RealDictCursor)
 
 
@@ -105,6 +122,9 @@ def get_cursor(conn):
 
 def test_db_connection() -> bool:
     """Prueba la conexión ejecutando una consulta trivial."""
+    if not is_db_configured():
+        raise RuntimeError("PostgreSQL no configurado")
+
     with get_db_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute("SELECT 1")

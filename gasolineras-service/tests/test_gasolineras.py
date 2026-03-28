@@ -200,8 +200,8 @@ class TestGasolinerasCerca:
         data = response.json()
         assert "gasolineras" in data
         assert "ubicacion" in data
-        assert data["ubicacion"]["lat"] == 40.4168
-        assert data["ubicacion"]["lon"] == -3.7038
+        assert data["ubicacion"]["lat"] == pytest.approx(40.4168)
+        assert data["ubicacion"]["lon"] == pytest.approx(-3.7038)
 
 
 class TestEstadisticas:

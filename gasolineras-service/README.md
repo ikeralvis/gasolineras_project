@@ -4,7 +4,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.11-blue?logo=python)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi)
-![MongoDB](https://img.shields.io/badge/MongoDB-7.0-green?logo=mongodb)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-336791?logo=postgresql)
 ![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?logo=docker)
 
 API REST para sincronizar y consultar información de estaciones de servicio en España desde la fuente oficial del Gobierno.
@@ -55,6 +55,25 @@ Todos los endpoints funcionales viven bajo prefijo `/gasolineras`:
 - `GET /gasolineras/snapshot`:
   - estado de frescura (último sync, fecha local, vigente/no vigente)
 
+Integracion EV (unificada en este mismo servicio):
+
+- `GET /gasolineras/ev/health`:
+  - estado del modulo EV integrado
+- `POST /gasolineras/ev/markers`:
+  - markers EV por viewport (consulta directa a mapareve)
+- `GET /gasolineras/ev/details/{location_id}`:
+  - detalle de punto EV por id
+- `POST /api/charging/markers`:
+  - endpoint canonico EV para gateway/frontend
+- `GET /api/charging/details/{location_id}`:
+  - endpoint canonico EV para gateway/frontend
+
+Notas de integracion:
+
+- si mapareve no esta disponible, los endpoints EV responden con `502`.
+- la persistencia EV en PostgreSQL es opcional (best-effort).
+- no afecta a los endpoints de gasolineras liquidas; permanecen operativos.
+
 ---
 
 ## 🔄 Frescura de datos (operación cloud)
@@ -83,7 +102,7 @@ Patrón profesional recomendado:
 
 ### 🔧 Técnicas
 - ✅ **FastAPI** con documentación OpenAPI automática
-- ✅ **MongoDB** para almacenamiento de datos
+- ✅ **PostgreSQL** para snapshot e histórico de precios
 - ✅ **Pydantic** para validación de modelos
 - ✅ **Logging** estructurado con Python logging
 - ✅ **Manejo de errores** robusto con HTTPException
@@ -92,6 +111,7 @@ Patrón profesional recomendado:
 - ✅ **Variables de entorno** para configuración flexible
 - ✅ **Reintentos automáticos** en peticiones HTTP
 - ✅ **Índices geoespaciales** para búsquedas por ubicación
+- ✅ **Integración EV** en el mismo proceso FastAPI
 
 ### 🎯 Funcionales
 - 🔄 Sincronización manual desde API del gobierno
@@ -114,11 +134,12 @@ gasolineras-service/
 │   ├── __init__.py
 │   ├── main.py                 # Aplicación FastAPI principal
 │   ├── db/
-│   │   └── connection.py       # Gestión de conexión MongoDB
+│   │   └── connection.py       # Gestión de conexión PostgreSQL
 │   ├── models/
 │   │   └── gasolinera.py       # Modelos Pydantic
 │   ├── routes/
 │   │   └── gasolineras.py      # Endpoints de la API
+│   │   └── ev_integration.py   # Integracion EV directa (mapareve + cache opcional)
 │   └── services/
 │       └── fetch_gobierno.py   # Cliente API del gobierno
 ├── requirements.txt            # Dependencias Python
@@ -144,8 +165,7 @@ docker build -t gasolineras-service .
 docker run -d \
   --name gasolineras-service \
   -p 8000:8000 \
-  -e MONGO_HOST=mongo \
-  -e MONGO_PORT=27017 \
+  -e DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gasolineras \
   gasolineras-service
 ```
 
@@ -154,25 +174,28 @@ docker run -d \
 ```yaml
 # docker-compose.yml
 services:
-  mongo:
-    image: mongo:7
+  postgres:
+    image: postgres:16
     ports:
-      - "27017:27017"
+      - "5432:5432"
     volumes:
-      - mongo_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=gasolineras
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
 
   gasolineras:
     build: ./gasolineras-service
     ports:
       - "8000:8000"
     environment:
-      - MONGO_HOST=mongo
-      - MONGO_PORT=27017
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/gasolineras
     depends_on:
-      - mongo
+      - postgres
 
 volumes:
-  mongo_data:
+  postgres_data:
 ```
 
 ```bash
@@ -186,6 +209,34 @@ docker compose logs -f gasolineras
 ---
 
 ## 📚 API - Endpoints
+
+### Integracion EV Unificada
+
+#### `GET /gasolineras/ev/health`
+Devuelve el health del modulo EV integrado.
+
+#### `POST /gasolineras/ev/markers`
+Consulta de markers EV por viewport (mapareve).
+
+Body:
+```json
+{
+  "lat_ne": 40.52,
+  "lon_ne": -3.55,
+  "lat_sw": 40.32,
+  "lon_sw": -3.82,
+  "zoom": 11
+}
+```
+
+#### `GET /gasolineras/ev/details/{location_id}`
+Devuelve el detalle completo de una estacion de recarga EV.
+
+#### `POST /api/charging/markers`
+Alias canonico del endpoint EV para consumo desde gateway/frontend.
+
+#### `GET /api/charging/details/{location_id}`
+Alias canonico del detalle EV para consumo desde gateway/frontend.
 
 ### 🏠 General
 

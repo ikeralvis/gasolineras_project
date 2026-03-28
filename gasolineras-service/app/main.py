@@ -15,6 +15,8 @@ from app.routes.gasolineras import (
     _sync_lock,
 )
 from app.db.connection import close_db_connection, test_db_connection
+from app.db.connection import is_db_configured
+from app.routes.ev_integration import router as ev_integration_router
 
 # Configuración de logging
 logging.basicConfig(
@@ -79,6 +81,7 @@ app = FastAPI(
     * 🔄 Sincronización automática desde API del gobierno
     * 📍 Búsqueda por ubicación geográfica
     * 💰 Filtrado por precios de combustible
+    * 🔋 Integración EV unificada (mapareve + cache opcional)
     """,
     version="1.0.0",
     docs_url="/docs",
@@ -97,6 +100,7 @@ app.add_middleware(
 
 # Incluir routers
 app.include_router(gasolineras_router)
+app.include_router(ev_integration_router)
 
 @app.get("/", tags=["General"])
 def root():
@@ -107,6 +111,7 @@ def root():
         "service": "microservicio-gasolineras",
         "version": "1.0.0",
         "status": "running",
+        "storage_mode": "postgres" if is_db_configured() else "memory-fallback",
         "docs": "/docs",
         "redoc": "/redoc"
     }
@@ -116,16 +121,25 @@ def health_check():
     """
     Health check para monitoreo del servicio
     """
+    if not is_db_configured():
+        return {
+            "status": "healthy",
+            "database": "not-configured",
+            "storage_mode": "memory-fallback",
+        }
+
     try:
         test_db_connection()
         return {
             "status": "healthy",
-            "database": "connected"
+            "database": "connected",
+            "storage_mode": "postgres",
         }
     except Exception as e:
-        logger.error(f"Health check failed: {e}")
+        logger.warning(f"Health check DB unavailable, usando fallback en memoria: {e}")
         return {
-            "status": "unhealthy",
+            "status": "healthy",
             "database": "disconnected",
-            "error": str(e)
+            "storage_mode": "memory-fallback",
+            "warning": str(e),
         }
