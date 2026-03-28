@@ -91,17 +91,25 @@ async def fetch_gasolineras(
             sep = "&" if "?" in url else "?"
             url = f"{url}{sep}limit=20000"
 
-
         logger.debug("Obteniendo gasolineras desde %s", url)
-        resp = await client.get(url, timeout=settings.GASOLINERAS_TIMEOUT_S)
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = await client.get(url, timeout=settings.GASOLINERAS_TIMEOUT_S)
+            resp.raise_for_status()
+            data = resp.json()
+            source = "gateway"
+        except Exception as exc:
+            logger.warning("Fuente gateway no disponible (%s). Usando fallback Ministerio...", exc)
+            resp = await client.get(settings.GOBIERNO_API_URL, timeout=settings.GASOLINERAS_TIMEOUT_S)
+            resp.raise_for_status()
+            data = resp.json()
+            source = "ministerio"
 
         if isinstance(data, list):
             raw_list = data
         elif isinstance(data, dict):
             raw_list = (
                 data.get("gasolineras")
+                or data.get("ListaEESSPrecio")
                 or data.get("data")
                 or data.get("results")
                 or []
@@ -109,7 +117,7 @@ async def fetch_gasolineras(
         else:
             raw_list = []
 
-        logger.info("Gasolineras recibidas: %d", len(raw_list))
+        logger.info("Gasolineras recibidas desde %s: %d", source, len(raw_list))
 
         result = []
         for raw in raw_list:

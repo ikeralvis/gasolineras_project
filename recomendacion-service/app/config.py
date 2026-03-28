@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     # Apunta al gateway del proyecto. Para uso standalone puedes cambiarlo a
     # cualquier API REST que devuelva el mismo formato JSON de gasolineras.
     GASOLINERAS_API_URL: str = "http://gateway:8080/api/gasolineras/?limit=20000"
+    # Fallback directo al Ministerio cuando gateway/gasolineras-service no estén disponibles.
+    GOBIERNO_API_URL: str = (
+        "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/"
+        "PreciosCarburantes/EstacionesTerrestres/"
+    )
 
 
     # ── Parámetros por defecto del algoritmo ──────────────────────────────────
