@@ -8,7 +8,7 @@ steps:
       - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/repo-tfg/frontend-img'
       - '--build-arg'
       - 'VITE_API_BASE_URL=https://tu-gateway.run.app'
-      - 'frontend/' 
+      - 'frontend-client'
 
   # 2. Subir al registro
   - name: 'gcr.io/cloud-builders/docker'
@@ -20,7 +20,7 @@ steps:
     args:
       - 'run'
       - 'deploy'
-      - 'frontend-service'
+      - 'frontend-client'
       - '--image'
       - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/repo-tfg/frontend-img'
       - '--region'
