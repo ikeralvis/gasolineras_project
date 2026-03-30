@@ -5,7 +5,7 @@ steps:
     args: 
       - 'build'
       - '-t'
-      - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/repo-tfg/frontend-img'
+      - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
       - '--build-arg'
       - 'VITE_API_BASE_URL=https://tu-gateway.run.app'
       - 'frontend-client'
