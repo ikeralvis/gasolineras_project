@@ -112,25 +112,21 @@ def _grid_size_for_zoom(zoom: int) -> Optional[float]:
     if zoom <= 5:
         return 0.45
     if zoom <= 6:
-        return 0.32
+        return 0.30
     if zoom <= 7:
-        return 0.24
+        return 0.20
     if zoom <= 8:
-        return 0.16
+        return 0.12
     if zoom <= 9:
-        return 0.11
+        return 0.08
     if zoom <= 10:
-        return 0.075
-    if zoom <= 11:
         return 0.05
+    if zoom <= 11:
+        return 0.03
     if zoom <= 12:
-        return 0.032
+        return 0.018
     if zoom <= 13:
-        return 0.02
-    if zoom <= 14:
-        return 0.012
-    if zoom <= 15:
-        return 0.007
+        return 0.010
     return None
 
 
@@ -746,13 +742,14 @@ def _postgres_cluster_markers(viewport: MarkersViewport, grid_size: float) -> li
                     SELECT
                         ST_SnapToGrid(geom::geometry, %s, %s) AS grid_geom,
                         COUNT(*)::int AS total,
-                        MIN(precio_95_e5) AS min_precio_95_e5
+                        MIN(precio_95_e5) AS min_precio_95_e5,
+                        (ARRAY_AGG(geom::geometry ORDER BY precio_95_e5 ASC NULLS LAST))[1] AS representative_geom
                     FROM filtered
                     GROUP BY grid_geom
                 )
                 SELECT
-                    ST_Y(ST_Centroid(grid_geom)) AS latitude,
-                    ST_X(ST_Centroid(grid_geom)) AS longitude,
+                    ST_Y(representative_geom) AS latitude,
+                    ST_X(representative_geom) AS longitude,
                     total,
                     min_precio_95_e5
                 FROM grouped
