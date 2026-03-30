@@ -24,3 +24,6 @@ steps:
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/repo-tfg/gasolineras-img'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
