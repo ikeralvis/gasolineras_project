@@ -26,3 +26,9 @@ steps:
       - '--region'
       - 'europe-west1'
       - '--allow-unauthenticated'
+
+images:
+  - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/repo-tfg/frontend-img'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
