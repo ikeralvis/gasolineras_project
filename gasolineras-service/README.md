@@ -23,6 +23,7 @@ Microservicio Python construido con **FastAPI** que permite:
 - 🗺️ **Filtrar** por ubicación geográfica (provincia, municipio)
 - 💰 **Buscar** por rangos de precios de combustible
 - 📄 **Paginar** resultados para consultas eficientes
+### prueba de texto
 
 Los datos provienen de la fuente oficial:
 ```
