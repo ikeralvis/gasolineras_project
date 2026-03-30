@@ -1,0 +1,28 @@
+steps:
+  # 1. Construir la imagen del Frontend
+  # Fíjate que el último argumento es 'frontend/' (la carpeta), no '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    args: 
+      - 'build'
+      - '-t'
+      - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/repo-tfg/frontend-img'
+      - '--build-arg'
+      - 'VITE_API_BASE_URL=https://tu-gateway.run.app'
+      - 'frontend/' 
+
+  # 2. Subir al registro
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west1-docker.pkg.dev/${PROJECT_ID}/repo-tfg/frontend-img']
+
+  # 3. Desplegar en Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'frontend-service'
+      - '--image'
+      - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/repo-tfg/frontend-img'
+      - '--region'
+      - 'europe-west1'
+      - '--allow-unauthenticated'
