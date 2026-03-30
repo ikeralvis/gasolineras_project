@@ -95,7 +95,6 @@ services:
       - "${RECOMENDACION_PORT:-8002}:8001"
     environment:
       GASOLINERAS_API_URL: http://gateway:8080/api/gasolineras/?limit=20000
-
       ROUTING_BACKEND: ${ROUTING_BACKEND:-ors}
       ROUTING_FAILOVER_TO_OSRM: ${ROUTING_FAILOVER_TO_OSRM:-false}
       ALLOW_STRAIGHT_LINE_FALLBACK: ${ALLOW_STRAIGHT_LINE_FALLBACK:-false}
