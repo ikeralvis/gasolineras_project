@@ -32,11 +32,6 @@ GATEWAY_PUBLIC_URL=https://tu-gateway.example.com
 USUARIOS_SERVICE_URL=https://usuarios.internal
 GASOLINERAS_SERVICE_URL=https://gasolineras.internal
 RECOMENDACION_SERVICE_URL=https://recomendacion.internal
-ORS_BASE_URL=https://api.openrouteservice.org
-ORS_API_KEY=tu_api_key_ors
-OSRM_BASE_URL=http://router.project-osrm.org
-ROUTING_TIMEOUT_MS=10000
-ROUTING_RETRIES=2
 # Opcional:
 # PREDICTION_SERVICE_URL=https://prediction.internal
 INTERNAL_API_SECRET=un-secreto-largo-y-unico
@@ -106,12 +101,12 @@ El gateway redirige las solicitudes relacionadas con gasolineras al microservici
 | ALL    | `/api/recomendacion/*`                  | Proxy canónico hacia recomendación.   |
 | ALL    | `/api/recomendaciones/*`                | Alias compatible.                     |
 
-### Routing externo (gestionado por Gateway)
+### Routing
 
 | Método | Endpoint                  | Descripción |
 |--------|---------------------------|-------------|
-| POST   | `/api/routing/directions`| Calcula ruta (A->B o con waypoints), soporta `avoid_tolls`. |
-| POST   | `/api/routing/matrix`    | Calcula matriz de tiempos en una sola llamada (ORS). |
+| POST   | `/api/routing/directions`| Proxy al motor de routing del `recomendacion-service`. |
+| POST   | `/api/routing/matrix`    | Proxy de matriz de tiempos del `recomendacion-service`. |
 
 ### EV Charging
 

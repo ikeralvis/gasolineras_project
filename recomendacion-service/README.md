@@ -15,7 +15,7 @@ Dado un punto **A** (origen) y un punto **B** (destino), calcula la ruta y recom
 | **Valhalla** | Gratis | Self-hosted | No | Necesitas isocronas o enrutamiento peatonal |
 | **GraphHopper** | Gratis con créditos | Nube o self-hosted | Sí (gratis) | Alternativa a ORS si necesitas más flexibilidad |
 
-**Arquitectura recomendada**: este servicio consume routing a través del gateway (`USE_GATEWAY_ROUTING=true`), y el gateway es quien habla con ORS/OSRM.
+**Arquitectura recomendada**: este servicio implementa routing directamente (ORS/OSRM) y expone `/routing/*`. El gateway solo actúa como proxy para mantener un punto de entrada único.
 
 ---
 
@@ -128,9 +128,8 @@ También puede consumir directamente la API del Ministerio español (fallback au
 
 | Variable | Por defecto | Descripción |
 |---|---|---|
-| `ROUTING_BACKEND` | `osrm` | `osrm` o `ors` |
-| `USE_GATEWAY_ROUTING` | `true` | Si está activo, usa `/api/routing/*` del gateway |
-| `ROUTING_PROXY_URL` | `http://gateway:8080/api/routing` | Endpoint interno del gateway para directions/matrix |
+| `ROUTING_BACKEND` | `ors` | `osrm` o `ors` |
+| `ORS_BASE_URL` | `https://api.openrouteservice.org` | URL base de ORS |
 | `OSRM_BASE_URL` | `http://router.project-osrm.org` | URL de tu OSRM (demo o self-hosted) |
 | `ORS_API_KEY` | *(vacío)* | API key de OpenRouteService (si usas `ors`) |
 | `GASOLINERAS_API_URL` | `http://gasolineras:8000/gasolineras/?limit=2000` | Endpoint de gasolineras |
@@ -211,6 +210,14 @@ GET /recomendacion/cercanas?lat=40.4168&lon=-3.7038&radio_km=10&combustible=gaso
 ### `GET /recomendacion/combustibles`
 
 Lista los tipos de combustible disponibles.
+
+### `POST /routing/directions`
+
+Calcula ruta para una lista de coordenadas `[lon, lat]` usando ORS u OSRM.
+
+### `POST /routing/matrix`
+
+Calcula matriz de duraciones para indices de `sources` y `destinations` (soportado en ORS).
 
 ### `GET /health`
 

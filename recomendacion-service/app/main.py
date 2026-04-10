@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.routes.recomendacion import router as recomendacion_router
+from app.routes.routing import router as routing_router
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging
@@ -51,6 +52,7 @@ app.add_middleware(
 # Rutas
 # ─────────────────────────────────────────────────────────────────────────────
 app.include_router(recomendacion_router)
+app.include_router(routing_router)
 
 
 @app.get("/health", tags=["Sistema"])

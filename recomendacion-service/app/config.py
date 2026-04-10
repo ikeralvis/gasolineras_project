@@ -17,8 +17,6 @@ class Settings(BaseSettings):
     ROUTING_BACKEND: Literal["osrm", "ors"] = "ors"
     ROUTING_FAILOVER_TO_OSRM: bool = False
     ALLOW_STRAIGHT_LINE_FALLBACK: bool = False
-    USE_GATEWAY_ROUTING: bool = True
-    ROUTING_PROXY_URL: str = "http://gateway:8080/api/routing"
     ROUTING_HTTP_RETRIES: int = 2
     ROUTING_RETRY_BACKOFF_S: float = 0.5
 

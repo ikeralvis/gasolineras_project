@@ -157,17 +157,15 @@ Si usas recomendacion y voz:
 - `RECOMENDACION_SERVICE_URL=https://<recomendacion-url>`
 - `VOICE_ASSISTANT_SERVICE_URL=https://<voice-url>`
 
-Si usas ORS:
-- `ORS_API_KEY=<secret>`
-
 ### recomendacion-service
 Obligatorias:
 - `DATABASE_URL`
 - `GASOLINERAS_API_URL=https://<gateway-url>/api/gasolineras/?limit=20000`
 
 Opcionales:
-- `ROUTING_PROXY_URL=https://<gateway-url>/api/routing`
 - `ROUTING_BACKEND=ors`
+- `ORS_API_KEY=<secret>`
+- `OSRM_BASE_URL=http://router.project-osrm.org`
 
 ### voice-assistant-service
 Obligatorias:
@@ -283,3 +281,5 @@ haz esto en UI:
   - Si quieres publico, activa `Allow unauthenticated` solo si tu cuenta tiene permisos IAM para policy binding.
 
 Nota: en este servicio, el error de puerto suele ser secundario; normalmente el proceso cae por variables faltantes (`DATABASE_URL` o `JWT_SECRET`) antes de empezar a escuchar.
+
+`usuarios-service` en este repo arranca en modo estricto: si faltan `DATABASE_URL` o `JWT_SECRET`, la revision falla al iniciar.

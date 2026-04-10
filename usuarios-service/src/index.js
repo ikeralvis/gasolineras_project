@@ -17,14 +17,46 @@ import fastifyCompress from '@fastify/compress';
 
 const PORT = process.env.PORT || 3001; // Usa el puerto de Render o 3001 por defecto
 const HOST = process.env.HOST || '0.0.0.0'; // Asegúrate de que escucha en 0.0.0.0
+const JWT_SECRET = (process.env.JWT_SECRET || '').trim();
 
 // ⚠️ VALIDACIÓN CRÍTICA: JWT_SECRET debe estar definido y ser seguro
-if (!process.env.JWT_SECRET) {
+if (!JWT_SECRET) {
   throw new Error('❌ FATAL: JWT_SECRET no está definido en las variables de entorno');
 }
 
-if (process.env.JWT_SECRET.length < 32) {
+if (JWT_SECRET.length < 32) {
   console.warn('⚠️  WARNING: JWT_SECRET debería tener al menos 32 caracteres para máxima seguridad');
+}
+
+function buildPgConnectionString(databaseUrl) {
+  if (databaseUrl.includes('sslmode')) {
+    return databaseUrl;
+  }
+  const separator = databaseUrl.includes('?') ? '&' : '?';
+  return `${databaseUrl}${separator}sslmode=require`;
+}
+
+async function setupDatabase(fastify) {
+  const databaseUrl = process.env.DATABASE_URL;
+
+  if (!databaseUrl) {
+    throw new Error('❌ FATAL: DATABASE_URL no está definido en las variables de entorno');
+  }
+
+  const pgConfig = {
+    connectionString: buildPgConnectionString(databaseUrl),
+    ssl: { rejectUnauthorized: false },
+  };
+  await fastify.register(fastifyPostgres, pgConfig);
+
+  try {
+    const client = await fastify.pg.connect();
+    fastify.log.info('✅ Conexión a PostgreSQL establecida correctamente');
+    client.release();
+  } catch (err) {
+    fastify.log.error('❌ Error al conectar con PostgreSQL:', err);
+    throw err;
+  }
 }
 
 /**
@@ -71,7 +103,7 @@ async function buildServer() {
 
   // 5. Configuración de JWT
   fastify.register(fastifyJwt, {
-    secret: process.env.JWT_SECRET,
+    secret: JWT_SECRET,
     sign: {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d'
     },
@@ -84,7 +116,7 @@ async function buildServer() {
 
   // 5.1 Plugin de Cookies (para httpOnly auth cookies)
   await fastify.register(fastifyCookie, {
-    secret: process.env.COOKIE_SECRET || process.env.JWT_SECRET,
+    secret: process.env.COOKIE_SECRET || JWT_SECRET,
     parseOptions: {}
   });
 
@@ -134,32 +166,7 @@ async function buildServer() {
   });
 
   // 7. Conexión a Base de Datos
-  const databaseUrl = process.env.DATABASE_URL;
-  if (!databaseUrl) {
-    throw new Error('❌ FATAL: DATABASE_URL no está definido en las variables de entorno');
-  }
-  // Ensure sslmode=require for Neon / cloud Postgres
-  let connectionString = databaseUrl;
-  if (!databaseUrl.includes('sslmode')) {
-    const separator = databaseUrl.includes('?') ? '&' : '?';
-    connectionString = `${databaseUrl}${separator}sslmode=require`;
-  }
-  const pgConfig = {
-    connectionString,
-    ssl: { rejectUnauthorized: false },
-  };
-  await fastify.register(fastifyPostgres, pgConfig);
-
-
-  // Verificar conexión al iniciar
-  try {
-    const client = await fastify.pg.connect();
-    fastify.log.info('✅ Conexión a PostgreSQL establecida correctamente');
-    client.release();
-  } catch (err) {
-    fastify.log.error('❌ Error al conectar con PostgreSQL:', err);
-    throw err;
-  }
+  await setupDatabase(fastify);
 
   // 8. Registro del manejador de errores global
   await fastify.register(errorHandler);

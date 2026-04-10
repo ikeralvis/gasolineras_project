@@ -207,6 +207,11 @@ function mapRecomendacionPaths(aggregatedSpec, spec) {
   }
 
   for (const [path, methods] of Object.entries(spec.paths)) {
+    if (path.startsWith("/routing")) {
+      aggregatedSpec.paths[`/api${path}`] = methods;
+      continue;
+    }
+
     if (path.startsWith("/recomendacion")) {
       aggregatedSpec.paths[`/api${path}`] = methods;
       aggregatedSpec.paths[path.replace("/recomendacion", "/api/recomendaciones")] = methods;

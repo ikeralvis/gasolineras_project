@@ -65,11 +65,6 @@ services:
       RECOMENDACION_SERVICE_URL: http://recomendacion:8001
       VOICE_ASSISTANT_SERVICE_URL: http://voice-assistant:8090
       PREDICTION_SERVICE_URL: ${PREDICTION_SERVICE_URL:-}
-      ORS_BASE_URL: ${ORS_BASE_URL:-https://api.openrouteservice.org}
-      ORS_API_KEY: ${ORS_API_KEY}
-      OSRM_BASE_URL: ${OSRM_BASE_URL:-http://router.project-osrm.org}
-      ROUTING_TIMEOUT_MS: ${ROUTING_TIMEOUT_MS:-10000}
-      ROUTING_RETRIES: ${ROUTING_RETRIES:-2}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:80}
       GATEWAY_URL: ${GATEWAY_URL:-http://localhost:8080}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
@@ -101,12 +96,11 @@ services:
     environment:
       GASOLINERAS_API_URL: http://gateway:8080/api/gasolineras/?limit=20000
       ROUTING_BACKEND: ${ROUTING_BACKEND:-ors}
-      USE_GATEWAY_ROUTING: ${USE_GATEWAY_ROUTING:-true}
-      ROUTING_PROXY_URL: ${ROUTING_PROXY_URL:-http://gateway:8080/api/routing}
       ROUTING_FAILOVER_TO_OSRM: ${ROUTING_FAILOVER_TO_OSRM:-false}
       ALLOW_STRAIGHT_LINE_FALLBACK: ${ALLOW_STRAIGHT_LINE_FALLBACK:-false}
       ROUTE_CANDIDATES_SOURCE: ${ROUTE_CANDIDATES_SOURCE:-auto}
       DATABASE_URL: ${DATABASE_URL}
+      ORS_BASE_URL: ${ORS_BASE_URL:-https://api.openrouteservice.org}
       OSRM_BASE_URL: ${OSRM_BASE_URL:-http://router.project-osrm.org}
       ORS_API_KEY: ${ORS_API_KEY}
       LOG_LEVEL: ${LOG_LEVEL:-info}

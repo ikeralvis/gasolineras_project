@@ -156,7 +156,7 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
     ts_end = datetime.now(timezone.utc)
     result.metadata = {
         "routing_backend": settings.ROUTING_BACKEND,
-        "routing_via_gateway": settings.USE_GATEWAY_ROUTING,
+        "routing_via_gateway": False,
         "route_candidates_source": station_source,
         "max_detour_minutes": body.max_desvio_min,
         "gasolineras_fuente": settings.GASOLINERAS_API_URL,
