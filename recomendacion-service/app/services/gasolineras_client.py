@@ -57,6 +57,22 @@ def _raw_to_internal(
     precio_raw = raw.get(campo_precio)
     precio = _parse_precio(precio_raw)
 
+    osm_highway = (
+        raw.get("osm_highway")
+        or raw.get("highway")
+        or raw.get("osm:highway")
+        or ""
+    )
+    service_area_flag = bool(
+        raw.get("es_area_servicio")
+        or raw.get("is_service_area")
+        or raw.get("in_service_area")
+    )
+
+    normalized_name = str(raw.get("Rótulo") or raw.get("rotulo") or raw.get("nombre") or "").lower()
+    normalized_address = str(raw.get("Dirección") or raw.get("direccion") or "").lower()
+    inferred_service_area = "area de servicio" in normalized_name or "area de servicio" in normalized_address
+
     return GasolineraInternal(
         id=str(raw.get("IDEESS") or raw.get("ideess") or ""),
         nombre=str(raw.get("Rótulo") or raw.get("rotulo") or raw.get("nombre") or ""),
@@ -70,6 +86,8 @@ def _raw_to_internal(
         precio=precio,
         horario=str(raw.get("Horario") or raw.get("horario") or ""),
         tipo_venta=str(raw.get("Tipo Venta") or raw.get("tipo_venta") or ""),
+        osm_highway=str(osm_highway or "").strip() or None,
+        es_area_servicio=service_area_flag or inferred_service_area,
     )
 
 

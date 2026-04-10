@@ -1,17 +1,8 @@
-"""
-Servicio de routing: abstracción sobre OSRM y OpenRouteService.
-
-Backends soportados:
-  - osrm : OSRM demo público (router.project-osrm.org) o self-hosted. Sin API key.
-  - ors  : OpenRouteService (api.openrouteservice.org). Requiere ORS_API_KEY.
-           Plan gratuito: 2 000 req/día, 500 req/min → https://openrouteservice.org/
-
-Fallback automático: si el backend configurado falla, se calcula la ruta con
-haversine (línea recta geodésica) para no bloquear la respuesta.
-"""
+"""Servicios de routing con resiliencia y opción de proxy vía gateway."""
+import asyncio
 import logging
-from math import radians, sin, cos, sqrt, atan2
-from typing import Optional, List, Tuple
+from math import atan2, cos, radians, sin, sqrt
+from typing import List, Optional, Tuple
 
 import httpx
 
@@ -21,78 +12,16 @@ from app.models.schemas import RouteResult
 logger = logging.getLogger(__name__)
 
 
-def _normalized_ors_key(raw_key: str) -> str:
-    """Normaliza la API key de ORS para evitar errores por copiado/entorno."""
-    key = (raw_key or "").strip().strip('"').strip("'")
-    if not key:
-        return ""
-
-    # Las keys de ORS suelen ser base64-like; si falta padding, lo restauramos.
-    # Esto corrige casos comunes en .env donde se pierde el '=' final.
-    remainder = len(key) % 4
-    if remainder:
-        key = key + ("=" * (4 - remainder))
-    return key
-
-
-def _decode_polyline(polyline_str: str, precision: int = 5) -> List[List[float]]:
-    """Decodifica polyline encoded a coordenadas [lon, lat]."""
-    if not polyline_str:
-        return []
-
-    coords: List[List[float]] = []
-    index = 0
-    lat = 0
-    lon = 0
-    factor = 10 ** precision
-
-    while index < len(polyline_str):
-        shift = 0
-        result = 0
-        while True:
-            b = ord(polyline_str[index]) - 63
-            index += 1
-            result |= (b & 0x1F) << shift
-            shift += 5
-            if b < 0x20:
-                break
-        dlat = ~(result >> 1) if (result & 1) else (result >> 1)
-        lat += dlat
-
-        shift = 0
-        result = 0
-        while True:
-            b = ord(polyline_str[index]) - 63
-            index += 1
-            result |= (b & 0x1F) << shift
-            shift += 5
-            if b < 0x20:
-                break
-        dlon = ~(result >> 1) if (result & 1) else (result >> 1)
-        lon += dlon
-
-        coords.append([lon / factor, lat / factor])
-
-    return coords
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Utilidades geométricas
-# ─────────────────────────────────────────────────────────────────────────────
-
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Distancia en km entre dos puntos (WGS84) usando la fórmula de haversine."""
-    R = 6_371.0
+    """Distancia geodésica en km entre dos puntos WGS84."""
+    earth_radius_km = 6371.0
     dlat = radians(lat2 - lat1)
     dlon = radians(lon2 - lon1)
     a = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlon / 2) ** 2
-    return R * 2 * atan2(sqrt(a), sqrt(1 - a))
+    return earth_radius_km * 2 * atan2(sqrt(a), sqrt(1 - a))
 
 
-def _straight_line_route(
-    lat1: float, lon1: float, lat2: float, lon2: float
-) -> RouteResult:
-    """Ruta de fallback: línea recta con velocidad media estimada de 90 km/h."""
+def _straight_line_route(lat1: float, lon1: float, lat2: float, lon2: float) -> RouteResult:
     dist_km = haversine_km(lat1, lon1, lat2, lon2)
     speed_kmh = 90.0
     return RouteResult(
@@ -102,80 +31,132 @@ def _straight_line_route(
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# OSRM
-# ─────────────────────────────────────────────────────────────────────────────
+def _is_retryable_status(status_code: int) -> bool:
+    return status_code in {408, 425, 429, 500, 502, 503, 504}
 
-async def _route_osrm(
-    lat1: float,
-    lon1: float,
-    lat2: float,
-    lon2: float,
+
+async def _request_with_retries(
     client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    *,
+    json: Optional[dict] = None,
+    headers: Optional[dict] = None,
+    timeout_s: Optional[float] = None,
+) -> httpx.Response:
+    retries = max(0, settings.ROUTING_HTTP_RETRIES)
+    timeout = timeout_s or settings.ROUTING_TIMEOUT_S
+    last_exc: Optional[Exception] = None
+
+    for attempt in range(retries + 1):
+        try:
+            response = await client.request(
+                method=method,
+                url=url,
+                json=json,
+                headers=headers,
+                timeout=timeout,
+            )
+
+            if response.is_success:
+                return response
+
+            if attempt < retries and _is_retryable_status(response.status_code):
+                retry_after = response.headers.get("Retry-After")
+                wait_s = float(retry_after) if retry_after and retry_after.isdigit() else settings.ROUTING_RETRY_BACKOFF_S * (2 ** attempt)
+                await asyncio.sleep(wait_s)
+                continue
+
+            response.raise_for_status()
+            return response
+        except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
+            last_exc = exc
+            if attempt >= retries:
+                break
+            await asyncio.sleep(settings.ROUTING_RETRY_BACKOFF_S * (2 ** attempt))
+
+    raise RuntimeError(f"Fallo HTTP hacia motor de routing tras reintentos: {last_exc}")
+
+
+async def _route_via_gateway_coords(
+    coordinates: List[Tuple[float, float]],
+    client: httpx.AsyncClient,
+    backend: str,
     evitar_peajes: bool = False,
 ) -> RouteResult:
-    """
-    Solicita ruta al backend OSRM.
-    Documentación: http://project-osrm.org/docs/v5.24.0/api/
-    Nota: La demo pública de OSRM no soporta de forma sencilla omitir peajes por URL.
-    """
-    return await _route_osrm_coords(
-        coordinates=[(lon1, lat1), (lon2, lat2)],
-        client=client,
+    payload = {
+        "coordinates": [[lon, lat] for lon, lat in coordinates],
+        "avoid_tolls": evitar_peajes,
+        "profile": "driving-car",
+        "backend": backend,
+    }
+    response = await _request_with_retries(
+        client,
+        "POST",
+        f"{settings.ROUTING_PROXY_URL}/directions",
+        json=payload,
+    )
+    data = response.json()
+    return RouteResult(
+        distancia_m=float(data["distance_m"]),
+        duracion_s=float(data["duration_s"]),
+        coordinates=data.get("coordinates") or [],
     )
 
 
-async def _route_osrm_coords(
+async def _matrix_via_gateway(
     coordinates: List[Tuple[float, float]],
+    sources: List[int],
+    destinations: List[int],
     client: httpx.AsyncClient,
-) -> RouteResult:
+    evitar_peajes: bool = False,
+) -> List[List[Optional[float]]]:
+    payload = {
+        "coordinates": [[lon, lat] for lon, lat in coordinates],
+        "sources": sources,
+        "destinations": destinations,
+        "avoid_tolls": evitar_peajes,
+        "profile": "driving-car",
+        "backend": settings.ROUTING_BACKEND,
+    }
+    response = await _request_with_retries(
+        client,
+        "POST",
+        f"{settings.ROUTING_PROXY_URL}/matrix",
+        json=payload,
+    )
+    data = response.json()
+    return data.get("durations_s") or []
+
+
+async def _route_osrm_coords(coordinates: List[Tuple[float, float]], client: httpx.AsyncClient) -> RouteResult:
     if len(coordinates) < 2:
         raise ValueError("OSRM requiere al menos dos coordenadas")
 
     coords_param = ";".join(f"{lon},{lat}" for lon, lat in coordinates)
-    url = (
-        f"{settings.OSRM_BASE_URL}/route/v1/driving/{coords_param}"
-        f"?overview=full&geometries=geojson&steps=false"
-    )
-    resp = await client.get(url, timeout=settings.ROUTING_TIMEOUT_S)
-    resp.raise_for_status()
-    data = resp.json()
+    url = f"{settings.OSRM_BASE_URL}/route/v1/driving/{coords_param}?overview=full&geometries=geojson&steps=false"
+    response = await _request_with_retries(client, "GET", url)
+    data = response.json()
 
     if data.get("code") != "Ok" or not data.get("routes"):
         raise ValueError(f"OSRM devolvió código inesperado: {data.get('code')}")
 
     route = data["routes"][0]
-    coords = route["geometry"]["coordinates"]  # [[lon, lat], ...]
-
     return RouteResult(
-        distancia_m=route["distance"],
-        duracion_s=route["duration"],
-        coordinates=coords,
+        distancia_m=float(route["distance"]),
+        duracion_s=float(route["duration"]),
+        coordinates=route["geometry"]["coordinates"],
     )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# OpenRouteService
-# ─────────────────────────────────────────────────────────────────────────────
-
-async def _route_ors(
-    lat1: float,
-    lon1: float,
-    lat2: float,
-    lon2: float,
-    client: httpx.AsyncClient,
-    evitar_peajes: bool = False,
-) -> RouteResult:
-    """
-    Solicita ruta al backend OpenRouteService usando el endpoint POST.
-    POST /v2/directions/driving-car
-    Usa el header Authorization para la API key.
-    """
-    return await _route_ors_coords(
-        coordinates=[(lon1, lat1), (lon2, lat2)],
-        client=client,
-        evitar_peajes=evitar_peajes,
-    )
+def _normalized_ors_key(raw_key: str) -> str:
+    key = (raw_key or "").strip().strip('"').strip("'")
+    if not key:
+        return ""
+    remainder = len(key) % 4
+    if remainder:
+        key += "=" * (4 - remainder)
+    return key
 
 
 async def _route_ors_coords(
@@ -185,17 +166,10 @@ async def _route_ors_coords(
 ) -> RouteResult:
     if len(coordinates) < 2:
         raise ValueError("ORS requiere al menos dos coordenadas")
+
     ors_key = _normalized_ors_key(settings.ORS_API_KEY)
     if not ors_key:
-        raise ValueError("ORS_API_KEY no configurada. Añádela al .env.")
-
-    url = f"{settings.ORS_BASE_URL}/v2/directions/driving-car"
-
-    headers = {
-        "Authorization": ors_key,
-        "Accept": "application/json, application/geo+json, application/gpx+xml, img/png; charset=utf-8",
-        "Content-Type": "application/json; charset=utf-8",
-    }
+        raise ValueError("ORS_API_KEY no configurada")
 
     body = {
         "coordinates": [[lon, lat] for lon, lat in coordinates],
@@ -203,44 +177,35 @@ async def _route_ors_coords(
         "units": "m",
         "geometry": True,
     }
-
     if evitar_peajes:
         body["options"] = {"avoid_features": ["tollways"]}
 
-    resp = await client.post(url, json=body, headers=headers, timeout=settings.ROUTING_TIMEOUT_S)
-    if not resp.is_success:
-        detail = (resp.text or "")[:300]
-        raise ValueError(f"ORS HTTP {resp.status_code}: {detail}")
-    data = resp.json()
+    response = await _request_with_retries(
+        client,
+        "POST",
+        f"{settings.ORS_BASE_URL}/v2/directions/driving-car",
+        json=body,
+        headers={
+            "Authorization": ors_key,
+            "Content-Type": "application/json; charset=utf-8",
+        },
+    )
+    data = response.json()
 
-    if data.get("features"):
-        feature = data["features"][0]
-        summary = feature["properties"]["summary"]
-        coords = feature["geometry"]["coordinates"]
-    elif data.get("routes"):
-        route = data["routes"][0]
-        summary = route["summary"]
-        geometry = route.get("geometry")
+    if not data.get("features"):
+        raise ValueError(f"Formato ORS no reconocido: {list(data.keys())}")
 
-        if isinstance(geometry, dict) and geometry.get("coordinates"):
-            coords = geometry["coordinates"]
-        elif isinstance(geometry, str):
-            coords = _decode_polyline(geometry)
-        else:
-            coords = []
-    else:
-        raise ValueError(f"Formato de respuesta ORS no reconocido: {list(data.keys())}")
-
+    feature = data["features"][0]
+    summary = feature["properties"]["summary"]
     return RouteResult(
-        distancia_m=summary["distance"],
-        duracion_s=summary["duration"],
-        coordinates=coords,
+        distancia_m=float(summary["distance"]),
+        duracion_s=float(summary["duration"]),
+        coordinates=feature["geometry"]["coordinates"],
     )
 
 
 def _backend_attempt_order() -> List[str]:
-    preferred = settings.ROUTING_BACKEND
-    if preferred == "ors":
+    if settings.ROUTING_BACKEND == "ors":
         return ["ors", "osrm"] if settings.ROUTING_FAILOVER_TO_OSRM else ["ors"]
     return ["osrm", "ors"]
 
@@ -249,18 +214,17 @@ async def _route_with_backend(
     backend: str,
     coordinates: List[Tuple[float, float]],
     client: httpx.AsyncClient,
-    evitar_peajes: bool = False,
+    evitar_peajes: bool,
 ) -> RouteResult:
+    if settings.USE_GATEWAY_ROUTING:
+        return await _route_via_gateway_coords(coordinates, client, backend, evitar_peajes)
+
     if backend == "osrm":
         return await _route_osrm_coords(coordinates, client)
     if backend == "ors":
         return await _route_ors_coords(coordinates, client, evitar_peajes)
     raise ValueError(f"Backend de routing desconocido: {backend}")
 
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Punto de entrada principal
-# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_route(
     lat1: float,
@@ -270,12 +234,6 @@ async def get_route(
     evitar_peajes: bool = False,
     client: Optional[httpx.AsyncClient] = None,
 ) -> RouteResult:
-    """
-    Calcula la ruta de conducción entre dos puntos.
-
-    Selecciona el backend según ROUTING_BACKEND y usa fallback automático
-    a línea recta si el servicio de routing no está disponible.
-    """
     own_client = client is None
     if own_client:
         client = httpx.AsyncClient()
@@ -283,32 +241,20 @@ async def get_route(
     try:
         coordinates = [(lon1, lat1), (lon2, lat2)]
         last_exc: Optional[Exception] = None
-
         for backend in _backend_attempt_order():
             try:
-                result = await _route_with_backend(backend, coordinates, client, evitar_peajes)
-                logger.debug(
-                    "Ruta calculada (%.1f km, %.0f min) con %s (evitar_peajes=%s)",
-                    result.distancia_km,
-                    result.duracion_min,
-                    backend,
-                    evitar_peajes,
-                )
-                return result
+                return await _route_with_backend(backend, coordinates, client, evitar_peajes)
             except Exception as exc:
                 last_exc = exc
-                logger.warning("Backend %s no disponible: %s", backend, exc)
+                logger.warning("Backend routing %s no disponible: %s", backend, exc)
 
         if settings.ALLOW_STRAIGHT_LINE_FALLBACK:
-            logger.warning(
-                "Fallaron backends de routing (%s): usando fallback haversine",
-                last_exc,
-            )
+            logger.warning("Usando fallback línea recta por error de routing: %s", last_exc)
             return _straight_line_route(lat1, lon1, lat2, lon2)
 
-        raise RuntimeError(f"No se pudo calcular ruta con backends { _backend_attempt_order() }: {last_exc}")
+        raise RuntimeError(f"No se pudo calcular ruta A→B: {last_exc}")
     finally:
-        if own_client:
+        if own_client and client is not None:
             await client.aclose()
 
 
@@ -322,7 +268,6 @@ async def get_route_via_stop(
     evitar_peajes: bool = False,
     client: Optional[httpx.AsyncClient] = None,
 ) -> RouteResult:
-    """Calcula la ruta real A→S→B con waypoints para estimar desvío exacto."""
     own_client = client is None
     if own_client:
         client = httpx.AsyncClient()
@@ -330,62 +275,89 @@ async def get_route_via_stop(
     try:
         coordinates = [(origin_lon, origin_lat), (stop_lon, stop_lat), (dest_lon, dest_lat)]
         last_exc: Optional[Exception] = None
-
         for backend in _backend_attempt_order():
             try:
                 return await _route_with_backend(backend, coordinates, client, evitar_peajes)
             except Exception as exc:
                 last_exc = exc
-                logger.warning("Backend %s no disponible para ruta con parada: %s", backend, exc)
+                logger.warning("Ruta A→S→B falló con backend %s: %s", backend, exc)
 
         if settings.ALLOW_STRAIGHT_LINE_FALLBACK:
-            logger.warning(
-                "No se pudo calcular ruta A→S→B (%s): fallback haversine",
-                last_exc,
-            )
             dist_a_s = haversine_km(origin_lat, origin_lon, stop_lat, stop_lon)
             dist_s_b = haversine_km(stop_lat, stop_lon, dest_lat, dest_lon)
             speed_kmh = 80.0
             return RouteResult(
                 distancia_m=(dist_a_s + dist_s_b) * 1000,
                 duracion_s=((dist_a_s + dist_s_b) / speed_kmh) * 3600,
-                coordinates=[
-                    [origin_lon, origin_lat],
-                    [stop_lon, stop_lat],
-                    [dest_lon, dest_lat],
-                ],
+                coordinates=[[origin_lon, origin_lat], [stop_lon, stop_lat], [dest_lon, dest_lat]],
             )
 
-        raise RuntimeError(f"No se pudo calcular ruta con parada con backends { _backend_attempt_order() }: {last_exc}")
+        raise RuntimeError(f"No se pudo calcular ruta A→S→B: {last_exc}")
     finally:
-        if own_client:
+        if own_client and client is not None:
             await client.aclose()
 
 
-
-async def get_detour_km(
+async def get_detour_minutes_matrix(
     origin_lat: float,
     origin_lon: float,
-    stop_lat: float,
-    stop_lon: float,
     dest_lat: float,
     dest_lon: float,
-    route_dist_km: float,
+    candidates: List[Tuple[float, float]],
+    evitar_peajes: bool = False,
     client: Optional[httpx.AsyncClient] = None,
-) -> float:
-    """
-    Calcula el desvío real en km para pasar por una parada intermedia.
+) -> List[Optional[float]]:
+    """Calcula desvío en minutos con Matrix API en una sola llamada."""
+    if not candidates:
+        return []
+    if not settings.USE_GATEWAY_ROUTING:
+        return [None] * len(candidates)
 
-    Estrategia de dos fases:
-      1. Estimación rápida con haversine (A→S + S→B - A→B).
-         Válida para pre-filtrar; sobreestima ligeramente en carretera.
-      2. (Opcional) Cálculo exacto con el motor de routing si la estimación
-         sitúa la gasolinera como candidata.
+    capped = candidates[: settings.MATRIX_MAX_CANDIDATES]
+    own_client = client is None
+    if own_client:
+        client = httpx.AsyncClient()
 
-    Esta función siempre usa haversine para eficiencia (evita múltiples
-    llamadas a la API de routing por cada candidato).
-    """
-    dist_a_s = haversine_km(origin_lat, origin_lon, stop_lat, stop_lon)
-    dist_s_b = haversine_km(stop_lat, stop_lon, dest_lat, dest_lon)
-    detour = dist_a_s + dist_s_b - route_dist_km
-    return max(0.0, detour)
+    try:
+        coordinates: List[Tuple[float, float]] = [(origin_lon, origin_lat)]
+        coordinates.extend(capped)
+        dest_index = len(coordinates)
+        coordinates.append((dest_lon, dest_lat))
+
+        candidate_indices = list(range(1, 1 + len(capped)))
+        sources = [0] + candidate_indices
+        destinations = candidate_indices + [dest_index]
+
+        matrix = await _matrix_via_gateway(
+            coordinates=coordinates,
+            sources=sources,
+            destinations=destinations,
+            client=client,
+            evitar_peajes=evitar_peajes,
+        )
+
+        if not matrix:
+            return [None] * len(candidates)
+
+        ab_duration = matrix[0][-1]
+        if ab_duration is None:
+            return [None] * len(candidates)
+
+        detours: List[Optional[float]] = []
+        for i, _candidate_index in enumerate(candidate_indices):
+            a_to_s = matrix[0][i] if i < len(matrix[0]) else None
+            s_to_b = matrix[i + 1][-1] if i + 1 < len(matrix) else None
+            if a_to_s is None or s_to_b is None:
+                detours.append(None)
+                continue
+            detours.append(max(0.0, (a_to_s + s_to_b - ab_duration) / 60.0))
+
+        if len(candidates) > len(capped):
+            detours.extend([None] * (len(candidates) - len(capped)))
+        return detours
+    except Exception as exc:
+        logger.warning("Matrix API no disponible, fallback a cálculo individual: %s", exc)
+        return [None] * len(candidates)
+    finally:
+        if own_client and client is not None:
+            await client.aclose()

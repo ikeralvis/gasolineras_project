@@ -27,6 +27,11 @@ from app.models.schemas import (
     CombustibleTipo,
 )
 from app.services.gasolineras_client import fetch_gasolineras
+from app.services.postgis_candidates import (
+    fetch_route_candidates_postgis,
+    postgis_candidate_source_enabled,
+    supports_postgis_fuel,
+)
 from app.services.recommender import build_recommendations
 from app.services.routing import get_route, haversine_km
 
@@ -66,6 +71,7 @@ que combina **precio** y **desvío**.
 )
 async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
     ts_start = datetime.now(timezone.utc)
+    station_source = "api"
 
     async with httpx.AsyncClient() as client:
         # 1. Calcular ruta base
@@ -91,8 +97,51 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
                 detail="La distancia entre origen y destino es demasiado pequeña.",
             )
 
-        # 2. Obtener gasolineras
-        stations = await fetch_gasolineras(body.combustible, client=client)
+        # 2. Obtener candidatas cercanas a la ruta
+        stations: list[GasolineraInternal] = []
+        current_position = body.posicion_actual or body.origen
+        route_buffer_km = min(body.max_desvio_km * 3, 50.0)
+
+        source_mode = settings.ROUTE_CANDIDATES_SOURCE
+        postgis_supported_fuel = supports_postgis_fuel(body.combustible)
+        postgis_ready = postgis_candidate_source_enabled() and postgis_supported_fuel
+
+        if source_mode == "postgis" and not postgis_supported_fuel:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Combustible no soportado por búsqueda PostGIS directa. "
+                    "Usa gasolina_95, gasolina_98, gasoleo_a o gasoleo_premium."
+                ),
+            )
+
+        if source_mode == "postgis" and not postgis_candidate_source_enabled():
+            raise HTTPException(
+                status_code=503,
+                detail="ROUTE_CANDIDATES_SOURCE=postgis pero DATABASE_URL/asyncpg no están disponibles.",
+            )
+
+        if source_mode in ("postgis", "auto") and postgis_ready:
+            try:
+                stations = await fetch_route_candidates_postgis(
+                    route_coordinates=route.coordinates,
+                    combustible=body.combustible,
+                    current_lat=current_position.lat,
+                    current_lon=current_position.lon,
+                    buffer_km=route_buffer_km,
+                )
+                station_source = "postgis"
+            except Exception as exc:
+                if source_mode == "postgis":
+                    raise HTTPException(
+                        status_code=503,
+                        detail=f"Error en búsqueda PostGIS de candidatas: {exc}",
+                    ) from exc
+                logger.warning("Búsqueda PostGIS no disponible, fallback a API: %s", exc)
+
+        if not stations:
+            stations = await fetch_gasolineras(body.combustible, client=client)
+            station_source = "api"
 
     if not stations:
         raise HTTPException(
@@ -107,6 +156,9 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
     ts_end = datetime.now(timezone.utc)
     result.metadata = {
         "routing_backend": settings.ROUTING_BACKEND,
+        "routing_via_gateway": settings.USE_GATEWAY_ROUTING,
+        "route_candidates_source": station_source,
+        "max_detour_minutes": body.max_desvio_min,
         "gasolineras_fuente": settings.GASOLINERAS_API_URL,
         "timestamp_utc": ts_start.isoformat(),
         "procesado_en_ms": round((ts_end - ts_start).total_seconds() * 1000),

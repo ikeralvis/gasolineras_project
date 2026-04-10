@@ -15,7 +15,7 @@ Dado un punto **A** (origen) y un punto **B** (destino), calcula la ruta y recom
 | **Valhalla** | Gratis | Self-hosted | No | Necesitas isocronas o enrutamiento peatonal |
 | **GraphHopper** | Gratis con créditos | Nube o self-hosted | Sí (gratis) | Alternativa a ORS si necesitas más flexibilidad |
 
-**Elección de este servicio**: OSRM demo público por defecto (sin API key, sin registro). Cambias a ORS con `ROUTING_BACKEND=ors` + `ORS_API_KEY=xxx`.
+**Arquitectura recomendada**: este servicio consume routing a través del gateway (`USE_GATEWAY_ROUTING=true`), y el gateway es quien habla con ORS/OSRM.
 
 ---
 
@@ -67,8 +67,11 @@ const res = await fetch("/api/recomendacion/ruta", {
   body: JSON.stringify({
     origen:  { lat: 40.4168, lon: -3.7038, nombre: "Madrid" },
     destino: { lat: 41.3851, lon:  2.1734, nombre: "Barcelona" },
+    posicion_actual: { lat: 40.4168, lon: -3.7038 }, // opcional
     combustible: "gasolina_95",
     max_desvio_km: 5,
+    max_detour_minutes: 5,
+    evitar_peajes: true,
     litros_deposito: 50,
   }),
 });
@@ -126,9 +129,14 @@ También puede consumir directamente la API del Ministerio español (fallback au
 | Variable | Por defecto | Descripción |
 |---|---|---|
 | `ROUTING_BACKEND` | `osrm` | `osrm` o `ors` |
+| `USE_GATEWAY_ROUTING` | `true` | Si está activo, usa `/api/routing/*` del gateway |
+| `ROUTING_PROXY_URL` | `http://gateway:8080/api/routing` | Endpoint interno del gateway para directions/matrix |
 | `OSRM_BASE_URL` | `http://router.project-osrm.org` | URL de tu OSRM (demo o self-hosted) |
 | `ORS_API_KEY` | *(vacío)* | API key de OpenRouteService (si usas `ors`) |
 | `GASOLINERAS_API_URL` | `http://gasolineras:8000/gasolineras/?limit=2000` | Endpoint de gasolineras |
+| `ROUTE_CANDIDATES_SOURCE` | `auto` | `api`, `postgis` o `auto` para candidatas de ruta |
+| `DATABASE_URL` | *(vacío)* | Requerida si `ROUTE_CANDIDATES_SOURCE=postgis` |
+| `MAX_REAL_DETOUR_CHECKS` | `30` | Máximo de rutas A→S→B exactas para refinar desvíos |
 | `DEFAULT_MAX_DESVIO_KM` | `5.0` | Desvío máximo por defecto |
 | `DEFAULT_WEIGHT_PRICE` | `0.6` | Peso del precio en el score |
 | `DEFAULT_WEIGHT_DETOUR` | `0.4` | Peso del desvío en el score |
@@ -146,14 +154,19 @@ Recomienda gasolineras en una ruta A→B.
 {
   "origen":  { "lat": 40.4168, "lon": -3.7038, "nombre": "Madrid" },
   "destino": { "lat": 41.3851, "lon":  2.1734, "nombre": "Barcelona" },
+  "posicion_actual": { "lat": 40.4168, "lon": -3.7038 },
   "combustible": "gasolina_95",
   "max_desvio_km": 5,
+  "max_detour_minutes": 5,
   "top_n": 5,
   "peso_precio": 0.6,
   "peso_desvio": 0.4,
-  "litros_deposito": 50
+  "litros_deposito": 50,
+  "evitar_peajes": true
 }
 ```
+
+Además de `ruta_base.coordinates`, la respuesta incluye `geojson` (`FeatureCollection`) lista para pintar ruta y puntos en el mapa.
 
 **Respuesta:**
 ```json

@@ -17,7 +17,6 @@ steps:
       - 'europe-west1'
       - '--platform'
       - 'managed'
-      - '--allow-unauthenticated'
       - '--set-env-vars'
       - 'RUN_HTTP_API=true,API_HOST=0.0.0.0'
 

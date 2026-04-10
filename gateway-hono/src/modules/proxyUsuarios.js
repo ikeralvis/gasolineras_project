@@ -1,4 +1,5 @@
 import { setCookie } from "hono/cookie";
+import { fetchWithCloudRunAuth } from "./cloudRunAuthFetch.js";
 
 function buildForwardHeaders(c) {
   const headers = {};
@@ -65,7 +66,7 @@ export function registerUsuariosRoutes(app, {
 }) {
   async function proxyUsuariosStatus(c, servicePath) {
     try {
-      const response = await fetch(`${usuariosService}${servicePath}`, {
+      const response = await fetchWithCloudRunAuth(`${usuariosService}${servicePath}`, {
         method: "GET",
         headers: { Accept: "application/json" },
         signal: AbortSignal.timeout(healthTimeoutMs),
@@ -112,7 +113,7 @@ export function registerUsuariosRoutes(app, {
         options.body = await c.req.text();
       }
 
-      const response = await fetch(url, options);
+      const response = await fetchWithCloudRunAuth(url, options);
       return buildProxyResponse(c, response, cookieConfig);
     } catch (error) {
       console.error("Error en proxy de usuarios:", error);

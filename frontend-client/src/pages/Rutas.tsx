@@ -132,6 +132,10 @@ export default function Rutas() {
   const [selectedFuel, setSelectedFuel] = useState<CombustibleTipo>(
     mapProfileFuelToCombustible(user?.combustible_favorito, user?.tipo_combustible_coche)
   );
+  const [avoidTolls, setAvoidTolls] = useState(false);
+  const [maxDetourKm, setMaxDetourKm] = useState(8);
+  const [maxDetourMin, setMaxDetourMin] = useState(5);
+  const [resultLimit, setResultLimit] = useState(20);
 
   const [pickMode, setPickMode] = useState<PickMode>(null);
   const [loadingRoute, setLoadingRoute] = useState(false);
@@ -228,7 +232,7 @@ export default function Rutas() {
       return;
     }
 
-    const timer = window.setTimeout(async () => {
+    const timer = globalThis.setTimeout(async () => {
       try {
         setLoadingDestinationSearch(true);
         const items = await searchLocations(query, 6);
@@ -240,7 +244,7 @@ export default function Rutas() {
       }
     }, 320);
 
-    return () => window.clearTimeout(timer);
+    return () => globalThis.clearTimeout(timer);
   }, [destinationInput]);
 
   useEffect(() => {
@@ -250,7 +254,7 @@ export default function Rutas() {
       return;
     }
 
-    const timer = window.setTimeout(async () => {
+    const timer = globalThis.setTimeout(async () => {
       try {
         setLoadingOriginSearch(true);
         const items = await searchLocations(query, 6);
@@ -262,7 +266,7 @@ export default function Rutas() {
       }
     }, 320);
 
-    return () => window.clearTimeout(timer);
+    return () => globalThis.clearTimeout(timer);
   }, [originInput]);
 
   const calculateRoute = async () => {
@@ -275,15 +279,26 @@ export default function Rutas() {
       const data = await requestRouteRecommendations({
         origen: { lat: origin.lat, lon: origin.lng, nombre: origin.name },
         destino: { lat: destination.lat, lon: destination.lng, nombre: destination.name },
+        posicion_actual: { lat: origin.lat, lon: origin.lng, nombre: origin.name },
         combustible: selectedFuel,
-        max_desvio_km: 8,
-        top_n: 10,
+        max_desvio_km: maxDetourKm,
+        max_detour_minutes: maxDetourMin,
+        top_n: resultLimit,
         peso_precio: 0.6,
         peso_desvio: 0.4,
         litros_deposito: 50,
+        evitar_peajes: avoidTolls,
       });
 
-      const leafletCoords: [number, number][] = (data.ruta_base.coordinates || [])
+      const geojsonRouteFeature = data.geojson?.features?.find(
+        (feature) => feature.geometry?.type === "LineString"
+      );
+
+      const routeCoordinates = Array.isArray(geojsonRouteFeature?.geometry?.coordinates)
+        ? (geojsonRouteFeature.geometry.coordinates as [number, number][])
+        : data.ruta_base.coordinates || [];
+
+      const leafletCoords: [number, number][] = routeCoordinates
         .filter((coord) => Array.isArray(coord) && coord.length >= 2)
         .map((coord) => [coord[1], coord[0]] as [number, number]);
 
@@ -558,6 +573,79 @@ export default function Rutas() {
                 </button>
               </div>
 
+              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
+                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+                    {t("routes.maxDetourKm", { defaultValue: "Desvío máximo (km)" })}
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    step={1}
+                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                    value={maxDetourKm}
+                    onChange={(e) => {
+                      setMaxDetourKm(Number(e.target.value) || 1);
+                      clearRouteResult();
+                    }}
+                  />
+                </div>
+
+                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+                    {t("routes.maxDetourMin", { defaultValue: "Desvío máximo (min)" })}
+                  </label>
+                  <input
+                    type="range"
+                    min={1}
+                    max={30}
+                    step={1}
+                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                    value={maxDetourMin}
+                    onChange={(e) => {
+                      setMaxDetourMin(Number(e.target.value) || 1);
+                      clearRouteResult();
+                    }}
+                  />
+                  <p className="mt-1 text-xs font-semibold text-[#1f3f79]">
+                    {maxDetourMin} {t("routes.minutes")}
+                  </p>
+                </div>
+
+                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+                    {t("routes.resultLimit", { defaultValue: "Máx. gasolineras" })}
+                  </label>
+                  <select
+                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                    value={resultLimit}
+                    onChange={(e) => {
+                      setResultLimit(Number(e.target.value));
+                      clearRouteResult();
+                    }}
+                  >
+                    {[10, 20, 30, 50, 80].map((n) => (
+                      <option key={n} value={n}>
+                        {n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <label className="mt-2 inline-flex items-center gap-2 rounded-xl border border-[#d8e4f7] bg-[#f7fbff] px-3 py-2 text-sm font-semibold text-[#1f427f]">
+                <input
+                  type="checkbox"
+                  checked={avoidTolls}
+                  onChange={(e) => {
+                    setAvoidTolls(e.target.checked);
+                    clearRouteResult();
+                  }}
+                />
+                {t("routes.avoidTolls", { defaultValue: "Evitar peajes" })}
+              </label>
+
               {pickMode && (
                 <p className="mt-2 rounded-lg border border-dashed border-[#9eb7e4] bg-[#edf4ff] px-2 py-1.5 text-xs text-[#355286]">
                   {pickMode === "origin" ? t("routes.mapPickOriginHint") : t("routes.mapPickDestinationHint")}
@@ -597,7 +685,15 @@ export default function Rutas() {
               </div>
             </div>
 
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-widest text-[#4d638e]">{t("routes.stopOptions")}</h3>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-[#4d638e]">{t("routes.stopOptions")}</h3>
+              <span className="text-[11px] font-semibold text-[#5573a7]">
+                {t("routes.candidatesCount", {
+                  defaultValue: "{{count}} candidatas",
+                  count: gasStationsNearRoute.length,
+                })}
+              </span>
+            </div>
             <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
               {stopOptions.map((station) => (
                 <button

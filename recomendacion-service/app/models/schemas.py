@@ -2,7 +2,7 @@
 Schemas Pydantic para la API de recomendación de gasolineras.
 """
 from __future__ import annotations
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing import Optional, List, Literal
 from datetime import datetime
 
@@ -40,8 +40,14 @@ class Coordenada(BaseModel):
 
 
 class RecomendacionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     origen: Coordenada = Field(..., description="Punto de partida")
     destino: Coordenada = Field(..., description="Punto de llegada")
+    posicion_actual: Optional[Coordenada] = Field(
+        None,
+        description="Posición GPS actual para descartar gasolineras por detrás de la ruta",
+    )
     combustible: CombustibleTipo = Field(
         "gasolina_95",
         description="Tipo de combustible a comparar",
@@ -52,7 +58,19 @@ class RecomendacionRequest(BaseModel):
         le=50,
         description="Desvío máximo tolerable en km respecto a la ruta directa",
     )
-    top_n: int = Field(5, ge=1, le=20, description="Número de recomendaciones a devolver")
+    max_desvio_min: Optional[float] = Field(
+        None,
+        gt=0,
+        le=120,
+        description="Tiempo extra máximo permitido por desvío (minutos)",
+    )
+    max_detour_minutes: Optional[float] = Field(
+        None,
+        gt=0,
+        le=120,
+        description="Alias en inglés de max_desvio_min",
+    )
+    top_n: int = Field(5, ge=1, le=100, description="Número de recomendaciones a devolver")
     peso_precio: float = Field(
         0.6,
         ge=0,
@@ -76,6 +94,9 @@ class RecomendacionRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_weights(self) -> RecomendacionRequest:
+        if self.max_desvio_min is None and self.max_detour_minutes is not None:
+            self.max_desvio_min = self.max_detour_minutes
+
         total = self.peso_precio + self.peso_desvio
         if abs(total - 1.0) > 0.01:
             # Normalizar automáticamente
@@ -103,6 +124,8 @@ class GasolineraInternal(BaseModel):
     precio: Optional[float] = None          # en €/L para el combustible solicitado
     horario: Optional[str] = None
     tipo_venta: Optional[str] = None
+    osm_highway: Optional[str] = None
+    es_area_servicio: bool = False
 
     @property
     def tiene_precio(self) -> bool:
@@ -187,6 +210,10 @@ class RecomendacionResponse(BaseModel):
     metadata: dict = Field(
         default_factory=dict,
         description="Información sobre el backend de routing usado y timestamps",
+    )
+    geojson: dict = Field(
+        default_factory=dict,
+        description="FeatureCollection GeoJSON lista para pintar ruta y gasolineras",
     )
 
 

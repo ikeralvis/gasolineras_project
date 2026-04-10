@@ -26,6 +26,10 @@ Estado actual del repo tras ajustes:
 
 Cloud Build config por servicio:
 
+Los `cloudbuild-*.yaml` HTTP estan en modo **build + push + deploy automatico**.
+Para evitar fallos IAM en triggers, los pipelines no fuerzan `--allow-unauthenticated`.
+La visibilidad (publico/privado) se configura en Cloud Run UI y queda persistente entre revisiones.
+
 - frontend-client: `cloudbuild-frontend.yaml`
 - usuarios-service: `cloudbuild-usuarios.yaml`
 - gasolineras-service: `cloudbuild-gasolineras.yaml`
@@ -52,6 +56,10 @@ Cloud Build config por servicio:
 4. Evento recomendado:
    - Push to branch `main`.
    - Include files por carpeta para evitar despliegues innecesarios.
+5. Marca "Use the service account configured for this trigger" y asigna permisos:
+  - Cloud Run Admin
+  - Service Account User (sobre la runtime SA)
+  - Artifact Registry Writer
 
 Patrones recomendados por trigger:
 
@@ -85,13 +93,39 @@ Para cada servicio en Cloud Run:
 2. Selecciona imagen desde Artifact Registry (`tankgo/<service>-img`).
 3. Region: `europe-west1`.
 4. Authentication:
-   - Publico solo para frontend y gateway (y APIs que quieras publicas).
-   - Privado para servicios internos si usas invocacion autenticada.
+  - Aplica la matriz de visibilidad recomendada de la seccion 5.1.
 5. Container port:
    - Deja 8080 (default Cloud Run).
 6. Variables y secretos:
    - Configura env vars y secretos en la pestana Variables & Secrets.
 7. Deploy.
+
+### 5.1 Visibilidad recomendada (publico vs privado)
+
+- `frontend-client`: **Publico** (sitio web)
+- `gateway-hono`: **Publico** (entrypoint API del frontend)
+- `usuarios-service`: **Privado** (solo lo invoca gateway)
+- `gasolineras-service`: **Privado** (solo lo invoca gateway)
+- `recomendacion-service`: **Privado** (solo lo invoca gateway)
+- `voice-assistant-service`: **Privado** si pasa por gateway; **Publico** solo si frontend conecta directo WS
+- `prediction-service`: **Privado** por defecto; **Publico** solo si expones su API externamente
+- `mcp-gasolineras-server`: no desplegar como Cloud Run service HTTP
+
+Regla practica: expone publicamente solo `frontend-client` y `gateway-hono`.
+
+### 5.2 Evitar 403 cuando Gateway llama servicios privados
+
+Si `gateway-hono` es publico y `usuarios/gasolineras/recomendacion` son privados, debes tener:
+
+1. URL internas correctas en gateway:
+  - `USUARIOS_SERVICE_URL=https://<usuarios>.run.app`
+  - `GASOLINERAS_SERVICE_URL=https://<gasolineras>.run.app`
+  - `RECOMENDACION_SERVICE_URL=https://<recomendacion>.run.app`
+2. Runtime Service Account del gateway con rol `Cloud Run Invoker` sobre cada servicio privado.
+3. Variable en gateway:
+  - `CLOUD_RUN_SERVICE_AUTH_ENABLED=true`
+
+Este repo ya incluye envio automatico de `X-Serverless-Authorization` desde el gateway cuando detecta destino `*.run.app`, para no romper tu JWT de usuario en `Authorization`.
 
 ## 6) Variables minimas por servicio
 
@@ -223,3 +257,29 @@ Valores iniciales (luego ajustar por metricas):
 3. Confirmar que el entrypoint usa `PORT`.
 4. Confirmar que el servicio esta en `0.0.0.0`.
 5. Aumentar startup timeout si el arranque inicial tarda.
+
+## 10) Caso real: Trigger falla con IAM + PORT en usuarios-service
+
+Si en Cloud Build Trigger ves algo como:
+
+- `Setting IAM policy failed ... allUsers roles/run.invoker`
+- `failed to start and listen on the port defined by PORT=8080`
+
+haz esto en UI:
+
+1. Mantén el trigger con deploy automatico.
+2. Ve a Cloud Run -> `usuarios-service` -> Edit & Deploy New Revision.
+3. Selecciona la imagen nueva de Artifact Registry `tankgo/usuarios-img`.
+4. En `Container port`, deja `8080`.
+5. En `Variables & Secrets`, define obligatorio:
+  - `DATABASE_URL` (ideal via Secret Manager)
+  - `JWT_SECRET` (ideal via Secret Manager)
+6. Opcionales recomendadas:
+  - `JWT_EXPIRES_IN=7d`
+  - `NODE_ENV=production`
+  - `ALLOWED_ORIGINS=https://<tu-frontend>`
+7. En `Security`:
+  - Si no necesitas publico, deja `Require authentication` (evita error de IAM allUsers).
+  - Si quieres publico, activa `Allow unauthenticated` solo si tu cuenta tiene permisos IAM para policy binding.
+
+Nota: en este servicio, el error de puerto suele ser secundario; normalmente el proceso cae por variables faltantes (`DATABASE_URL` o `JWT_SECRET`) antes de empezar a escuchar.

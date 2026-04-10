@@ -17,6 +17,10 @@ class Settings(BaseSettings):
     ROUTING_BACKEND: Literal["osrm", "ors"] = "ors"
     ROUTING_FAILOVER_TO_OSRM: bool = False
     ALLOW_STRAIGHT_LINE_FALLBACK: bool = False
+    USE_GATEWAY_ROUTING: bool = True
+    ROUTING_PROXY_URL: str = "http://gateway:8080/api/routing"
+    ROUTING_HTTP_RETRIES: int = 2
+    ROUTING_RETRY_BACKOFF_S: float = 0.5
 
     OSRM_BASE_URL: str = "http://router.project-osrm.org"
 
@@ -34,6 +38,16 @@ class Settings(BaseSettings):
         "https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/"
         "PreciosCarburantes/EstacionesTerrestres/"
     )
+
+    # Búsqueda de candidatas de ruta:
+    # "api"     -> descarga lista y filtra en memoria (fallback universal)
+    # "postgis" -> consulta directa a PostgreSQL/PostGIS (rápido y preciso)
+    # "auto"    -> usa PostGIS si DATABASE_URL está disponible; si no, API.
+    ROUTE_CANDIDATES_SOURCE: Literal["api", "postgis", "auto"] = "auto"
+    DATABASE_URL: str = ""
+    POSTGIS_ROUTE_MAX_CANDIDATES: int = 1500
+    MAX_REAL_DETOUR_CHECKS: int = 30
+    MATRIX_MAX_CANDIDATES: int = 60
 
 
     # ── Parámetros por defecto del algoritmo ──────────────────────────────────

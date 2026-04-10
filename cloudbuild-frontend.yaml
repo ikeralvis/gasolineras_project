@@ -1,13 +1,13 @@
 steps:
   # 1. Construir la imagen del Frontend
-  # Fíjate que el último argumento es 'frontend/' (la carpeta), no '.'
+  # Define _VITE_API_BASE_URL en el trigger de Cloud Build.
   - name: 'gcr.io/cloud-builders/docker'
     args: 
       - 'build'
       - '-t'
       - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
       - '--build-arg'
-      - 'VITE_API_BASE_URL=https://tu-gateway.run.app'
+      - 'VITE_API_BASE_URL=${_VITE_API_BASE_URL}'
       - 'frontend-client'
 
   # 2. Subir al registro
@@ -15,6 +15,8 @@ steps:
     args: ['push', 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img']
 
   # 3. Desplegar en Cloud Run
+  # Nota: no se fuerza allow-unauthenticated aqui para evitar fallos IAM en trigger.
+  # Configura visibilidad publica/privada desde Cloud Run UI una sola vez.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -25,10 +27,14 @@ steps:
       - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
       - '--region'
       - 'europe-west1'
-      - '--allow-unauthenticated'
+      - '--platform'
+      - 'managed'
 
 images:
   - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
+
+substitutions:
+  _VITE_API_BASE_URL: 'https://gateway-hono-REEMPLAZAR.run.app'
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -10,9 +10,70 @@ Servicio de voz desacoplado para investigación y despliegue empresarial.
 
 ## Endpoints MVP
 
-- `POST /voice/transcribe`: STT con Whisper (audioBase64 -> texto).
-- `POST /voice/intent`: routing de intención + tools + respuesta + TTS opcional.
+- `GET /ws/voice`: canal WebSocket para `transcribe` e `intent` (nuevo transporte recomendado).
 - `GET /health`: estado del servicio.
+
+## Protocolo WebSocket (Fase 1)
+
+URL:
+
+```text
+ws://localhost:8090/ws/voice
+```
+
+Al conectar, el servidor envia un evento `ready`.
+
+Peticiones del cliente:
+
+```json
+{
+	"id": "req-1",
+	"action": "transcribe",
+	"payload": {
+		"audioBase64": "...",
+		"mimeType": "audio/webm",
+		"language": "es"
+	}
+}
+```
+
+```json
+{
+	"id": "req-2",
+	"action": "intent",
+	"payload": {
+		"text": "dime la mas cercana",
+		"location": { "lat": 40.4168, "lon": -3.7038, "km": 8 },
+		"includeAudio": true
+	}
+}
+```
+
+Respuesta estandar:
+
+```json
+{
+	"type": "response",
+	"id": "req-2",
+	"action": "intent",
+	"ok": true,
+	"data": { "intent": "nearest", "answer": { "text": "..." }, "tts": { "audioBase64": "..." } }
+}
+```
+
+Respuesta de error:
+
+```json
+{
+	"type": "response",
+	"id": "req-2",
+	"action": "intent",
+	"ok": false,
+	"statusCode": 400,
+	"error": "km-out-of-range",
+	"message": "km-out-of-range"
+}
+```
 
 ## Estrategia de desacoplo
 
@@ -39,6 +100,7 @@ Guardrails recomendados para controlar coste:
 - `VOICE_MAX_AUDIO_BASE64_CHARS`: tamaño máximo de audio base64.
 - `VOICE_MAX_KM`: radio máximo permitido para consultas cercanas.
 - `VOICE_ENABLE_TTS_AUDIO`: permite desactivar generación de audio para ahorrar coste.
+- `VOICE_ALLOWED_ORIGINS`: lista CSV de orígenes permitidos para WS (por defecto `*`).
 - `OPENAI_TIMEOUT_MS`: timeout de llamadas a OpenAI.
 - `OPENAI_ROUTER_MAX_TOKENS`: tope de tokens para clasificación de intención.
 - `OPENAI_LLM_MAX_TOKENS`: tope de tokens para respuesta final.
@@ -57,28 +119,7 @@ Guardrails recomendados para controlar coste:
 
 El Playground sirve para pruebas manuales de prompts, pero la configuración real de API key y facturación se hace en OpenAI Platform.
 
-## Ejemplos de uso
+## Uso recomendado
 
-### 1) Transcribir audio
-
-```bash
-curl -X POST http://localhost:8090/voice/transcribe \
-	-H "Content-Type: application/json" \
-	-d '{
-		"audioBase64": "<base64>",
-		"mimeType": "audio/webm",
-		"language": "es"
-	}'
-```
-
-### 2) Resolver intención con audio opcional
-
-```bash
-curl -X POST http://localhost:8090/voice/intent \
-	-H "Content-Type: application/json" \
-	-d '{
-		"text": "dime la más cercana",
-		"location": {"lat": 40.4168, "lon": -3.7038, "km": 8},
-		"includeAudio": false
-	}'
-```
+Consumir siempre por WebSocket con acciones `transcribe` e `intent`.
+Los endpoints HTTP legacy fueron retirados para mantener un único transporte.

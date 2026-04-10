@@ -1,4 +1,5 @@
 import { swaggerUI } from "@hono/swagger-ui";
+import { fetchWithCloudRunAuth } from "./cloudRunAuthFetch.js";
 
 function buildLoadingSpec() {
   return {
@@ -268,7 +269,7 @@ export function setupOpenApiModule(app, {
 
       specEntries = Object.entries(serviceRegistry).filter(([, service]) => Boolean(service.url && service.openapiPath));
       const specRequests = specEntries.map(([, service]) =>
-        fetch(`${service.url}${service.openapiPath}`, { signal: AbortSignal.timeout(openapiTimeoutMs) })
+        fetchWithCloudRunAuth(`${service.url}${service.openapiPath}`, { signal: AbortSignal.timeout(openapiTimeoutMs) })
       );
       const specResponses = await Promise.allSettled(specRequests);
 

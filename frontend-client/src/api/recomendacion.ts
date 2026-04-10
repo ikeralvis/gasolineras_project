@@ -11,8 +11,11 @@ export type CombustibleTipo =
 export interface RecomendacionRequestPayload {
   origen: { lat: number; lon: number; nombre?: string };
   destino: { lat: number; lon: number; nombre?: string };
+  posicion_actual?: { lat: number; lon: number; nombre?: string };
   combustible: CombustibleTipo;
   max_desvio_km?: number;
+  max_desvio_min?: number;
+  max_detour_minutes?: number;
   top_n?: number;
   peso_precio?: number;
   peso_desvio?: number;
@@ -64,6 +67,17 @@ export interface RecomendacionResponse {
     ahorro_vs_mas_cara_eur?: number | null;
     distancia_desde_origen_km?: number;
   }>;
+  geojson?: {
+    type: "FeatureCollection";
+    features: Array<{
+      type: "Feature";
+      geometry: {
+        type: "LineString" | "Point";
+        coordinates: [number, number][] | [number, number];
+      };
+      properties: Record<string, unknown>;
+    }>;
+  };
 }
 
 export async function requestRouteRecommendations(

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   MapContainer,
   Marker,
+  Popup,
   TileLayer,
   useMap,
   useMapEvents,
@@ -44,12 +45,54 @@ function createLocationDivIcon(statusColor: string): L.DivIcon {
   });
 }
 
+const userLocationIcon = L.divIcon({
+  html: `
+    <div class="user-location-dot">
+      <div class="user-location-pulse"></div>
+      <div class="user-location-center"></div>
+    </div>
+  `,
+  className: "user-location-marker",
+  iconSize: [40, 40],
+  iconAnchor: [20, 20],
+  popupAnchor: [0, -20],
+});
+
+const SPAIN_BOUNDS: [[number, number], [number, number]] = [[35.7, -9.7], [43.9, 3.4]];
+
+function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    map.setView(center, 13, { animate: false });
+  }, [center, enabled, map]);
+
+  return null;
+}
+
+function DefaultSpainViewController({ enabled }: Readonly<{ enabled: boolean }>) {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    map.fitBounds(SPAIN_BOUNDS, { padding: [24, 24] });
+  }, [enabled, map]);
+
+  return null;
+}
+
 // ── Sub-component: listens to map move/zoom and fetches markers ───────────────
 interface MapControllerProps {
   onMarkersUpdate: (markers: EVMarker[]) => void;
   onZoomTooLow: (show: boolean) => void;
   onBboxTooLarge: (requiredZoom: number | null) => void;
   onLoading: (loading: boolean) => void;
+  refreshKey: string;
 }
 
 function EVMapController({
@@ -57,17 +100,15 @@ function EVMapController({
   onZoomTooLow,
   onBboxTooLarge,
   onLoading,
+  refreshKey,
 }: MapControllerProps) {
   const map = useMap();
-  const abortRef = useRef<AbortController | null>(null);
+  const fetchSeqRef = useRef(0);
 
   const fetchMarkers = useCallback(async () => {
+    const currentSeq = ++fetchSeqRef.current;
     const zoom = map.getZoom();
     onZoomTooLow(false);
-
-    // Cancel previous in-flight request
-    abortRef.current?.abort();
-    abortRef.current = new AbortController();
 
     const bounds = map.getBounds();
     const ne = bounds.getNorthEast();
@@ -82,28 +123,46 @@ function EVMapController({
         lon_sw: sw.lng,
         zoom,
       });
-      onMarkersUpdate(markers);
-      onBboxTooLarge(null);
+      if (currentSeq === fetchSeqRef.current) {
+        onMarkersUpdate(markers);
+        onBboxTooLarge(null);
+      }
     } catch (err) {
       if (err instanceof BoundingBoxTooLargeError) {
-        onBboxTooLarge(err.requiredZoom);
-        onMarkersUpdate([]);
+        if (currentSeq === fetchSeqRef.current) {
+          onBboxTooLarge(err.requiredZoom);
+          onMarkersUpdate([]);
+        }
       } else {
         console.error("EV markers fetch error:", err);
       }
     } finally {
-      onLoading(false);
+      if (currentSeq === fetchSeqRef.current) {
+        onLoading(false);
+      }
     }
   }, [map, onMarkersUpdate, onZoomTooLow, onBboxTooLarge, onLoading]);
 
-  // Fetch on initial load
+  const runFetchForCurrentViewport = useCallback(() => {
+    map.invalidateSize();
+    globalThis.requestAnimationFrame(() => {
+      void fetchMarkers();
+    });
+  }, [fetchMarkers, map]);
+
   useEffect(() => {
-    fetchMarkers();
-  }, [fetchMarkers]);
+    map.whenReady(runFetchForCurrentViewport);
+  }, [map, runFetchForCurrentViewport]);
+
+  useEffect(() => {
+    map.whenReady(runFetchForCurrentViewport);
+  }, [map, refreshKey, runFetchForCurrentViewport]);
 
   // Only moveend: zoomend also fires moveend, so listening to both causes a double fetch
   useMapEvents({
-    moveend: () => { fetchMarkers(); },
+    moveend: () => {
+      void fetchMarkers();
+    },
   });
 
   return null;
@@ -145,7 +204,7 @@ function ClusterCircle({ lat, lng, count }: Readonly<ClusterCircleProps>) {
       position={[lat, lng]}
       icon={icon}
       eventHandlers={{
-        click: () => map.flyTo([lat, lng], Math.min(map.getZoom() + 3, 18)),
+        click: () => map.flyTo([lat, lng], Math.min(map.getZoom() + 4, 18)),
       }}
     />
   );
@@ -428,6 +487,8 @@ const SPAIN_CENTER: [number, number] = [40.4168, -3.7038];
 export default function MapaRecarga() {
   const { t } = useTranslation();
   const [markers, setMarkers] = useState<EVMarker[]>([]);
+  const [userLocation, setUserLocation] = useState<[number, number]>(SPAIN_CENTER);
+  const [locationGranted, setLocationGranted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [zoomTooLow, setZoomTooLow] = useState(false);
   const [bboxTooLargeZoom, setBboxTooLargeZoom] = useState<number | null>(null);
@@ -435,6 +496,24 @@ export default function MapaRecarga() {
 
   const locationCount = markers.filter((m) => m.type === "location").length;
   const clusterCount = markers.filter((m) => m.type === "cluster").length;
+  const mapRefreshKey = locationGranted
+    ? `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}`
+    : "spain-default";
+
+  useEffect(() => {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        setUserLocation([lat, lon]);
+        setLocationGranted(true);
+      },
+      (error) => {
+        console.warn("No se pudo obtener ubicacion EV:", error.message);
+      },
+      { timeout: 5000 }
+    );
+  }, []);
 
   return (
     <div className="w-full h-[calc(100vh-64px)] flex flex-col relative">
@@ -482,8 +561,8 @@ export default function MapaRecarga() {
 
       {/* ── Map ── */}
       <MapContainer
-        center={SPAIN_CENTER}
-        zoom={6}
+        center={userLocation}
+        zoom={locationGranted ? 13 : 6}
         className="flex-1 z-0"
         style={{ zIndex: 0 }}
         zoomControl
@@ -493,12 +572,26 @@ export default function MapaRecarga() {
           attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
         />
 
+        <MapUpdater center={userLocation} enabled={locationGranted} />
+        <DefaultSpainViewController enabled={!locationGranted} />
+
         <EVMapController
           onMarkersUpdate={setMarkers}
           onZoomTooLow={setZoomTooLow}
           onBboxTooLarge={setBboxTooLargeZoom}
           onLoading={setLoading}
+          refreshKey={mapRefreshKey}
         />
+
+        {locationGranted && (
+          <Marker position={userLocation} icon={userLocationIcon}>
+            <Popup>
+              <div className="p-2 text-center">
+                <p className="font-semibold text-[#000C74]">{t("map.yourLocation")}</p>
+              </div>
+            </Popup>
+          </Marker>
+        )}
 
         {markers.map((marker, i) => {
           if (marker.type === "cluster") {

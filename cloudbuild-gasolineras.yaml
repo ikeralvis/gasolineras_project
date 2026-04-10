@@ -8,6 +8,7 @@ steps:
     args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/gasolineras-img']
 
   # 3. Desplegar en Cloud Run
+  # Nota: no se fuerza allow-unauthenticated aqui para evitar fallos IAM en trigger.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -17,10 +18,9 @@ steps:
       - '--image'
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/gasolineras-img'
       - '--region'
-      - 'europe-west1' # Tu región elegida (Bélgica)
+      - 'europe-west1'
       - '--platform'
       - 'managed'
-      - '--allow-unauthenticated' # Para que sea pública (puedes quitarlo si es privada)
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/gasolineras-img'

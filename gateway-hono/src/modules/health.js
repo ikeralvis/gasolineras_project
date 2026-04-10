@@ -1,10 +1,12 @@
+import { fetchWithCloudRunAuth } from "./cloudRunAuthFetch.js";
+
 async function probeServiceHealth(serviceConfig, healthTimeoutMs) {
   const healthCandidates = serviceConfig.healthPaths || ["/health", "/"];
   let lastError = null;
 
   try {
     for (const healthPath of healthCandidates) {
-      const healthRes = await fetch(`${serviceConfig.url}${healthPath}`, {
+      const healthRes = await fetchWithCloudRunAuth(`${serviceConfig.url}${healthPath}`, {
         signal: AbortSignal.timeout(healthTimeoutMs),
       });
 

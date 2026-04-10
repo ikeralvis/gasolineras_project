@@ -6,6 +6,7 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { setupOpenApiModule } from "./modules/openapi.js";
 import { registerHealthRoute } from "./modules/health.js";
 import { registerUsuariosRoutes } from "./modules/proxyUsuarios.js";
+import { fetchWithCloudRunAuth } from "./modules/cloudRunAuthFetch.js";
 
 // ========================================
 // 🔧 CONFIGURACIÓN
@@ -16,6 +17,11 @@ const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasol
 const RECOMENDACION_SERVICE = process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001";
 const VOICE_ASSISTANT_SERVICE = process.env.VOICE_ASSISTANT_SERVICE_URL || "http://voice-assistant:8090";
 const PREDICTION_SERVICE = process.env.PREDICTION_SERVICE_URL || "";
+const ORS_BASE_URL = process.env.ORS_BASE_URL || "https://api.openrouteservice.org";
+const ORS_API_KEY = process.env.ORS_API_KEY || "";
+const OSRM_BASE_URL = process.env.OSRM_BASE_URL || "http://router.project-osrm.org";
+const ROUTING_TIMEOUT_MS = Number(process.env.ROUTING_TIMEOUT_MS || 10000);
+const ROUTING_RETRIES = Number(process.env.ROUTING_RETRIES || 2);
 const GEOCODING_BASE_URL = process.env.GEOCODING_BASE_URL || "https://nominatim.openstreetmap.org";
 const GEOCODING_USER_AGENT = process.env.GEOCODING_USER_AGENT || "TankGo/1.0 (geocoding proxy)";
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
@@ -136,6 +142,135 @@ async function fetchGeocodingJson(url) {
   return data;
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStatus(statusCode) {
+  return [408, 425, 429, 500, 502, 503, 504].includes(statusCode);
+}
+
+async function fetchWithRetries(url, options = {}, retries = ROUTING_RETRIES) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(ROUTING_TIMEOUT_MS),
+      });
+
+      if (response.ok) {
+        return response;
+      }
+
+      if (attempt < retries && isRetryableStatus(response.status)) {
+        const retryAfter = Number(response.headers.get("retry-after") || "0");
+        const backoffMs = retryAfter > 0 ? retryAfter * 1000 : 300 * (2 ** attempt);
+        await sleep(backoffMs);
+        continue;
+      }
+
+      const detail = (await response.text()).slice(0, 400);
+      const error = new Error(`HTTP ${response.status}: ${detail}`);
+      error.statusCode = response.status;
+      throw error;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= retries) {
+        break;
+      }
+      await sleep(300 * (2 ** attempt));
+    }
+  }
+
+  throw lastError || new Error("external-request-failed");
+}
+
+async function fetchDirectionsORS({ coordinates, avoidTolls }) {
+  if (!ORS_API_KEY) {
+    const error = new Error("ORS_API_KEY no configurada en gateway");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const response = await fetchWithRetries(`${ORS_BASE_URL}/v2/directions/driving-car`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: ORS_API_KEY,
+    },
+    body: JSON.stringify({
+      coordinates,
+      preference: "fastest",
+      units: "m",
+      geometry: true,
+      ...(avoidTolls ? { options: { avoid_features: ["tollways"] } } : {}),
+    }),
+  });
+
+  const data = await response.json();
+  const feature = data?.features?.[0];
+  if (!feature) {
+    throw new Error(`Respuesta ORS no válida: ${JSON.stringify(data).slice(0, 300)}`);
+  }
+
+  return {
+    provider: "ors",
+    distance_m: Number(feature?.properties?.summary?.distance || 0),
+    duration_s: Number(feature?.properties?.summary?.duration || 0),
+    coordinates: feature?.geometry?.coordinates || [],
+  };
+}
+
+async function fetchDirectionsOSRM({ coordinates }) {
+  const coordsParam = coordinates.map(([lon, lat]) => `${lon},${lat}`).join(";");
+  const response = await fetchWithRetries(
+    `${OSRM_BASE_URL}/route/v1/driving/${coordsParam}?overview=full&geometries=geojson&steps=false`,
+    { method: "GET" }
+  );
+  const data = await response.json();
+  const route = data?.routes?.[0];
+  if (!route) {
+    throw new Error(`Respuesta OSRM no válida: ${JSON.stringify(data).slice(0, 300)}`);
+  }
+  return {
+    provider: "osrm",
+    distance_m: Number(route.distance || 0),
+    duration_s: Number(route.duration || 0),
+    coordinates: route?.geometry?.coordinates || [],
+  };
+}
+
+async function fetchMatrixORS({ coordinates, sources, destinations, avoidTolls }) {
+  if (!ORS_API_KEY) {
+    const error = new Error("ORS_API_KEY no configurada en gateway");
+    error.statusCode = 503;
+    throw error;
+  }
+
+  const response = await fetchWithRetries(`${ORS_BASE_URL}/v2/matrix/driving-car`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      Authorization: ORS_API_KEY,
+    },
+    body: JSON.stringify({
+      locations: coordinates,
+      sources,
+      destinations,
+      metrics: ["duration"],
+      ...(avoidTolls ? { options: { avoid_features: ["tollways"] } } : {}),
+    }),
+  });
+
+  const data = await response.json();
+  return {
+    provider: "ors",
+    durations_s: data?.durations || [],
+  };
+}
+
 const openApiModule = setupOpenApiModule(app, {
   serviceRegistry: SERVICE_REGISTRY,
   openapiTimeoutMs: OPENAPI_TIMEOUT_MS,
@@ -194,6 +329,7 @@ app.get("/", (c) => {
       usuarios: "/api/usuarios/*",
       gasolineras: "/api/gasolineras/*",
       recomendaciones: "/api/recomendacion/* o /api/recomendaciones/*",
+      routing: "/api/routing/directions y /api/routing/matrix",
       geocoding: "/api/geocoding/search y /api/geocoding/reverse",
       evCharging: "/api/charging/*",
       prediction: "/api/prediction/*",
@@ -308,7 +444,7 @@ app.post("/api/auth/google/verify", async (c) => {
 
     // Llamar al usuarios-service para crear/obtener usuario y generar JWT
     // 🔐 Usando secret interno para proteger endpoint
-    const internalResponse = await fetch(`${USUARIOS_SERVICE}/api/usuarios/google/internal`, {
+    const internalResponse = await fetchWithCloudRunAuth(`${USUARIOS_SERVICE}/api/usuarios/google/internal`, {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
@@ -366,6 +502,74 @@ registerUsuariosRoutes(app, {
 });
 
 // ========================================
+// 🧭 ROUTING EXTERNAL API (ORS/OSRM)
+// ========================================
+app.post("/api/routing/directions", async (c) => {
+  try {
+    const body = await c.req.json();
+    const coordinates = Array.isArray(body?.coordinates) ? body.coordinates : [];
+    const avoidTolls = Boolean(body?.avoid_tolls);
+    const backend = String(body?.backend || "ors").toLowerCase();
+
+    if (coordinates.length < 2) {
+      return c.json({ error: "coordinates must have at least 2 points" }, 400);
+    }
+
+    const result = backend === "osrm"
+      ? await fetchDirectionsOSRM({ coordinates })
+      : await fetchDirectionsORS({ coordinates, avoidTolls });
+
+    return c.json(result);
+  } catch (error) {
+    const status = Number(error?.statusCode || 503);
+    return c.json(
+      {
+        error: "routing-directions-failed",
+        message: error?.message || "No se pudo calcular la ruta",
+      },
+      status,
+    );
+  }
+});
+
+app.post("/api/routing/matrix", async (c) => {
+  try {
+    const body = await c.req.json();
+    const coordinates = Array.isArray(body?.coordinates) ? body.coordinates : [];
+    const sources = Array.isArray(body?.sources) ? body.sources : [];
+    const destinations = Array.isArray(body?.destinations) ? body.destinations : [];
+    const avoidTolls = Boolean(body?.avoid_tolls);
+    const backend = String(body?.backend || "ors").toLowerCase();
+
+    if (!coordinates.length || !sources.length || !destinations.length) {
+      return c.json({ error: "coordinates, sources and destinations are required" }, 400);
+    }
+
+    if (backend !== "ors") {
+      return c.json({ error: "matrix currently supported only with ORS backend" }, 422);
+    }
+
+    const result = await fetchMatrixORS({
+      coordinates,
+      sources,
+      destinations,
+      avoidTolls,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    const status = Number(error?.statusCode || 503);
+    return c.json(
+      {
+        error: "routing-matrix-failed",
+        message: error?.message || "No se pudo calcular la matriz de tiempos",
+      },
+      status,
+    );
+  }
+});
+
+// ========================================
 // 🔀 PROXY: MICROSERVICIO DE GASOLINERAS
 // ========================================
 app.all("/api/gasolineras/*", async (c) => {
@@ -413,7 +617,7 @@ app.all("/api/gasolineras/*", async (c) => {
       options.body = await c.req.text();
     }
 
-    const response = await fetch(url, options);
+    const response = await fetchWithCloudRunAuth(url, options);
     const contentType = response.headers.get("content-type");
 
     if (contentType?.includes("application/json")) {
@@ -445,7 +649,7 @@ app.get("/api/gasolineras", async (c) => {
     const url = `${GASOLINERAS_SERVICE}/gasolineras${queryString ? '?' + queryString : ''}`;
     console.log(`🔄 Proxy gasolineras list: GET ${url}`);
     
-    const response = await fetch(url);
+    const response = await fetchWithCloudRunAuth(url);
     const data = await response.json();
     return c.json(data);
   } catch (error) {
@@ -485,7 +689,7 @@ async function proxyRecomendacion(c, publicPrefix) {
       options.body = await c.req.text();
     }
 
-    const response = await fetch(url, options);
+    const response = await fetchWithCloudRunAuth(url, options);
     const contentType = response.headers.get("content-type");
 
     if (contentType?.includes("application/json")) {
@@ -542,7 +746,7 @@ async function proxyPrediction(c) {
       options.body = await c.req.text();
     }
 
-    const response = await fetch(url, options);
+    const response = await fetchWithCloudRunAuth(url, options);
     const contentType = response.headers.get("content-type");
 
     if (contentType?.includes("application/json")) {
@@ -587,7 +791,7 @@ async function proxyCharging(c) {
       options.body = await c.req.text();
     }
 
-    const response = await fetch(url, options);
+    const response = await fetchWithCloudRunAuth(url, options);
     const contentType = response.headers.get("content-type");
 
     if (contentType?.includes("application/json")) {
@@ -635,7 +839,7 @@ async function proxyVoice(c) {
       options.body = await c.req.text();
     }
 
-    const response = await fetch(url, options);
+    const response = await fetchWithCloudRunAuth(url, options);
     const contentType = response.headers.get("content-type") || "";
 
     if (contentType.includes("application/json")) {
@@ -693,7 +897,7 @@ async function ensureGasolinerasFresh(reason = "scheduler") {
     if (!GASOLINERAS_SERVICE) {
       return;
     }
-    const response = await fetch(`${GASOLINERAS_SERVICE}/gasolineras/ensure-fresh`, {
+    const response = await fetchWithCloudRunAuth(`${GASOLINERAS_SERVICE}/gasolineras/ensure-fresh`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

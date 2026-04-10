@@ -88,7 +88,14 @@ const authSchemas = {
                     id: { type: 'integer' },
                     nombre: { type: 'string' },
                     email: { type: 'string' },
-                    is_admin: { type: 'boolean' }
+                    is_admin: { type: 'boolean' },
+                    combustible_favorito: { type: 'string', nullable: true },
+                    modelo_coche: { type: 'string', nullable: true },
+                    tipo_combustible_coche: {
+                        type: 'string',
+                        enum: ['gasolina', 'diesel', 'electrico', 'hibrido'],
+                        nullable: true,
+                    }
                 }
             },
             401: { description: 'No autenticado', type: 'object', properties: { error: { type: 'string' } } }

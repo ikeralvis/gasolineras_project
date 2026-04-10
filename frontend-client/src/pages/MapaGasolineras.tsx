@@ -124,11 +124,14 @@ function getBrandLogo(rotulo?: string): string | null {
 }
 
 // Componente para actualizar el centro del mapa
-function MapUpdater({ center }: { center: [number, number] }) {
+function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, 13);
-  }, [center, map]);
+    if (!enabled) {
+      return;
+    }
+    map.setView(center, 13, { animate: false });
+  }, [center, enabled, map]);
   return null;
 }
 
@@ -136,9 +139,10 @@ interface GasMapControllerProps {
   onMarkersUpdate: (markers: GasMarker[]) => void;
   onLoading: (loading: boolean) => void;
   onZoomChange: (zoom: number) => void;
+  refreshKey: string;
 }
 
-function GasMapController({ onMarkersUpdate, onLoading, onZoomChange }: Readonly<GasMapControllerProps>) {
+function GasMapController({ onMarkersUpdate, onLoading, onZoomChange, refreshKey }: Readonly<GasMapControllerProps>) {
   const map = useMap();
   const fetchSeqRef = useRef(0);
 
@@ -176,12 +180,22 @@ function GasMapController({ onMarkersUpdate, onLoading, onZoomChange }: Readonly
     }
   }, [map, onMarkersUpdate, onLoading, onZoomChange]);
 
-  useEffect(() => {
-    map.whenReady(() => {
-      map.invalidateSize();
-      fetchMarkers();
+  const runFetchForCurrentViewport = useCallback(() => {
+    map.invalidateSize();
+    globalThis.requestAnimationFrame(() => {
+      void fetchMarkers();
     });
+  }, [fetchMarkers, map]);
 
+  useEffect(() => {
+    map.whenReady(runFetchForCurrentViewport);
+  }, [map, runFetchForCurrentViewport]);
+
+  useEffect(() => {
+    map.whenReady(runFetchForCurrentViewport);
+  }, [map, refreshKey, runFetchForCurrentViewport]);
+
+  useEffect(() => {
     const onResize = () => {
       map.invalidateSize();
     };
@@ -190,14 +204,11 @@ function GasMapController({ onMarkersUpdate, onLoading, onZoomChange }: Readonly
     return () => {
       globalThis.removeEventListener("resize", onResize);
     };
-  }, [map, fetchMarkers]);
+  }, [map]);
 
   useMapEvents({
     moveend: () => {
-      fetchMarkers();
-    },
-    zoomend: () => {
-      fetchMarkers();
+      void fetchMarkers();
     },
   });
 
@@ -243,7 +254,7 @@ function ClusterCircle({ marker }: Readonly<ClusterCircleProps>) {
       position={[marker.latitude, marker.longitude]}
       icon={icon}
       eventHandlers={{
-        click: () => map.flyTo([marker.latitude, marker.longitude], Math.min(map.getZoom() + 2, 18)),
+        click: () => map.flyTo([marker.latitude, marker.longitude], Math.min(map.getZoom() + 3, 18)),
       }}
     />
   );
@@ -534,6 +545,9 @@ export default function MapaGasolineras() {
   const stationMarkers = markers.filter((m): m is { type: "station"; station: Gasolinera } => m.type === "station");
   const clusterMarkers = markers.filter((m): m is GasClusterMarker => m.type === "cluster");
   const showBrandLogos = mapZoom >= 14;
+  const mapRefreshKey = locationGranted
+    ? `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}`
+    : "spain-default";
 
   const getStatusMessage = () => {
     if (loading) return t("map.loadingLocation");
@@ -580,7 +594,7 @@ export default function MapaGasolineras() {
 
       <MapContainer
         center={userLocation}
-        zoom={locationGranted ? 12 : 6}
+        zoom={locationGranted ? 13 : 6}
         scrollWheelZoom={wheelZoomEnabled}
         wheelPxPerZoomLevel={160}
         className="flex-1 z-0"
@@ -591,13 +605,14 @@ export default function MapaGasolineras() {
             attribution="&copy; <a href='https://carto.com/attributions'>CARTO</a>"
           />
 
-          <MapUpdater center={userLocation} />
+          <MapUpdater center={userLocation} enabled={locationGranted} />
           <DefaultSpainViewController enabled={!locationGranted} />
 
           <GasMapController
             onMarkersUpdate={setMarkers}
             onLoading={setLoading}
             onZoomChange={setMapZoom}
+            refreshKey={mapRefreshKey}
           />
 
           {locationGranted && (
