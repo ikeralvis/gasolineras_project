@@ -27,9 +27,9 @@ type DesktopItem = {
 
 const NAV_ITEMS: DesktopItem[] = [
   { to: '/', label: 'Inicio', icon: Home },
-  { to: '/gasolineras', label: 'Gasolineras', icon: Fuel, private: true },
-  { to: '/mapa', label: 'Mapa', icon: Map, private: true },
-  { to: '/recarga', label: 'Recarga', icon: Zap, private: true },
+  { to: '/gasolineras', label: 'Gasolineras', icon: Fuel },
+  { to: '/mapa', label: 'Mapa', icon: Map },
+  { to: '/recarga', label: 'Recarga', icon: Zap },
   { to: '/rutas', label: 'Rutas', icon: Route, private: true },
   { to: '/favoritos', label: 'Favoritos', icon: Heart, private: true },
 ];
@@ -42,8 +42,10 @@ type MobileItem = {
 
 const MOBILE_GUEST: MobileItem[] = [
   { to: '/', label: 'Inicio', icon: Home },
+  { to: '/gasolineras', label: 'Gas', icon: Fuel },
+  { to: '/mapa', label: 'Mapa', icon: Map },
+  { to: '/recarga', label: 'EV', icon: Zap },
   { to: '/login', label: 'Login', icon: LogIn },
-  { to: '/register', label: 'Registro', icon: User },
 ];
 
 const MOBILE_AUTH: MobileItem[] = [

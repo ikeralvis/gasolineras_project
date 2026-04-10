@@ -8,6 +8,8 @@ steps:
       - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
       - '--build-arg'
       - 'VITE_API_BASE_URL=${_VITE_API_BASE_URL}'
+      - '--build-arg'
+      - 'VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}'
       - 'frontend-client'
 
   # 2. Subir al registro
@@ -35,6 +37,7 @@ images:
 
 substitutions:
   _VITE_API_BASE_URL: 'https://gateway-hono-REEMPLAZAR.run.app'
+  _VITE_GOOGLE_CLIENT_ID: 'REEMPLAZAR.apps.googleusercontent.com'
 
 options:
   logging: CLOUD_LOGGING_ONLY

@@ -43,10 +43,10 @@ function AppContent() {
           <Route path="/login" element={isAuthenticated ? <Navigate to="/gasolineras" replace /> : <Login />} />
           <Route path="/register" element={isAuthenticated ? <Navigate to="/gasolineras" replace /> : <Register />} />
 
-          <Route path="/gasolineras" element={<RequireAuth><Gasolineras /></RequireAuth>} />
-          <Route path="/gasolinera/:id" element={<RequireAuth><GasolineraDetalle /></RequireAuth>} />
-          <Route path="/mapa" element={<RequireAuth><MapaGasolineras /></RequireAuth>} />
-          <Route path="/recarga" element={<RequireAuth><MapaRecarga /></RequireAuth>} />
+          <Route path="/gasolineras" element={<Gasolineras />} />
+          <Route path="/gasolinera/:id" element={<GasolineraDetalle />} />
+          <Route path="/mapa" element={<MapaGasolineras />} />
+          <Route path="/recarga" element={<MapaRecarga />} />
           <Route path="/rutas" element={<RequireAuth><Rutas /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="/favoritos" element={<RequireAuth><Favoritos /></RequireAuth>} />

@@ -10,6 +10,7 @@ import './i18n';
 
 // Google OAuth Client ID (configurar en Google Cloud Console)
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+const GOOGLE_OAUTH_ENABLED = GOOGLE_CLIENT_ID.trim().length > 0;
 // PWA registration (vite-plugin-pwa provides `virtual:pwa-register`)
 // Load the virtual module dynamically and catch failures so the app
 // still runs if the plugin isn't installed yet (useful during setup).
@@ -34,10 +35,16 @@ if (import.meta.env.PROD) {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+    {GOOGLE_OAUTH_ENABLED ? (
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <BrowserRouter>
+          <App />
+        </BrowserRouter>
+      </GoogleOAuthProvider>
+    ) : (
       <BrowserRouter>
         <App />
       </BrowserRouter>
-    </GoogleOAuthProvider>
+    )}
   </React.StrictMode>
 );

@@ -10,6 +10,8 @@ function needsOnboarding(user: { modelo_coche?: string; tipo_combustible_coche?:
   return !user.modelo_coche || !user.tipo_combustible_coche;
 }
 
+const GOOGLE_OAUTH_ENABLED = Boolean((import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim());
+
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -152,7 +154,11 @@ export default function Login() {
           </div>
 
           <div className="flex justify-center">
-            {googleLoading ? (
+            {!GOOGLE_OAUTH_ENABLED ? (
+              <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
+                Login con Google no configurado en este entorno.
+              </div>
+            ) : googleLoading ? (
               <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-(--color-primary) border-t-transparent" />
                 Validando Google...
