@@ -3,11 +3,11 @@ Microservicio de Gasolineras
 API REST para sincronizar y consultar datos de estaciones de servicio
 desde la fuente oficial del Gobierno de España.
 """
-import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.config import settings
 from app.routes.gasolineras import (
     router as gasolineras_router,
     _get_snapshot_state,
@@ -24,7 +24,6 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-AUTO_ENSURE_FRESH_ON_STARTUP = os.getenv("AUTO_ENSURE_FRESH_ON_STARTUP", "true").lower() == "true"
 
 # Lifespan events para gestionar la conexión a la BD
 @asynccontextmanager
@@ -36,7 +35,7 @@ async def lifespan(app: FastAPI):
         test_db_connection()
         logger.info("✅ Conexión a PostgreSQL (Neon) establecida")
 
-        if AUTO_ENSURE_FRESH_ON_STARTUP:
+        if settings.auto_ensure_fresh_on_startup:
             with _sync_lock:
                 snapshot = _get_snapshot_state()
                 if snapshot["total"] > 0 and snapshot["is_current"]:
@@ -92,7 +91,7 @@ app = FastAPI(
 # Configurar CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:5173,http://localhost:3000,http://localhost:80").split(","),
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

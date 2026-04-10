@@ -6,6 +6,7 @@ PostgreSQL es opcional y best-effort.
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any
 
@@ -17,7 +18,7 @@ from app.db.connection import get_db_conn, is_db_configured
 
 logger = logging.getLogger(__name__)
 
-EXTERNAL_API_BASE = "https://www.mapareve.es/api/public/v1"
+EXTERNAL_API_BASE = (os.getenv("EV_EXTERNAL_API_BASE") or "https://www.mapareve.es/api/public/v1").rstrip("/")
 
 _HEADERS = {
     "User-Agent": (

@@ -24,7 +24,7 @@ def get_http_client() -> httpx.Client:
     """
     transport = httpx.HTTPTransport(
         retries=5,
-        verify=False
+        verify=True,
     )
     
     return httpx.Client(
