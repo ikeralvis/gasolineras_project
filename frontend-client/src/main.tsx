@@ -9,8 +9,8 @@ import './index.css';
 import './i18n';
 
 // Google OAuth Client ID (configurar en Google Cloud Console)
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-const GOOGLE_OAUTH_ENABLED = GOOGLE_CLIENT_ID.trim().length > 0;
+const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_OAUTH_ENABLED = GOOGLE_CLIENT_ID.length > 0;
 // PWA registration (vite-plugin-pwa provides `virtual:pwa-register`)
 // Load the virtual module dynamically and catch failures so the app
 // still runs if the plugin isn't installed yet (useful during setup).

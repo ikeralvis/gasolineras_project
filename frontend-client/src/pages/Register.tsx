@@ -23,6 +23,8 @@ const FUEL_OPTIONS = [
   { value: 'hibrido', label: 'Híbrido', hint: 'Combinaremos opciones de repostaje y recarga' },
 ] as const;
 
+const GOOGLE_OAUTH_ENABLED = Boolean((import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim());
+
 type FuelType = (typeof FUEL_OPTIONS)[number]['value'];
 
 function needsOnboarding(user: { modelo_coche?: string; tipo_combustible_coche?: string }) {
@@ -45,6 +47,7 @@ export default function Register() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const googleOAuthMissing = !GOOGLE_OAUTH_ENABLED;
 
   const passwordRules = useMemo(
     () => ({
@@ -149,6 +152,37 @@ export default function Register() {
       setGoogleLoading(false);
     }
   };
+
+  let googleAuthContent = (
+    <GoogleLogin
+      onSuccess={handleGoogleSuccess}
+      onError={() => setError('Error al registrarte con Google')}
+      useOneTap={false}
+      theme="outline"
+      size="large"
+      text="continue_with"
+      shape="pill"
+      locale="es"
+      ux_mode="popup"
+    />
+  );
+
+  if (googleLoading) {
+    googleAuthContent = (
+      <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
+        <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-(--color-primary) border-t-transparent" />
+        <span>Registrando con Google...</span>
+      </div>
+    );
+  }
+
+  if (googleOAuthMissing) {
+    googleAuthContent = (
+      <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
+        Registro con Google no configurado en este entorno.
+      </div>
+    );
+  }
 
   return (
     <div className="relative isolate min-h-screen overflow-hidden bg-(--color-bg) px-4 py-8 sm:px-6 sm:py-10">
@@ -389,24 +423,7 @@ export default function Register() {
           </div>
 
           <div className="flex justify-center">
-            {googleLoading ? (
-              <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
-                <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-(--color-primary) border-t-transparent" />
-                Registrando con Google...
-              </div>
-            ) : (
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setError('Error al registrarte con Google')}
-                useOneTap={false}
-                theme="outline"
-                size="large"
-                text="continue_with"
-                shape="pill"
-                locale="es"
-                ux_mode="popup"
-              />
-            )}
+            {googleAuthContent}
           </div>
 
           <p className="mt-6 text-center text-sm text-(--color-text-muted)">

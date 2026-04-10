@@ -8,14 +8,35 @@ steps:
     args:
       - '-c'
       - |
-        if [ -z "$$VITE_GOOGLE_CLIENT_ID_SECRET" ]; then
+        API_BASE_URL="$(printf '%s' "${_VITE_API_BASE_URL}" | tr -d '\r\n')"
+        GOOGLE_CLIENT_ID="$(printf '%s' "$$VITE_GOOGLE_CLIENT_ID_SECRET" | tr -d '\r\n')"
+
+        if [ -z "$API_BASE_URL" ]; then
+          echo "ERROR: _VITE_API_BASE_URL vacío. Define este valor en el trigger de Cloud Build.";
+          exit 1;
+        fi
+        if [[ "$API_BASE_URL" == *"REEMPLAZAR"* ]]; then
+          echo "ERROR: _VITE_API_BASE_URL contiene valor placeholder (REEMPLAZAR).";
+          exit 1;
+        fi
+        if [[ "$API_BASE_URL" != https://* ]]; then
+          echo "ERROR: _VITE_API_BASE_URL debe empezar por https:// para evitar errores de certificado/CORS.";
+          exit 1;
+        fi
+
+        if [ -z "$GOOGLE_CLIENT_ID" ]; then
           echo "ERROR: Secret GOOGLE_CLIENT_ID vacío o no accesible";
           exit 1;
         fi
+        if [[ "$GOOGLE_CLIENT_ID" != *.apps.googleusercontent.com ]]; then
+          echo "ERROR: GOOGLE_CLIENT_ID inválido. Debe terminar en .apps.googleusercontent.com";
+          exit 1;
+        fi
+
         docker build \
           -t europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img \
-          --build-arg VITE_API_BASE_URL=${_VITE_API_BASE_URL} \
-          --build-arg VITE_GOOGLE_CLIENT_ID=$$VITE_GOOGLE_CLIENT_ID_SECRET \
+          --build-arg VITE_API_BASE_URL=$API_BASE_URL \
+          --build-arg VITE_GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID \
           frontend-client
 
   # 2. Subir al registro
@@ -42,7 +63,7 @@ images:
   - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
 
 substitutions:
-  _VITE_API_BASE_URL: 'https://gateway-hono-REEMPLAZAR.run.app'
+  _VITE_API_BASE_URL: ''
 
 availableSecrets:
   secretManager:
