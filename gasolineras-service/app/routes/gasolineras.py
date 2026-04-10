@@ -325,8 +325,6 @@ def _memory_sync_result(
     response = {
         "registros_eliminados": 0,
         "registros_insertados": inserted_count,
-        "registros_snapshot_diario": inserted_count,
-        "registros_snapshot_pruned": 0,
         "registros_historicos_pruned": 0,
         "registros_historicos": historico_count,
         "historico_scope": HISTORICAL_SCOPE,
@@ -346,28 +344,7 @@ def _memory_sync_result(
     return response
 
 
-def _persist_snapshot_to_postgres(rows: list[tuple], fecha_sync: datetime) -> tuple[int, int, int, int, int]:
-    archive_rows = [
-        (
-            fecha_sync.date(),
-            row[0],
-            row[1],
-            row[2],
-            row[3],
-            row[4],
-            row[5],
-            row[6],
-            row[7],
-            row[8],
-            row[9],
-            row[10],
-            row[11],
-            row[13],
-            row[14],
-            row[15],
-        )
-        for row in rows
-    ]
+def _persist_snapshot_to_postgres(rows: list[tuple], fecha_sync: datetime) -> tuple[int, int, int]:
     retention_cutoff = fecha_sync.date() - timedelta(days=HISTORY_RETENTION_DAYS)
 
     with get_db_conn() as conn:
@@ -401,85 +378,12 @@ def _persist_snapshot_to_postgres(rows: list[tuple], fecha_sync: datetime) -> tu
             logger.info("✅ Insertadas %s gasolineras (eliminadas %s)", inserted_count, deleted_count)
 
             cur.execute(
-                """
-                CREATE TABLE IF NOT EXISTS gasolineras_snapshots (
-                    snapshot_date DATE NOT NULL,
-                    ideess VARCHAR(10) NOT NULL,
-                    rotulo VARCHAR(255),
-                    municipio VARCHAR(255),
-                    provincia VARCHAR(255),
-                    direccion TEXT,
-                    precio_95_e5 NUMERIC(6,3),
-                    precio_98_e5 NUMERIC(6,3),
-                    precio_gasoleo_a NUMERIC(6,3),
-                    precio_gasoleo_b NUMERIC(6,3),
-                    precio_gasoleo_premium NUMERIC(6,3),
-                    latitud DOUBLE PRECISION,
-                    longitud DOUBLE PRECISION,
-                    horario TEXT,
-                    horario_parsed JSONB,
-                    actualizado_en TIMESTAMPTZ NOT NULL,
-                    PRIMARY KEY (snapshot_date, ideess)
-                )
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_gasolineras_snapshots_snapshot_date
-                    ON gasolineras_snapshots (snapshot_date DESC)
-                """
-            )
-            cur.execute(
-                """
-                CREATE INDEX IF NOT EXISTS idx_gasolineras_snapshots_ideess
-                    ON gasolineras_snapshots (ideess)
-                """
-            )
-
-            if archive_rows:
-                execute_values(
-                    cur,
-                    """
-                    INSERT INTO gasolineras_snapshots
-                        (snapshot_date, ideess, rotulo, municipio, provincia, direccion,
-                         precio_95_e5, precio_98_e5, precio_gasoleo_a,
-                         precio_gasoleo_b, precio_gasoleo_premium,
-                         latitud, longitud, horario, horario_parsed, actualizado_en)
-                    VALUES %s
-                    ON CONFLICT (snapshot_date, ideess) DO UPDATE SET
-                        rotulo = EXCLUDED.rotulo,
-                        municipio = EXCLUDED.municipio,
-                        provincia = EXCLUDED.provincia,
-                        direccion = EXCLUDED.direccion,
-                        precio_95_e5 = EXCLUDED.precio_95_e5,
-                        precio_98_e5 = EXCLUDED.precio_98_e5,
-                        precio_gasoleo_a = EXCLUDED.precio_gasoleo_a,
-                        precio_gasoleo_b = EXCLUDED.precio_gasoleo_b,
-                        precio_gasoleo_premium = EXCLUDED.precio_gasoleo_premium,
-                        latitud = EXCLUDED.latitud,
-                        longitud = EXCLUDED.longitud,
-                        horario = EXCLUDED.horario,
-                        horario_parsed = EXCLUDED.horario_parsed,
-                        actualizado_en = EXCLUDED.actualizado_en
-                    """,
-                    archive_rows,
-                )
-
-            archive_inserted_count = len(archive_rows)
-
-            cur.execute(
-                "DELETE FROM gasolineras_snapshots WHERE snapshot_date < %s",
-                [retention_cutoff],
-            )
-            archive_pruned_count = cur.rowcount
-
-            cur.execute(
                 "DELETE FROM precios_historicos WHERE fecha < %s",
                 [retention_cutoff],
             )
             historical_pruned_count = cur.rowcount
 
-    return deleted_count, inserted_count, archive_inserted_count, archive_pruned_count, historical_pruned_count
+    return deleted_count, inserted_count, historical_pruned_count
 
 
 def _fetch_favoritas_ids() -> Set[str]:
@@ -562,7 +466,7 @@ def _build_export_record(base: dict, fecha_registro_ms: int) -> dict:
 def _snapshot_rows_for_export_memory() -> tuple[list[dict], datetime]:
     _ensure_memory_snapshot_loaded("export-raw")
     if not _memory_snapshot_rows:
-        raise HTTPException(status_code=404, detail="No hay snapshot en memoria para exportar")
+        raise LookupError("No hay snapshot en memoria para exportar")
 
     reference_dt = _memory_last_sync_at or datetime.now(timezone.utc)
     fecha_registro_ms = int(reference_dt.timestamp() * 1000)
@@ -597,9 +501,14 @@ def _snapshot_rows_for_export_postgres() -> tuple[list[dict], datetime]:
             rows = [dict(r) for r in cur.fetchall()]
 
     if not rows:
-        raise HTTPException(status_code=404, detail="No hay snapshot en PostgreSQL para exportar")
+        raise LookupError("No hay snapshot en PostgreSQL para exportar")
 
-    max_updated = max((r.get("actualizado_en") for r in rows if r.get("actualizado_en") is not None), default=None)
+    updated_candidates: list[datetime] = []
+    for row in rows:
+        value = row.get("actualizado_en")
+        if isinstance(value, datetime):
+            updated_candidates.append(value)
+    max_updated = max(updated_candidates) if updated_candidates else None
     if max_updated is None:
         max_updated = datetime.now(timezone.utc)
 
@@ -647,7 +556,11 @@ def _export_snapshot_parquet_result() -> dict:
     if not RAW_EXPORT_GCS_BUCKET:
         raise HTTPException(status_code=500, detail="RAW_EXPORT_GCS_BUCKET no configurado")
 
-    records, reference_dt = _snapshot_rows_for_export()
+    try:
+        records, reference_dt = _snapshot_rows_for_export()
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
     blob_path = _build_export_blob_path(reference_dt)
     uri = _upload_raw_snapshot_to_gcs(records, blob_path)
 
@@ -728,8 +641,6 @@ def _perform_sync(trigger: str = "manual") -> dict:
         (
             deleted_count,
             inserted_count,
-            archive_inserted_count,
-            archive_pruned_count,
             historical_pruned_count,
         ) = _persist_snapshot_to_postgres(rows, fecha_sync)
     except Exception as exc:
@@ -752,8 +663,6 @@ def _perform_sync(trigger: str = "manual") -> dict:
         "mensaje": "Datos sincronizados correctamente 🚀",
         "registros_eliminados": deleted_count,
         "registros_insertados": inserted_count,
-        "registros_snapshot_diario": archive_inserted_count,
-        "registros_snapshot_pruned": archive_pruned_count,
         "registros_historicos_pruned": historical_pruned_count,
         "registros_historicos": historico_count,
         "historico_scope": HISTORICAL_SCOPE,
@@ -1262,29 +1171,67 @@ def ensure_fresh_gasolineras(x_internal_secret: Annotated[Optional[str], Header(
 def export_raw_parquet_to_gcs(x_internal_secret: Annotated[Optional[str], Header(alias="X-Internal-Secret")] = None):
     _validate_internal_secret(x_internal_secret)
 
-    if not RAW_EXPORT_ENABLED:
-        raise HTTPException(status_code=500, detail="RAW_EXPORT_ENABLED=false. Activa la exportación para usar este endpoint")
-    if not RAW_EXPORT_GCS_BUCKET:
-        raise HTTPException(status_code=500, detail="RAW_EXPORT_GCS_BUCKET no configurado")
-
     try:
-        records, reference_dt = _snapshot_rows_for_export()
-        blob_path = _build_export_blob_path(reference_dt)
-        uri = _upload_raw_snapshot_to_gcs(records, blob_path)
-
-        return {
-            "ok": True,
-            "rows": len(records),
-            "snapshot_date": reference_dt.astimezone(SPAIN_TZ).date().isoformat(),
-            "gcs_uri": uri,
-            "gcs_path": blob_path,
-            "compression": RAW_EXPORT_PARQUET_COMPRESSION,
-            "storage_mode": "memory-fallback" if _memory_mode else "postgres",
-        }
+        return _export_snapshot_parquet_result()
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Error exportando parquet a GCS: {exc}")
+
+
+@router.post(
+    "/daily-sync-export",
+    response_model=dict,
+    summary="Pipeline diario: asegurar snapshot + exportar Parquet a GCS",
+    description=(
+        "Orquesta la ejecución diaria para scheduler: "
+        "1) sincroniza solo si el snapshot no está vigente (o si force_sync=true), "
+        "2) exporta snapshot actual a Parquet en GCS."
+    ),
+    responses={
+        403: {"description": "Forbidden"},
+        404: {"description": "Snapshot no disponible"},
+        500: {"description": "Error interno"},
+    },
+)
+def daily_sync_export(
+    x_internal_secret: Annotated[Optional[str], Header(alias="X-Internal-Secret")] = None,
+    force_sync: Annotated[bool, Query(description="Forzar sincronización aunque haya snapshot vigente")] = False,
+):
+    _validate_internal_secret(x_internal_secret)
+
+    try:
+        with _sync_lock:
+            state = _get_snapshot_state()
+            should_sync = force_sync or state["total"] <= 0 or not state["is_current"]
+
+            if should_sync:
+                sync_result = _perform_sync(trigger="daily-sync-export")
+                synced = True
+            else:
+                sync_result = {
+                    "synced": False,
+                    "reason": "snapshot-current",
+                    "total": state["total"],
+                    "snapshot_date_local": state["snapshot_date_local"].isoformat() if state["snapshot_date_local"] else None,
+                    "today_local": state["today_local"].isoformat(),
+                    "storage_mode": "memory-fallback" if _memory_mode else "postgres",
+                }
+                synced = False
+
+            export_result = _export_snapshot_parquet_result()
+
+            return {
+                "ok": True,
+                "synced": synced,
+                "sync": sync_result,
+                "export": export_result,
+                "trigger": "daily-sync-export",
+            }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Error en pipeline diario: {exc}")
 
 
 def _stats_filters(provincia: Optional[str], municipio: Optional[str]) -> tuple[str, list]:

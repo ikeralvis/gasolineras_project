@@ -50,7 +50,7 @@ CREATE INDEX IF NOT EXISTS idx_gasolineras_geom ON gasolineras USING GIST(geom);
 
 -- ============================================================
 -- Tabla de precios históricos
--- Solo se guardan snapshots de las gasolineras favoritas.
+-- Guarda histórico diario de combustible para gráficos/modelado.
 -- ============================================================
 CREATE TABLE IF NOT EXISTS precios_historicos (
     id      SERIAL      PRIMARY KEY,

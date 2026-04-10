@@ -245,10 +245,12 @@ GET  /{id}/historial?dias=30       # Historial precios
 GET  /{id}/cercanas                # Gasolineras cercanas
 POST /markers                      # Markers por viewport (clusters/estaciones desde BD)
 POST /sync                         # Sincronizar datos
+POST /daily-sync-export            # Sync diario + export parquet a GCS (job recomendado)
 GET  /count                        # Total
 ```
 
 `POST /api/gasolineras/sync` es un endpoint interno. Debe invocarse solo desde jobs internos (cron/scheduler) enviando `X-Internal-Secret`.
+`POST /api/gasolineras/daily-sync-export` es el endpoint recomendado para el cron diario de producción.
 
 ---
 

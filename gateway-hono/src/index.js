@@ -420,9 +420,11 @@ app.post("/api/routing/matrix", proxyRouting);
 app.all("/api/gasolineras/*", async (c) => {
   try {
     const gasPath = c.req.path.replace('/api/gasolineras', '');
+    const internalGasPostPaths = new Set(['/sync', '/ensure-fresh', '/export-raw-parquet', '/daily-sync-export']);
+    const isInternalMaintenanceCall = c.req.method === 'POST' && internalGasPostPaths.has(gasPath);
 
     // Proteger endpoint de sincronización para uso interno únicamente.
-    if (gasPath === '/sync' && c.req.method === 'POST') {
+    if (isInternalMaintenanceCall) {
       const incomingSecret = c.req.header('X-Internal-Secret');
       if (incomingSecret !== INTERNAL_SECRET) {
         return c.json({ error: 'Forbidden' }, 403);
@@ -449,7 +451,7 @@ app.all("/api/gasolineras/*", async (c) => {
     }
 
     // En llamadas internas sensibles, reenviar siempre el secreto interno del gateway.
-    if (gasPath === '/sync' && c.req.method === 'POST') {
+    if (isInternalMaintenanceCall) {
       headers['X-Internal-Secret'] = INTERNAL_SECRET;
     }
 
@@ -742,7 +744,7 @@ async function ensureGasolinerasFresh(reason = "scheduler") {
     if (!GASOLINERAS_SERVICE) {
       return;
     }
-    const response = await fetchWithCloudRunAuth(`${GASOLINERAS_SERVICE}/gasolineras/ensure-fresh`, {
+    const response = await fetchWithCloudRunAuth(`${GASOLINERAS_SERVICE}/gasolineras/daily-sync-export`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -752,20 +754,26 @@ async function ensureGasolinerasFresh(reason = "scheduler") {
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.warn(`⚠️ ensure-fresh falló (${reason}) status=${response.status}`, payload);
+      console.warn(`⚠️ daily-sync-export falló (${reason}) status=${response.status}`, payload);
       return;
     }
 
+    const sync = payload?.sync || {};
+    const exportInfo = payload?.export || {};
+
     if (payload.synced) {
-      console.log(`✅ ensure-fresh ejecutó sincronización (${reason}):`, {
-        total: payload.total,
-        fecha_snapshot: payload.fecha_snapshot,
+      console.log(`✅ daily-sync-export ejecutó sincronización (${reason}):`, {
+        total: sync.total,
+        fecha_snapshot: sync.fecha_snapshot,
+        parquet_uri: exportInfo.gcs_uri,
       });
     } else {
-      console.log(`ℹ️ ensure-fresh no sincroniza (${reason}): snapshot vigente`);
+      console.log(`ℹ️ daily-sync-export no sincroniza (${reason}): snapshot vigente`, {
+        parquet_uri: exportInfo.gcs_uri,
+      });
     }
   } catch (error) {
-    console.warn(`⚠️ Error ejecutando ensure-fresh (${reason}):`, error.message);
+    console.warn(`⚠️ Error ejecutando daily-sync-export (${reason}):`, error.message);
   }
 }
 

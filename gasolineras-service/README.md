@@ -53,6 +53,10 @@ Todos los endpoints funcionales viven bajo prefijo `/gasolineras`:
   - carga snapshot desde API oficial y guarda en BD (requiere `X-Internal-Secret`)
 - `POST /gasolineras/ensure-fresh`:
   - sincroniza solo si no hay snapshot vigente del día (requiere `X-Internal-Secret`)
+- `POST /gasolineras/export-raw-parquet`:
+  - exporta el snapshot actual a `gs://<bucket>/raw/snapshot_date=YYYY-MM-DD/gasolineras.parquet` (requiere `X-Internal-Secret`)
+- `POST /gasolineras/daily-sync-export`:
+  - endpoint recomendado para cron diario: asegura snapshot vigente y exporta parquet a GCS en una única llamada (requiere `X-Internal-Secret`)
 - `GET /gasolineras/snapshot`:
   - estado de frescura (último sync, fecha local, vigente/no vigente)
 
@@ -84,9 +88,12 @@ Estrategia recomendada de producción para evitar datos desactualizados:
 - `startup guard`:
   - al arrancar `gasolineras-service`, si no hay snapshot vigente del día, ejecuta sync automático
   - controlado por `AUTO_ENSURE_FRESH_ON_STARTUP=true`
-- `scheduler interno en gateway`:
-  - el gateway llama periódicamente a `POST /gasolineras/ensure-fresh`
-  - variables: `GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED`, `GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES`
+- `cron externo (recomendado)`:
+  - Cloud Scheduler llama 1 vez al día a `POST /gasolineras/daily-sync-export`
+  - así se ejecuta todo el pipeline en orden: sync (si hace falta) + export parquet
+- `retención automática en BD`:
+  - en cada sync se limpia histórico por antigüedad
+  - se eliminan registros de `precios_historicos` con antigüedad mayor a `HISTORY_RETENTION_DAYS` (por defecto 30)
 - `read-time autosync` (opcional):
   - si activas `AUTO_SYNC_ON_READ=true`, al leer datos (listado/markers/etc.) intenta refrescar si no hay snapshot del día
   - recomendado como fallback, no como mecanismo principal
@@ -96,6 +103,27 @@ Patrón profesional recomendado:
 - principal: scheduler (Cloud Scheduler / EventBridge / cron)
 - respaldo: startup guard
 - opcional: read-time fallback para resiliencia
+
+Ejemplo Cloud Scheduler (diario 06:10 Europe/Madrid):
+
+```bash
+gcloud scheduler jobs create http gasolineras-daily-sync-export \
+  --location=europe-west1 \
+  --schedule="10 6 * * *" \
+  --time-zone="Europe/Madrid" \
+  --uri="https://<TU_CLOUD_RUN_URL>/gasolineras/daily-sync-export" \
+  --http-method=POST \
+  --headers="X-Internal-Secret=<TU_SECRET>,Content-Type=application/json" \
+  --oidc-service-account-email="scheduler-sa@<PROJECT_ID>.iam.gserviceaccount.com"
+```
+
+Variables necesarias para parquet a GCS:
+
+- `RAW_EXPORT_ENABLED=true`
+- `RAW_EXPORT_GCS_BUCKET=<bucket-destino>`
+- `RAW_EXPORT_GCS_PREFIX=raw/`
+- `RAW_EXPORT_PARQUET_COMPRESSION=snappy`
+- `HISTORY_RETENTION_DAYS=30`
 
 ---
 
@@ -550,23 +578,10 @@ location /api/gasolineras/ {
 - Logs centralizados
 - Alertas en sincronizaciones fallidas
 
-4. **Sincronización automática (opcional):**
+4. **Sincronización automática en cloud:**
 
-Puedes usar APScheduler para sincronizar automáticamente:
-
-```python
-# En app/main.py
-from apscheduler.schedulers.background import BackgroundScheduler
-
-scheduler = BackgroundScheduler()
-scheduler.add_job(
-    sync_gasolineras_job,
-    'cron',
-    hour=6,
-    minute=0
-)
-scheduler.start()
-```
+Usa Cloud Scheduler llamando `POST /gasolineras/daily-sync-export`.
+En Cloud Run no es recomendable depender de schedulers en memoria dentro del proceso.
 
 ---
 
