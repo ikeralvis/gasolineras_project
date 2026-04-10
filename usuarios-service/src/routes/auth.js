@@ -61,7 +61,7 @@ export async function authRoutes(fastify) {
       maxAge: 7 * 24 * 60 * 60,
     });
 
-    return reply.code(200).send({ token, cookieSet: true });
+    return reply.code(200).send({ authenticated: true, cookieSet: true });
   });
 
   fastify.post('/logout', {
