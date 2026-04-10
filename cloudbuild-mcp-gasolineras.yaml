@@ -1,0 +1,16 @@
+# MCP server usa transporte stdio, no HTTP.
+# Este pipeline solo construye y publica imagen en Artifact Registry.
+# Si quieres ejecutarlo en GCP, usar Cloud Run Jobs o una VM/servicio dedicado.
+
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/mcp-gasolineras-img', './mcp-gasolineras-server']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/mcp-gasolineras-img']
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/mcp-gasolineras-img'
+
+options:
+  logging: CLOUD_LOGGING_ONLY

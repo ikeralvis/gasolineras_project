@@ -18,4 +18,6 @@ COPY main.py .
 RUN useradd -m appuser && chown -R appuser /app
 USER appuser
 
-CMD ["python", "main.py"]
+EXPOSE 8001
+
+CMD ["sh", "-c", "export API_PORT=${PORT:-8001}; python main.py"]

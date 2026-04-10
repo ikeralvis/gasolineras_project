@@ -1,0 +1,28 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/prediccion-img', './prediction-service']
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/prediccion-img']
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'prediction-service'
+      - '--image'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/prediccion-img'
+      - '--region'
+      - 'europe-west1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'RUN_HTTP_API=true,API_HOST=0.0.0.0'
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/prediccion-img'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
