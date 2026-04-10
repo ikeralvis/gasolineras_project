@@ -1,0 +1,29 @@
+steps:
+  # 1. Construir la imagen Docker apuntando a la carpeta del microservicio
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/usuarios-img', './usuarios-service']
+
+  # 2. Subir la imagen al registro de Google (Artifact Registry)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/usuarios-img']
+
+  # 3. Desplegar en Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'usuarios-service'
+      - '--image'
+      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/usuarios-img'
+      - '--region'
+      - 'europe-west1' # Tu región elegida (Bélgica)
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated' # Para que sea pública (puedes quitarlo si es privada)
+
+images:
+  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/usuarios-img'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
