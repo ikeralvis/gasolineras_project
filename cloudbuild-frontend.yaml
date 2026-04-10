@@ -10,19 +10,22 @@ steps:
       - |
         API_BASE_URL="$(printf '%s' "${_VITE_API_BASE_URL}" | tr -d '\r\n')"
         GOOGLE_CLIENT_ID="$(printf '%s' "$$VITE_GOOGLE_CLIENT_ID_SECRET" | tr -d '\r\n')"
+        API_BASE_URL_LOWER="$(printf '%s' "$API_BASE_URL" | tr '[:upper:]' '[:lower:]')"
 
         if [ -z "$API_BASE_URL" ]; then
           echo "ERROR: _VITE_API_BASE_URL vacío. Define este valor en el trigger de Cloud Build.";
           exit 1;
         fi
-        if [[ "$API_BASE_URL" == *"REEMPLAZAR"* ]]; then
-          echo "ERROR: _VITE_API_BASE_URL contiene valor placeholder (REEMPLAZAR).";
+        if [[ "$API_BASE_URL_LOWER" == *"reemplazar"* || "$API_BASE_URL_LOWER" == *"placeholder"* ]]; then
+          echo "ERROR: _VITE_API_BASE_URL contiene valor placeholder (reemplazar/placeholder).";
           exit 1;
         fi
         if [[ "$API_BASE_URL" != https://* ]]; then
           echo "ERROR: _VITE_API_BASE_URL debe empezar por https:// para evitar errores de certificado/CORS.";
           exit 1;
         fi
+
+        echo "INFO: Usando _VITE_API_BASE_URL=$API_BASE_URL"
 
         if [ -z "$GOOGLE_CLIENT_ID" ]; then
           echo "ERROR: Secret GOOGLE_CLIENT_ID vacío o no accesible";
