@@ -21,7 +21,7 @@ const JWT_SECRET = (process.env.JWT_SECRET || '').trim();
 
 // ⚠️ VALIDACIÓN CRÍTICA: JWT_SECRET debe estar definido y ser seguro
 if (!JWT_SECRET) {
-  throw new Error('❌ FATAL: JWT_SECRET no está definido en las variables de entorno');
+  throw new Error('❌ FATAL: JWT_SECRET no está definido. En Cloud Run configúralo en Variables & Secrets como variable de entorno (no solo como volumen).');
 }
 
 if (JWT_SECRET.length < 32) {
@@ -40,7 +40,7 @@ async function setupDatabase(fastify) {
   const databaseUrl = process.env.DATABASE_URL;
 
   if (!databaseUrl) {
-    throw new Error('❌ FATAL: DATABASE_URL no está definido en las variables de entorno');
+    throw new Error('❌ FATAL: DATABASE_URL no está definido. En Cloud Run configúralo en Variables & Secrets como variable de entorno.');
   }
 
   const pgConfig = {
