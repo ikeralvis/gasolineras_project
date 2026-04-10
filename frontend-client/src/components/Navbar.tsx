@@ -56,6 +56,19 @@ const MOBILE_AUTH: MobileItem[] = [
   { to: '/profile', label: 'Perfil', icon: User },
 ];
 
+function getTranslatedNavLabel(path: string, t: (key: string) => string) {
+  const labelsByPath: Record<string, string> = {
+    '/': 'nav.home',
+    '/gasolineras': 'nav.gasStations',
+    '/mapa': 'nav.map',
+    '/recarga': 'nav.evCharging',
+    '/rutas': 'nav.routes',
+    '/favoritos': 'nav.favorites',
+  };
+  const key = labelsByPath[path] || 'nav.home';
+  return t(key);
+}
+
 export default function Navbar() {
   const { t } = useTranslation();
   const { user, logout, isAuthenticated } = useAuth();
@@ -83,18 +96,7 @@ export default function Navbar() {
             <div className="flex items-center gap-1 rounded-full bg-white/75 p-1 ring-1 ring-(--color-border)">
               {NAV_ITEMS.filter((item) => (item.private ? isAuthenticated : true)).map((item) => {
                 const Icon = item.icon;
-                const translated =
-                  item.to === '/'
-                    ? t('nav.home')
-                    : item.to === '/gasolineras'
-                      ? t('nav.gasStations')
-                      : item.to === '/mapa'
-                        ? t('nav.map')
-                        : item.to === '/recarga'
-                          ? t('nav.evCharging')
-                          : item.to === '/rutas'
-                            ? t('nav.routes')
-                            : t('nav.favorites');
+                const translated = getTranslatedNavLabel(item.to, t);
 
                 return (
                   <NavLink

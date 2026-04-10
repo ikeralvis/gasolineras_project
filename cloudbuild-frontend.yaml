@@ -1,16 +1,22 @@
 steps:
   # 1. Construir la imagen del Frontend
   # Define _VITE_API_BASE_URL en el trigger de Cloud Build.
+  # VITE_GOOGLE_CLIENT_ID se inyecta desde Secret Manager en build-time.
   - name: 'gcr.io/cloud-builders/docker'
-    args: 
-      - 'build'
-      - '-t'
-      - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
-      - '--build-arg'
-      - 'VITE_API_BASE_URL=${_VITE_API_BASE_URL}'
-      - '--build-arg'
-      - 'VITE_GOOGLE_CLIENT_ID=${_VITE_GOOGLE_CLIENT_ID}'
-      - 'frontend-client'
+    entrypoint: 'bash'
+    secretEnv: ['VITE_GOOGLE_CLIENT_ID_SECRET']
+    args:
+      - '-c'
+      - |
+        if [ -z "$$VITE_GOOGLE_CLIENT_ID_SECRET" ]; then
+          echo "ERROR: Secret GOOGLE_CLIENT_ID vacío o no accesible";
+          exit 1;
+        fi
+        docker build \
+          -t europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img \
+          --build-arg VITE_API_BASE_URL=${_VITE_API_BASE_URL} \
+          --build-arg VITE_GOOGLE_CLIENT_ID=$$VITE_GOOGLE_CLIENT_ID_SECRET \
+          frontend-client
 
   # 2. Subir al registro
   - name: 'gcr.io/cloud-builders/docker'
@@ -37,7 +43,11 @@ images:
 
 substitutions:
   _VITE_API_BASE_URL: 'https://gateway-hono-REEMPLAZAR.run.app'
-  _VITE_GOOGLE_CLIENT_ID: 'REEMPLAZAR.apps.googleusercontent.com'
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/GOOGLE_CLIENT_ID/versions/latest
+      env: 'VITE_GOOGLE_CLIENT_ID_SECRET'
 
 options:
   logging: CLOUD_LOGGING_ONLY

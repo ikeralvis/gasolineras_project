@@ -37,6 +37,7 @@ INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET", "dev-internal-secret-chan
 AUTO_SYNC_ON_READ = os.getenv("AUTO_SYNC_ON_READ", "false").lower() == "true"
 AUTO_SYNC_COOLDOWN_MINUTES = int(os.getenv("AUTO_SYNC_COOLDOWN_MINUTES", "30"))
 HISTORICAL_SCOPE = os.getenv("HISTORICAL_SCOPE", "all").lower()
+HISTORY_RETENTION_DAYS = max(1, int(os.getenv("HISTORY_RETENTION_DAYS", "30")))
 RAW_EXPORT_ENABLED = os.getenv("RAW_EXPORT_ENABLED", "false").lower() == "true"
 RAW_EXPORT_GCS_BUCKET = os.getenv("RAW_EXPORT_GCS_BUCKET", "").strip()
 RAW_EXPORT_GCS_PREFIX = os.getenv("RAW_EXPORT_GCS_PREFIX", "raw/").strip() or "raw/"
@@ -324,8 +325,12 @@ def _memory_sync_result(
     response = {
         "registros_eliminados": 0,
         "registros_insertados": inserted_count,
+        "registros_snapshot_diario": inserted_count,
+        "registros_snapshot_pruned": 0,
+        "registros_historicos_pruned": 0,
         "registros_historicos": historico_count,
         "historico_scope": HISTORICAL_SCOPE,
+        "retention_days": HISTORY_RETENTION_DAYS,
         "favoritas_totales": 0,
         "fecha_snapshot": fecha_sync.date().isoformat(),
         "total": inserted_count,
@@ -341,7 +346,30 @@ def _memory_sync_result(
     return response
 
 
-def _persist_snapshot_to_postgres(rows: list[tuple], fecha_sync: datetime) -> tuple[int, int]:
+def _persist_snapshot_to_postgres(rows: list[tuple], fecha_sync: datetime) -> tuple[int, int, int, int, int]:
+    archive_rows = [
+        (
+            fecha_sync.date(),
+            row[0],
+            row[1],
+            row[2],
+            row[3],
+            row[4],
+            row[5],
+            row[6],
+            row[7],
+            row[8],
+            row[9],
+            row[10],
+            row[11],
+            row[13],
+            row[14],
+            row[15],
+        )
+        for row in rows
+    ]
+    retention_cutoff = fecha_sync.date() - timedelta(days=HISTORY_RETENTION_DAYS)
+
     with get_db_conn() as conn:
         with get_cursor(conn) as cur:
             cur.execute("DELETE FROM gasolineras")
@@ -371,12 +399,87 @@ def _persist_snapshot_to_postgres(rows: list[tuple], fecha_sync: datetime) -> tu
 
             inserted_count = len(rows)
             logger.info("✅ Insertadas %s gasolineras (eliminadas %s)", inserted_count, deleted_count)
+
             cur.execute(
-                "DELETE FROM precios_historicos WHERE fecha < %s",
-                [fecha_sync.date() - timedelta(days=30)],
+                """
+                CREATE TABLE IF NOT EXISTS gasolineras_snapshots (
+                    snapshot_date DATE NOT NULL,
+                    ideess VARCHAR(10) NOT NULL,
+                    rotulo VARCHAR(255),
+                    municipio VARCHAR(255),
+                    provincia VARCHAR(255),
+                    direccion TEXT,
+                    precio_95_e5 NUMERIC(6,3),
+                    precio_98_e5 NUMERIC(6,3),
+                    precio_gasoleo_a NUMERIC(6,3),
+                    precio_gasoleo_b NUMERIC(6,3),
+                    precio_gasoleo_premium NUMERIC(6,3),
+                    latitud DOUBLE PRECISION,
+                    longitud DOUBLE PRECISION,
+                    horario TEXT,
+                    horario_parsed JSONB,
+                    actualizado_en TIMESTAMPTZ NOT NULL,
+                    PRIMARY KEY (snapshot_date, ideess)
+                )
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_gasolineras_snapshots_snapshot_date
+                    ON gasolineras_snapshots (snapshot_date DESC)
+                """
+            )
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_gasolineras_snapshots_ideess
+                    ON gasolineras_snapshots (ideess)
+                """
             )
 
-    return deleted_count, inserted_count
+            if archive_rows:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO gasolineras_snapshots
+                        (snapshot_date, ideess, rotulo, municipio, provincia, direccion,
+                         precio_95_e5, precio_98_e5, precio_gasoleo_a,
+                         precio_gasoleo_b, precio_gasoleo_premium,
+                         latitud, longitud, horario, horario_parsed, actualizado_en)
+                    VALUES %s
+                    ON CONFLICT (snapshot_date, ideess) DO UPDATE SET
+                        rotulo = EXCLUDED.rotulo,
+                        municipio = EXCLUDED.municipio,
+                        provincia = EXCLUDED.provincia,
+                        direccion = EXCLUDED.direccion,
+                        precio_95_e5 = EXCLUDED.precio_95_e5,
+                        precio_98_e5 = EXCLUDED.precio_98_e5,
+                        precio_gasoleo_a = EXCLUDED.precio_gasoleo_a,
+                        precio_gasoleo_b = EXCLUDED.precio_gasoleo_b,
+                        precio_gasoleo_premium = EXCLUDED.precio_gasoleo_premium,
+                        latitud = EXCLUDED.latitud,
+                        longitud = EXCLUDED.longitud,
+                        horario = EXCLUDED.horario,
+                        horario_parsed = EXCLUDED.horario_parsed,
+                        actualizado_en = EXCLUDED.actualizado_en
+                    """,
+                    archive_rows,
+                )
+
+            archive_inserted_count = len(archive_rows)
+
+            cur.execute(
+                "DELETE FROM gasolineras_snapshots WHERE snapshot_date < %s",
+                [retention_cutoff],
+            )
+            archive_pruned_count = cur.rowcount
+
+            cur.execute(
+                "DELETE FROM precios_historicos WHERE fecha < %s",
+                [retention_cutoff],
+            )
+            historical_pruned_count = cur.rowcount
+
+    return deleted_count, inserted_count, archive_inserted_count, archive_pruned_count, historical_pruned_count
 
 
 def _fetch_favoritas_ids() -> Set[str]:
@@ -538,6 +641,27 @@ def _upload_raw_snapshot_to_gcs(records: list[dict], blob_path: str) -> str:
     return f"gs://{RAW_EXPORT_GCS_BUCKET}/{blob_path}"
 
 
+def _export_snapshot_parquet_result() -> dict:
+    if not RAW_EXPORT_ENABLED:
+        raise HTTPException(status_code=500, detail="RAW_EXPORT_ENABLED=false. Activa la exportación para usar este endpoint")
+    if not RAW_EXPORT_GCS_BUCKET:
+        raise HTTPException(status_code=500, detail="RAW_EXPORT_GCS_BUCKET no configurado")
+
+    records, reference_dt = _snapshot_rows_for_export()
+    blob_path = _build_export_blob_path(reference_dt)
+    uri = _upload_raw_snapshot_to_gcs(records, blob_path)
+
+    return {
+        "ok": True,
+        "rows": len(records),
+        "snapshot_date": reference_dt.astimezone(SPAIN_TZ).date().isoformat(),
+        "gcs_uri": uri,
+        "gcs_path": blob_path,
+        "compression": RAW_EXPORT_PARQUET_COMPRESSION,
+        "storage_mode": "memory-fallback" if _memory_mode else "postgres",
+    }
+
+
 def _build_historical_rows(datos_validos: list[dict], fecha_hoy: date, favoritas_ids: Set[str]) -> list[tuple]:
     return [
         (
@@ -601,7 +725,13 @@ def _perform_sync(trigger: str = "manual") -> dict:
         )
 
     try:
-        deleted_count, inserted_count = _persist_snapshot_to_postgres(rows, fecha_sync)
+        (
+            deleted_count,
+            inserted_count,
+            archive_inserted_count,
+            archive_pruned_count,
+            historical_pruned_count,
+        ) = _persist_snapshot_to_postgres(rows, fecha_sync)
     except Exception as exc:
         _activate_memory_mode(f"sync-db-write-failed: {exc}")
         _sync_to_memory(datos_validos, fecha_sync, update_history=False)
@@ -622,8 +752,12 @@ def _perform_sync(trigger: str = "manual") -> dict:
         "mensaje": "Datos sincronizados correctamente 🚀",
         "registros_eliminados": deleted_count,
         "registros_insertados": inserted_count,
+        "registros_snapshot_diario": archive_inserted_count,
+        "registros_snapshot_pruned": archive_pruned_count,
+        "registros_historicos_pruned": historical_pruned_count,
         "registros_historicos": historico_count,
         "historico_scope": HISTORICAL_SCOPE,
+        "retention_days": HISTORY_RETENTION_DAYS,
         "favoritas_totales": len(favoritas_ids),
         "fecha_snapshot": fecha_sync.date().isoformat(),
         "total": inserted_count,

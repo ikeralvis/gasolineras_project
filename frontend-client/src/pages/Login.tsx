@@ -23,6 +23,7 @@ export default function Login() {
   const [error, setError] = useState(searchParams.get('error') ? 'No se pudo autenticar tu sesión.' : '');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const googleOAuthMissing = !GOOGLE_OAUTH_ENABLED;
 
   const handleSubmit = async (e: React.SyntheticEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -65,6 +66,37 @@ export default function Login() {
       setGoogleLoading(false);
     }
   };
+
+  let googleAuthContent = (
+    <GoogleLogin
+      onSuccess={handleGoogleSuccess}
+      onError={() => setError('Error al iniciar sesión con Google')}
+      useOneTap={false}
+      theme="outline"
+      size="large"
+      text="continue_with"
+      shape="pill"
+      locale="es"
+      ux_mode="popup"
+    />
+  );
+
+  if (googleLoading) {
+    googleAuthContent = (
+      <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
+        <span className="h-4 w-4 animate-spin rounded-full border-2 border-(--color-primary) border-t-transparent" />
+        <span>Validando Google...</span>
+      </div>
+    );
+  }
+
+  if (googleOAuthMissing) {
+    googleAuthContent = (
+      <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
+        Login con Google no configurado en este entorno.
+      </div>
+    );
+  }
 
   return (
     <div className="relative isolate min-h-screen overflow-hidden bg-(--color-bg) px-4 py-10 sm:px-6">
@@ -154,28 +186,7 @@ export default function Login() {
           </div>
 
           <div className="flex justify-center">
-            {!GOOGLE_OAUTH_ENABLED ? (
-              <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
-                Login con Google no configurado en este entorno.
-              </div>
-            ) : googleLoading ? (
-              <div className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm text-(--color-text-muted) ring-1 ring-(--color-border)">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-(--color-primary) border-t-transparent" />
-                Validando Google...
-              </div>
-            ) : (
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setError('Error al iniciar sesión con Google')}
-                useOneTap={false}
-                theme="outline"
-                size="large"
-                text="continue_with"
-                shape="pill"
-                locale="es"
-                ux_mode="popup"
-              />
-            )}
+            {googleAuthContent}
           </div>
 
           <div className="mt-5 flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700">
