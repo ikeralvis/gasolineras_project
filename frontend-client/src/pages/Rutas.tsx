@@ -19,6 +19,8 @@ import {
   type RecomendacionResponse,
 } from "../api/recomendacion";
 import { reverseGeocode, searchLocations } from "../api/geocoding";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useIsCoarsePointer } from "../hooks/useIsCoarsePointer";
 
 type RouteLocation = {
   name: string;
@@ -115,6 +117,7 @@ function MapPickMode({ pickMode, onPick }: { pickMode: PickMode; onPick: (lat: n
 export default function Rutas() {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const isTouchDevice = useIsCoarsePointer();
 
   const [origin, setOrigin] = useState<RouteLocation | null>(null);
   const [destination, setDestination] = useState<RouteLocation | null>(null);
@@ -144,6 +147,8 @@ export default function Rutas() {
   const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
   const [gasStationsNearRoute, setGasStationsNearRoute] = useState<GasStation[]>([]);
   const [selectedStop, setSelectedStop] = useState<GasStation | null>(null);
+
+  useBodyScrollLock(isTouchDevice && showSearchPanel);
 
   useEffect(() => {
     setSelectedFuel(mapProfileFuelToCombustible(user?.combustible_favorito, user?.tipo_combustible_coche));
@@ -280,14 +285,18 @@ export default function Rutas() {
         origen: { lat: origin.lat, lon: origin.lng, nombre: origin.name },
         destino: { lat: destination.lat, lon: destination.lng, nombre: destination.name },
         posicion_actual: { lat: origin.lat, lon: origin.lng, nombre: origin.name },
+        origin: { lat: origin.lat, lon: origin.lng, nombre: origin.name },
+        destination: { lat: destination.lat, lon: destination.lng, nombre: destination.name },
         combustible: selectedFuel,
         max_desvio_km: maxDetourKm,
         max_detour_minutes: maxDetourMin,
+        max_detour_time: maxDetourMin,
         top_n: resultLimit,
         peso_precio: 0.6,
         peso_desvio: 0.4,
         litros_deposito: 50,
         evitar_peajes: avoidTolls,
+        avoid_tolls: avoidTolls,
       });
 
       const geojsonRouteFeature = data.geojson?.features?.find(
@@ -382,6 +391,8 @@ export default function Rutas() {
         zoom={12}
         style={{ height: "calc(100vh - 60px)", width: "100%" }}
         scrollWheelZoom
+        dragging={!isTouchDevice}
+        touchZoom="center"
         className="z-0"
       >
         <TileLayer
@@ -412,48 +423,28 @@ export default function Rutas() {
         ))}
       </MapContainer>
 
-      <section className="pointer-events-none absolute inset-x-0 top-0 z-[1100] px-3 pt-3 md:px-5 md:pt-4">
-        <div className="mx-auto w-full max-w-4xl pointer-events-auto">
+      <section
+        className={isTouchDevice && showSearchPanel
+          ? "fixed inset-0 z-[1300] bg-white"
+          : "pointer-events-none absolute left-0 right-0 top-0 z-[1100] px-3 pt-3 md:left-4 md:right-auto md:w-[430px] md:px-0 md:pt-4"}
+      >
+        <div className={isTouchDevice && showSearchPanel ? "h-full overflow-y-auto p-4" : "pointer-events-auto w-full"}>
           {showSearchPanel ? (
-            <div className="rounded-2xl border border-[#d7e2f5] bg-white/96 p-3 shadow-xl shadow-[#1e3a8a]/12 backdrop-blur md:p-4">
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-[1fr_1fr_auto]">
-                <div className="relative">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.to")}</label>
-                  <div className="relative">
-                    <LuSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5b77ad]" />
-                    <input
-                      className="w-full rounded-xl border border-[#cdd9ee] bg-[#f8fbff] py-2.5 pl-9 pr-3 text-sm text-[#13295b] outline-none ring-[#1d4ed8]/20 focus:ring-3"
-                      placeholder={t("routes.toPlaceholder")}
-                      value={destinationInput}
-                      onFocus={() => setShowDestinationList(true)}
-                      onChange={(e) => {
-                        setDestinationInput(e.target.value);
-                        setShowDestinationList(true);
-                      }}
-                    />
-                  </div>
-                  {showDestinationList && destinationSuggestions.length > 0 && (
-                    <ul className="absolute z-[1200] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#cfdbf1] bg-white py-1 shadow-lg">
-                      {destinationSuggestions.map((item, idx) => (
-                        <li key={`${item.lat}-${item.lng}-${idx}`}>
-                          <button
-                            type="button"
-                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[#f3f7ff]"
-                            onClick={() => selectDestination(item)}
-                          >
-                            <LuMapPin className="mt-1 shrink-0 text-[#3b63a8]" size={15} />
-                            <span className="block min-w-0">
-                              <span className="block truncate text-sm font-semibold text-[#16326d]">{item.name}</span>
-                              <span className="block truncate text-xs text-[#637da9]">{item.address}</span>
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {loadingDestinationSearch && <p className="pt-1 text-xs text-[#617aab]">{t("routes.searching")}</p>}
+            <div className={`border border-[#d7e2f5] bg-white ${isTouchDevice ? "min-h-full rounded-none p-0 shadow-none" : "rounded-2xl p-3 shadow-xl shadow-[#1e3a8a]/12 backdrop-blur"}`}>
+              {isTouchDevice && (
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d9e4f7] bg-white px-3 py-3">
+                  <h2 className="text-base font-bold text-[#17386f]">{t("routes.title")}</h2>
+                  <button
+                    type="button"
+                    onClick={() => setShowSearchPanel(false)}
+                    className="rounded-lg border border-[#d3def2] px-3 py-1.5 text-xs font-semibold text-[#1d3e7a]"
+                  >
+                    {t("common.close")}
+                  </button>
                 </div>
+              )}
 
+              <div className={`${isTouchDevice ? "p-3 space-y-3" : "space-y-3"}`}>
                 <div className="relative">
                   <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.from")}</label>
                   <div className="relative">
@@ -502,7 +493,44 @@ export default function Rutas() {
                   )}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 md:grid-cols-1">
+                <div className="relative">
+                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.to")}</label>
+                  <div className="relative">
+                    <LuSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5b77ad]" />
+                    <input
+                      className="w-full rounded-xl border border-[#cdd9ee] bg-[#f8fbff] py-2.5 pl-9 pr-3 text-sm text-[#13295b] outline-none ring-[#1d4ed8]/20 focus:ring-3"
+                      placeholder={t("routes.toPlaceholder")}
+                      value={destinationInput}
+                      onFocus={() => setShowDestinationList(true)}
+                      onChange={(e) => {
+                        setDestinationInput(e.target.value);
+                        setShowDestinationList(true);
+                      }}
+                    />
+                  </div>
+                  {showDestinationList && destinationSuggestions.length > 0 && (
+                    <ul className="absolute z-[1200] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#cfdbf1] bg-white py-1 shadow-lg">
+                      {destinationSuggestions.map((item, idx) => (
+                        <li key={`${item.lat}-${item.lng}-${idx}`}>
+                          <button
+                            type="button"
+                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[#f3f7ff]"
+                            onClick={() => selectDestination(item)}
+                          >
+                            <LuMapPin className="mt-1 shrink-0 text-[#3b63a8]" size={15} />
+                            <span className="block min-w-0">
+                              <span className="block truncate text-sm font-semibold text-[#16326d]">{item.name}</span>
+                              <span className="block truncate text-xs text-[#637da9]">{item.address}</span>
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {loadingDestinationSearch && <p className="pt-1 text-xs text-[#617aab]">{t("routes.searching")}</p>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     type="button"
                     className="rounded-xl border border-[#c8d6ef] bg-white px-3 py-2 text-xs font-semibold text-[#1a3b7a] hover:bg-[#f3f7ff]"
@@ -529,18 +557,17 @@ export default function Rutas() {
                   >
                     {t("routes.pickDestinationOnMap")}
                   </button>
-                  <button
-                    type="button"
-                    className="rounded-xl bg-[#1f4fa0] px-3 py-2 text-xs font-bold text-white disabled:opacity-60"
-                    disabled={!origin || !destination || loadingRoute}
-                    onClick={calculateRoute}
-                  >
-                    {loadingRoute ? t("routes.calculating") : t("routes.calculateRoute")}
-                  </button>
                 </div>
-              </div>
 
-              <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-[1fr_auto]">
+                <button
+                  type="button"
+                  className="w-full rounded-xl bg-[#1f4fa0] px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
+                  disabled={!origin || !destination || loadingRoute}
+                  onClick={calculateRoute}
+                >
+                  {loadingRoute ? t("routes.calculating") : t("routes.calculateRoute")}
+                </button>
+
                 <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
                   <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
                     {t("routes.fuelForComparison")}
@@ -560,9 +587,83 @@ export default function Rutas() {
                     ))}
                   </select>
                 </div>
+
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+                      {t("routes.maxDetourKm", { defaultValue: "Desvío máximo (km)" })}
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={50}
+                      step={1}
+                      className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                      value={maxDetourKm}
+                      onChange={(e) => {
+                        setMaxDetourKm(Number(e.target.value) || 1);
+                        clearRouteResult();
+                      }}
+                    />
+                  </div>
+
+                  <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+                      {t("routes.maxDetourMin", { defaultValue: "Desvío máximo (min)" })}
+                    </label>
+                    <input
+                      type="range"
+                      min={1}
+                      max={30}
+                      step={1}
+                      className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                      value={maxDetourMin}
+                      onChange={(e) => {
+                        setMaxDetourMin(Number(e.target.value) || 1);
+                        clearRouteResult();
+                      }}
+                    />
+                    <p className="mt-1 text-xs font-semibold text-[#1f3f79]">
+                      {maxDetourMin} {t("routes.minutes")}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
+                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+                      {t("routes.resultLimit", { defaultValue: "Máx. gasolineras" })}
+                    </label>
+                    <select
+                      className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                      value={resultLimit}
+                      onChange={(e) => {
+                        setResultLimit(Number(e.target.value));
+                        clearRouteResult();
+                      }}
+                    >
+                      {[10, 20, 30, 50, 80].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <label className="inline-flex items-center gap-2 rounded-xl border border-[#d8e4f7] bg-[#f7fbff] px-3 py-2 text-sm font-semibold text-[#1f427f]">
+                  <input
+                    type="checkbox"
+                    checked={avoidTolls}
+                    onChange={(e) => {
+                      setAvoidTolls(e.target.checked);
+                      clearRouteResult();
+                    }}
+                  />
+                  {t("routes.avoidTolls", { defaultValue: "Evitar peajes" })}
+                </label>
+
                 <button
                   type="button"
-                  className="rounded-xl border border-[#c7d8f8] bg-[#edf4ff] px-3 py-2 text-sm font-semibold text-[#1f427f] disabled:opacity-60"
+                  className="w-full rounded-xl border border-[#c7d8f8] bg-[#edf4ff] px-3 py-2 text-sm font-semibold text-[#1f427f] disabled:opacity-60"
                   onClick={openGoogleMaps}
                   disabled={!origin || !destination}
                 >
@@ -571,95 +672,24 @@ export default function Rutas() {
                     {selectedStop ? t("routes.openInGoogleWithStop") : t("routes.openInGoogle")}
                   </span>
                 </button>
-              </div>
 
-              <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-3">
-                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
-                    {t("routes.maxDetourKm", { defaultValue: "Desvío máximo (km)" })}
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    step={1}
-                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
-                    value={maxDetourKm}
-                    onChange={(e) => {
-                      setMaxDetourKm(Number(e.target.value) || 1);
-                      clearRouteResult();
-                    }}
-                  />
-                </div>
-
-                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
-                    {t("routes.maxDetourMin", { defaultValue: "Desvío máximo (min)" })}
-                  </label>
-                  <input
-                    type="range"
-                    min={1}
-                    max={30}
-                    step={1}
-                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
-                    value={maxDetourMin}
-                    onChange={(e) => {
-                      setMaxDetourMin(Number(e.target.value) || 1);
-                      clearRouteResult();
-                    }}
-                  />
-                  <p className="mt-1 text-xs font-semibold text-[#1f3f79]">
-                    {maxDetourMin} {t("routes.minutes")}
+                {pickMode && (
+                  <p className="rounded-lg border border-dashed border-[#9eb7e4] bg-[#edf4ff] px-2 py-1.5 text-xs text-[#355286]">
+                    {pickMode === "origin" ? t("routes.mapPickOriginHint") : t("routes.mapPickDestinationHint")}
                   </p>
-                </div>
-
-                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
-                    {t("routes.resultLimit", { defaultValue: "Máx. gasolineras" })}
-                  </label>
-                  <select
-                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
-                    value={resultLimit}
-                    onChange={(e) => {
-                      setResultLimit(Number(e.target.value));
-                      clearRouteResult();
-                    }}
-                  >
-                    {[10, 20, 30, 50, 80].map((n) => (
-                      <option key={n} value={n}>
-                        {n}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                )}
               </div>
-
-              <label className="mt-2 inline-flex items-center gap-2 rounded-xl border border-[#d8e4f7] bg-[#f7fbff] px-3 py-2 text-sm font-semibold text-[#1f427f]">
-                <input
-                  type="checkbox"
-                  checked={avoidTolls}
-                  onChange={(e) => {
-                    setAvoidTolls(e.target.checked);
-                    clearRouteResult();
-                  }}
-                />
-                {t("routes.avoidTolls", { defaultValue: "Evitar peajes" })}
-              </label>
-
-              {pickMode && (
-                <p className="mt-2 rounded-lg border border-dashed border-[#9eb7e4] bg-[#edf4ff] px-2 py-1.5 text-xs text-[#355286]">
-                  {pickMode === "origin" ? t("routes.mapPickOriginHint") : t("routes.mapPickDestinationHint")}
-                </p>
-              )}
             </div>
           ) : (
             <button
               type="button"
-              className="inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white/95 px-4 py-2 text-sm font-semibold text-[#16356f] shadow-lg"
+              className={isTouchDevice
+                ? "fixed bottom-5 right-5 inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white px-4 py-3 text-sm font-semibold text-[#16356f] shadow-xl"
+                : "inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white/95 px-4 py-2 text-sm font-semibold text-[#16356f] shadow-lg"}
               onClick={() => setShowSearchPanel(true)}
             >
               <LuPencil size={15} />
-              {t("routes.editSearch", { defaultValue: "Editar búsqueda" })}
+              {isTouchDevice ? t("routes.editSearch", { defaultValue: "Filtros y ruta" }) : t("routes.editSearch", { defaultValue: "Editar búsqueda" })}
             </button>
           )}
         </div>

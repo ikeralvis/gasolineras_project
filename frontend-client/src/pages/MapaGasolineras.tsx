@@ -8,6 +8,8 @@ import { LuX, LuMapPin, LuNavigation, LuExternalLink, LuClock } from "react-icon
 import { MdLocalGasStation } from "react-icons/md";
 import { fetchGasMarkers, type GasMarker } from "../api/gasolineras";
 import HorarioDisplay, { type HorarioParsed } from "../components/HorarioDisplay";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useIsCoarsePointer } from "../hooks/useIsCoarsePointer";
 
 import repsol from "../assets/logos/repsol.svg";
 import cepsa from "../assets/logos/cepsa.jpg";
@@ -22,6 +24,12 @@ import easygas from "../assets/logos/easygas.png";
 import petroprix from "../assets/logos/petroprix.png";
 
 const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const TILE_URL =
+  import.meta.env.VITE_MAP_TILE_URL
+  ?? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+const TILE_ATTRIBUTION =
+  import.meta.env.VITE_MAP_TILE_ATTRIBUTION
+  ?? "&copy; <a href='https://carto.com/attributions'>CARTO</a>";
 
 interface Gasolinera {
   IDEESS: string;
@@ -299,7 +307,7 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
     setLoading(true);
     setError(null);
     setDetail(null);
-    fetch(`${API_URL}/api/gasolineras/${ideess}`)
+    fetch(`${API_URL}/api/gasolineras/${ideess}`, { credentials: "include" })
       .then(r => r.json())
       .then(d => { if (!cancelled) setDetail(normalizeStation(d) as GasolineraDetail); })
       .catch(() => { if (!cancelled) setError(t("detail.loadingDetails")); })
@@ -327,6 +335,7 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
   }, [ideess, onClose]);
 
   const isOpen = !!ideess;
+  useBodyScrollLock(isOpen);
   const logo = detail ? getBrandLogo(detail["Rótulo"]) : null;
   const snapHeight = `${MOBILE_SNAP_POINTS[snapIndex]}vh`;
 
@@ -428,22 +437,20 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
 
           {detail && !loading && (
             <>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
-                  <p className="text-[11px] uppercase tracking-wide text-gray-500">G95</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {detail["Precio Gasolina 95 E5"] || "-"}
-                    <span className="ml-1 text-xs font-medium text-gray-500">€/L</span>
-                  </p>
+              {/* Horario destacado */}
+              {(detail.Horario || detail.horario_parsed) && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-3">
+                  <h3 className="text-[11px] font-semibold text-indigo-700 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                    <LuClock size={13} />
+                    {t("detail.schedule")}
+                  </h3>
+                  <HorarioDisplay
+                    mode="compact"
+                    horario={detail.Horario}
+                    horario_parsed={detail.horario_parsed}
+                  />
                 </div>
-                <div className="rounded-xl border border-gray-100 bg-gray-50 px-3 py-2.5">
-                  <p className="text-[11px] uppercase tracking-wide text-gray-500">GOA</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {detail["Precio Gasoleo A"] || "-"}
-                    <span className="ml-1 text-xs font-medium text-gray-500">€/L</span>
-                  </p>
-                </div>
-              </div>
+              )}
 
               {/* Dirección */}
               {detail.Dirección && (
@@ -470,21 +477,6 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* Horario */}
-              {(detail.Horario || detail.horario_parsed) && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                    <LuClock size={13} />
-                    {t("detail.schedule")}
-                  </h3>
-                  <HorarioDisplay
-                    mode="compact"
-                    horario={detail.Horario}
-                    horario_parsed={detail.horario_parsed}
-                  />
                 </div>
               )}
             </>
@@ -519,13 +511,13 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
 
 export default function MapaGasolineras() {
   const { t } = useTranslation();
+  const isTouchDevice = useIsCoarsePointer();
   const [markers, setMarkers] = useState<GasMarker[]>([]);
   const [userLocation, setUserLocation] = useState<[number, number]>([40.2, -3.5]);
   const [loading, setLoading] = useState(false);
   const [locationGranted, setLocationGranted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapZoom, setMapZoom] = useState(6);
-  const [wheelZoomEnabled, setWheelZoomEnabled] = useState(false);
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -577,17 +569,7 @@ export default function MapaGasolineras() {
                 <span className="text-xs font-medium text-green-300">{t("map.locationDetected")}</span>
               </div>
             )}
-            <button
-              type="button"
-              onClick={() => setWheelZoomEnabled((prev) => !prev)}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition ${
-                wheelZoomEnabled
-                  ? 'bg-white text-[#000C74] border-white/80'
-                  : 'bg-white/10 text-white border-white/35 hover:bg-white/20'
-              }`}
-            >
-              {wheelZoomEnabled ? 'Scroll zoom ON' : 'Scroll zoom OFF'}
-            </button>
+            {isTouchDevice && <p className="text-[11px] text-white/70">Usa dos dedos para hacer zoom</p>}
           </div>
         </div>
       </div>
@@ -595,14 +577,16 @@ export default function MapaGasolineras() {
       <MapContainer
         center={userLocation}
         zoom={locationGranted ? 13 : 6}
-        scrollWheelZoom={wheelZoomEnabled}
-        wheelPxPerZoomLevel={160}
+        scrollWheelZoom
+        wheelPxPerZoomLevel={140}
+        dragging={!isTouchDevice}
+        touchZoom="center"
         className="flex-1 z-0"
         style={{ zIndex: 0 }}
       >
           <TileLayer
-            url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-            attribution="&copy; <a href='https://carto.com/attributions'>CARTO</a>"
+            url={TILE_URL}
+            attribution={TILE_ATTRIBUTION}
           />
 
           <MapUpdater center={userLocation} enabled={locationGranted} />

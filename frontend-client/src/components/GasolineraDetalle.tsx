@@ -88,12 +88,12 @@ export default function GasolineraDetalle() {
   useEffect(() => {
     globalThis.scrollTo({ top: 0, behavior: "auto" });
 
-    fetch(`${API_URL}/api/gasolineras/${id}`)
+    fetch(`${API_URL}/api/gasolineras/${id}`, { credentials: "include" })
       .then(res => res.json())
       .then(data => setGasolinera(normalizeStation(data)))
       .catch(err => console.error(err));
 
-    fetch(`${API_URL}/api/gasolineras/${id}/cercanas`)
+    fetch(`${API_URL}/api/gasolineras/${id}/cercanas`, { credentials: "include" })
       .then(res => res.json())
       .then(data => setCercanas((data.gasolineras_cercanas ?? []).map((g: any) => normalizeStation(g))))
       .catch(err => console.error(err));

@@ -2,8 +2,7 @@
  * API client for the EV Charging microservice.
  * All requests go through the API Gateway.
  */
-
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+import { apiFetch } from "./http";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -128,7 +127,7 @@ export class BoundingBoxTooLargeError extends Error {
  * Throws BoundingBoxTooLargeError when the backend returns a 400/BBOX_TOO_LARGE.
  */
 export async function fetchEVMarkers(bbox: BoundingBox): Promise<EVMarker[]> {
-  const res = await fetch(`${API_BASE}/api/charging/markers`, {
+  const res = await apiFetch("/api/charging/markers", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(bbox),
@@ -155,7 +154,7 @@ export async function fetchEVMarkers(bbox: BoundingBox): Promise<EVMarker[]> {
  * Result is cached 5 min on the backend.
  */
 export async function fetchEVLocationDetail(id: string): Promise<LocationDetail> {
-  const res = await fetch(`${API_BASE}/api/charging/details/${encodeURIComponent(id)}`);
+  const res = await apiFetch(`/api/charging/details/${encodeURIComponent(id)}`);
   if (!res.ok) {
     throw new Error(`EV detail request failed: ${res.status}`);
   }

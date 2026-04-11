@@ -1,3 +1,5 @@
+import { apiFetch } from "./http";
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 export type CombustibleTipo =
@@ -96,22 +98,34 @@ export interface RecomendacionResponse {
 export async function requestRouteRecommendations(
   payload: RecomendacionRequestPayload
 ): Promise<RecomendacionResponse> {
+  const origin = payload.origen ?? payload.origin;
+  const destination = payload.destino ?? payload.destination;
+  const currentPosition = payload.posicion_actual ?? payload.current_position;
+  const maxDetourTime =
+    payload.max_desvio_min ?? payload.max_detour_minutes ?? payload.max_detour_time;
+  const avoidTolls = payload.evitar_peajes ?? payload.avoid_tolls ?? false;
+
   const body = {
     ...payload,
-    origen: payload.origen ?? payload.origin,
-    destino: payload.destino ?? payload.destination,
-    posicion_actual: payload.posicion_actual ?? payload.current_position,
-    max_desvio_min:
-      payload.max_desvio_min ?? payload.max_detour_minutes ?? payload.max_detour_time,
-    evitar_peajes: payload.evitar_peajes ?? payload.avoid_tolls ?? false,
+    // Spanish contract (legacy-compatible)
+    origen: origin,
+    destino: destination,
+    posicion_actual: currentPosition,
+    max_desvio_min: maxDetourTime,
+    evitar_peajes: avoidTolls,
+    // Gateway contract fields requested by frontend routing UX
+    origin,
+    destination,
+    current_position: currentPosition,
+    max_detour_time: maxDetourTime,
+    avoid_tolls: avoidTolls,
   };
 
-  const response = await fetch(`${API_BASE_URL}/api/recomendacion/ruta`, {
+  const response = await apiFetch(`${API_BASE_URL}/api/recomendacion/ruta`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    credentials: "include",
     body: JSON.stringify(body),
   });
 

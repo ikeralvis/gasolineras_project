@@ -76,7 +76,6 @@ export default function Login() {
       size="large"
       text="continue_with"
       shape="pill"
-      locale="es"
       ux_mode="popup"
     />
   );

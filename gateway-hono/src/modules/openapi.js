@@ -1,6 +1,69 @@
 import { swaggerUI } from "@hono/swagger-ui";
 import { fetchWithCloudRunAuth } from "./cloudRunAuthFetch.js";
 
+const HTTP_METHODS = new Set(["get", "post", "put", "patch", "delete", "options", "head", "trace"]);
+
+function sanitizeGatewayPath(path) {
+  if (!path || path === "/") {
+    return "/";
+  }
+  return path.length > 1 ? path.replace(/\/+$/, "") : path;
+}
+
+function isHealthPath(path) {
+  const cleanPath = sanitizeGatewayPath(path);
+  return (
+    cleanPath === "/health"
+    || cleanPath.endsWith("/health")
+    || cleanPath.endsWith("/ready")
+    || cleanPath.endsWith("/live")
+  );
+}
+
+function canonicalTagForPath(path) {
+  const cleanPath = sanitizeGatewayPath(path);
+
+  if (isHealthPath(cleanPath)) return "Health";
+  if (cleanPath.startsWith("/api/auth")) return "Auth";
+  if (cleanPath.startsWith("/api/usuarios")) return "Usuarios";
+  if (cleanPath.startsWith("/api/gasolineras")) return "Gasolineras";
+  if (cleanPath.startsWith("/api/charging")) return "EV Charging";
+  if (cleanPath.startsWith("/api/recomendacion") || cleanPath.startsWith("/api/recomendaciones")) return "Recomendaciones";
+  if (cleanPath.startsWith("/api/routing")) return "Routing";
+  if (cleanPath.startsWith("/api/prediction")) return "Prediction";
+  if (cleanPath.startsWith("/api/geocoding") || cleanPath === "/health") return "Gateway";
+
+  return null;
+}
+
+function clonePathItem(pathItem) {
+  return JSON.parse(JSON.stringify(pathItem || {}));
+}
+
+function normalizePathItem(path, pathItem) {
+  const cleanPath = sanitizeGatewayPath(path);
+  const cloned = clonePathItem(pathItem);
+  const canonicalTag = canonicalTagForPath(cleanPath);
+
+  for (const [method, operation] of Object.entries(cloned)) {
+    const methodLower = method.toLowerCase();
+    if (!HTTP_METHODS.has(methodLower) || !operation || typeof operation !== "object") {
+      continue;
+    }
+
+    if (canonicalTag) {
+      operation.tags = [canonicalTag];
+      continue;
+    }
+
+    if (Array.isArray(operation.tags) && operation.tags.length > 0) {
+      operation.tags = [...new Set(operation.tags.map((tag) => (tag === "Recomendación" ? "Recomendaciones" : tag)))];
+    }
+  }
+
+  return cloned;
+}
+
 function buildLoadingSpec() {
   return {
     openapi: "3.1.0",
@@ -154,12 +217,14 @@ function buildBaseAggregatedSpec() {
     tags: [
       { name: "Gateway", description: "Endpoints del Gateway" },
       { name: "Auth", description: "Autenticacion y gestion de usuarios (proxeado a usuarios-service)" },
+      { name: "Usuarios", description: "Gestion de usuarios y perfil (proxeado a usuarios-service)" },
       { name: "Favoritos", description: "Gestion de gasolineras favoritas (proxeado a usuarios-service)" },
       { name: "Gasolineras", description: "Informacion de gasolineras (proxeado a gasolineras-service)" },
       {
         name: "Recomendaciones",
-        description: "Recomendaciones de gasolineras (proxeado a recomendaciones-service)",
+        description: "Recomendaciones de gasolineras (proxeado a recomendacion-service). Prefijo canonico: /api/recomendaciones/*",
       },
+      { name: "Routing", description: "Calculo de rutas y matrices (proxeado a recomendacion-service)" },
       { name: "EV Charging", description: "Puntos de recarga electrica (integrado en gasolineras-service)" },
       {
         name: "Prediction",
@@ -176,8 +241,8 @@ function mapUsuariosPaths(aggregatedSpec, spec) {
   }
 
   for (const [path, methods] of Object.entries(spec.paths)) {
-    const gatewayPath = path.startsWith("/api/usuarios") ? path : `/api/usuarios${path}`;
-    aggregatedSpec.paths[gatewayPath] = methods;
+    const gatewayPath = sanitizeGatewayPath(path.startsWith("/api/usuarios") ? path : `/api/usuarios${path}`);
+    aggregatedSpec.paths[gatewayPath] = normalizePathItem(gatewayPath, methods);
   }
 }
 
@@ -197,7 +262,8 @@ function mapGasolinerasPaths(aggregatedSpec, spec) {
     } else {
       gatewayPath = `/api/gasolineras${path}`;
     }
-    aggregatedSpec.paths[gatewayPath] = methods;
+    const cleanGatewayPath = sanitizeGatewayPath(gatewayPath);
+    aggregatedSpec.paths[cleanGatewayPath] = normalizePathItem(cleanGatewayPath, methods);
   }
 }
 
@@ -208,17 +274,20 @@ function mapRecomendacionPaths(aggregatedSpec, spec) {
 
   for (const [path, methods] of Object.entries(spec.paths)) {
     if (path.startsWith("/routing")) {
-      aggregatedSpec.paths[`/api${path}`] = methods;
+      const routingPath = sanitizeGatewayPath(`/api${path}`);
+      aggregatedSpec.paths[routingPath] = normalizePathItem(routingPath, methods);
       continue;
     }
 
+    let canonicalPath;
     if (path.startsWith("/recomendacion")) {
-      aggregatedSpec.paths[`/api${path}`] = methods;
-      aggregatedSpec.paths[path.replace("/recomendacion", "/api/recomendaciones")] = methods;
+      canonicalPath = path.replace("/recomendacion", "/api/recomendaciones");
     } else {
-      aggregatedSpec.paths[`/api/recomendacion${path}`] = methods;
-      aggregatedSpec.paths[`/api/recomendaciones${path}`] = methods;
+      canonicalPath = `/api/recomendaciones${path}`;
     }
+
+    const cleanCanonicalPath = sanitizeGatewayPath(canonicalPath);
+    aggregatedSpec.paths[cleanCanonicalPath] = normalizePathItem(cleanCanonicalPath, methods);
   }
 }
 
@@ -228,13 +297,17 @@ function mapEvChargingPaths(aggregatedSpec, spec) {
   }
 
   for (const [path, methods] of Object.entries(spec.paths)) {
+    let gatewayPath;
     if (path.startsWith("/api/charging")) {
-      aggregatedSpec.paths[path] = methods;
+      gatewayPath = path;
     } else if (path.startsWith("/charging")) {
-      aggregatedSpec.paths[`/api${path}`] = methods;
+      gatewayPath = `/api${path}`;
     } else {
-      aggregatedSpec.paths[`/api/charging${path}`] = methods;
+      gatewayPath = `/api/charging${path}`;
     }
+
+    const cleanGatewayPath = sanitizeGatewayPath(gatewayPath);
+    aggregatedSpec.paths[cleanGatewayPath] = normalizePathItem(cleanGatewayPath, methods);
   }
 }
 
@@ -244,8 +317,8 @@ function mapPredictionPaths(aggregatedSpec, spec) {
   }
 
   for (const [path, methods] of Object.entries(spec.paths)) {
-    const gatewayPath = path.startsWith("/api/prediction") ? path : `/api/prediction${path}`;
-    aggregatedSpec.paths[gatewayPath] = methods;
+    const gatewayPath = sanitizeGatewayPath(path.startsWith("/api/prediction") ? path : `/api/prediction${path}`);
+    aggregatedSpec.paths[gatewayPath] = normalizePathItem(gatewayPath, methods);
   }
 }
 

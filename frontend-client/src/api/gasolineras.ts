@@ -1,4 +1,5 @@
 import { Gasolinera } from "./types";
+import { apiFetch } from "./http";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -49,7 +50,7 @@ function normalizeStationKeys(raw: any) {
 }
 
 export async function getGasolineras(): Promise<Gasolinera[]> {
-  const res = await fetch(`${API_BASE_URL}/api/gasolineras`);
+  const res = await apiFetch(`${API_BASE_URL}/api/gasolineras`);
   const data = await res.json();
   const gasolineras = Array.isArray(data.gasolineras)
     ? data.gasolineras.map((g: any) => normalizeStationKeys(g))
@@ -71,7 +72,7 @@ export async function getGasolineras(): Promise<Gasolinera[]> {
 
 export async function getGasolinerasCerca(lat: number, lon: number, km: number): Promise<any[]> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/gasolineras/cerca?lat=${lat}&lon=${lon}&km=${km}`);
+    const res = await apiFetch(`${API_BASE_URL}/api/gasolineras/cerca?lat=${lat}&lon=${lon}&km=${km}`);
 
     if (!res.ok) {
       console.error(`❌ Error en la API ${res.status}`);
@@ -98,7 +99,7 @@ export async function getGasolinerasCerca(lat: number, lon: number, km: number):
 }
 
 export async function fetchGasMarkers(viewport: GasolinerasBoundingBox): Promise<GasMarker[]> {
-  const res = await fetch(`${API_BASE_URL}/api/gasolineras/markers`, {
+  const res = await apiFetch(`${API_BASE_URL}/api/gasolineras/markers`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -129,7 +130,7 @@ export async function fetchGasMarkers(viewport: GasolinerasBoundingBox): Promise
 
 export async function getHistorialPrecios(ideess: string, dias: number = 30): Promise<any> {
   try {
-    const res = await fetch(`${API_BASE_URL}/api/gasolineras/${ideess}/historial?dias=${dias}`);
+    const res = await apiFetch(`${API_BASE_URL}/api/gasolineras/${ideess}/historial?dias=${dias}`);
     
     if (!res.ok) {
       console.error(`❌ Error al obtener historial ${res.status}`);

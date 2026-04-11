@@ -18,6 +18,15 @@ import {
   fetchEVLocationDetail,
   fetchEVMarkers,
 } from "../api/charging";
+import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
+import { useIsCoarsePointer } from "../hooks/useIsCoarsePointer";
+
+const TILE_URL =
+  import.meta.env.VITE_MAP_TILE_URL
+  ?? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+const TILE_ATTRIBUTION =
+  import.meta.env.VITE_MAP_TILE_ATTRIBUTION
+  ?? '&copy; <a href="https://carto.com/attributions">CARTO</a>';
 
 // ── Location marker helpers ──────────────────────────────────────────────────
 
@@ -59,6 +68,7 @@ const userLocationIcon = L.divIcon({
 });
 
 const SPAIN_BOUNDS: [[number, number], [number, number]] = [[35.7, -9.7], [43.9, 3.4]];
+const MIN_ZOOM_FOR_EV_MARKERS = 8;
 
 function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
   const map = useMap();
@@ -108,6 +118,15 @@ function EVMapController({
   const fetchMarkers = useCallback(async () => {
     const currentSeq = ++fetchSeqRef.current;
     const zoom = map.getZoom();
+
+    if (zoom < MIN_ZOOM_FOR_EV_MARKERS) {
+      onZoomTooLow(true);
+      onBboxTooLarge(null);
+      onMarkersUpdate([]);
+      onLoading(false);
+      return;
+    }
+
     onZoomTooLow(false);
 
     const bounds = map.getBounds();
@@ -256,6 +275,7 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
   }, [locationId, t]);
 
   const isOpen = !!locationId;
+  useBodyScrollLock(isOpen);
 
   return (
     <>
@@ -318,6 +338,52 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
 
           {detail && !loading && (
             <>
+              {(() => {
+                const total = detail.evses?.length ?? 0;
+                const available = detail.evses?.filter((e) => e.status === "AVAILABLE").length ?? 0;
+                const charging = detail.evses?.filter((e) => e.status === "CHARGING").length ?? 0;
+                const statusLabel = available > 0 ? "Disponible" : "No disponible";
+                const statusClasses = available > 0
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-rose-50 border-rose-200 text-rose-800";
+
+                return (
+                  <div className={`rounded-2xl border px-4 py-3 ${statusClasses}`}>
+                    <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Estado de disponibilidad</p>
+                    <p className="mt-1 text-2xl font-extrabold leading-none">{statusLabel}</p>
+                    <p className="mt-2 text-xs font-semibold opacity-90">
+                      {available} libres · {charging} en uso · {Math.max(total - available - charging, 0)} fuera de servicio
+                    </p>
+                  </div>
+                );
+              })()}
+
+              {(() => {
+                const operatorName = detail.operator?.name ?? detail.owner?.name;
+                if (!operatorName) return null;
+
+                const logo = detail.owner?.logo;
+                const initials = operatorName.slice(0, 1).toUpperCase();
+                return (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                    <p className="text-xs text-gray-500 mb-2">Operador</p>
+                    <div className="flex items-center gap-3">
+                      {logo ? (
+                        <img src={logo} alt={operatorName} className="h-10 w-10 rounded-xl object-contain bg-white border border-slate-200 p-1" />
+                      ) : (
+                        <div className="h-10 w-10 rounded-xl bg-[#0f2f67] text-white font-bold flex items-center justify-center">
+                          {initials}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900">{operatorName}</p>
+                        <p className="text-xs text-gray-500">Red de recarga</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Address */}
               {(detail.address || detail.city) && (
                 <div className="flex items-start gap-3">
@@ -331,15 +397,6 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
               )}
 
               {/* Operator */}
-              {(detail.operator?.name ?? detail.owner?.name) && (
-                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
-                  <p className="text-xs text-gray-500 mb-1">Operator</p>
-                  <p className="font-semibold text-gray-900 text-sm">
-                    {detail.operator?.name ?? detail.owner?.name}
-                  </p>
-                </div>
-              )}
-
               {detail.owner?.website && (
                 <a
                   href={`https://${detail.owner.website.replace(/^https?:\/\//, "")}`}
@@ -388,16 +445,18 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                           <div className="flex items-center gap-2">
                             <span className={`w-2 h-2 rounded-full shrink-0 ${dotColor}`} />
                             <div>
-                              <span className="text-sm text-gray-700">
+                              <span className="text-base font-semibold text-gray-800">
                                 {connector?.standard ?? "—"}
                               </span>
                               {price && (
-                                <p className="text-xs text-[#000C74] font-medium mt-0.5">{price}</p>
+                                <p className="mt-1 inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-sm font-bold text-amber-800">
+                                  {price}
+                                </p>
                               )}
                             </div>
                           </div>
                           {!!connector?.max_electric_power && (
-                            <span className="text-xs text-gray-500 font-medium">
+                            <span className="text-sm text-gray-600 font-semibold">
                               {(connector.max_electric_power / 1000).toFixed(0)} kW
                             </span>
                           )}
@@ -421,7 +480,7 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
               {detail.evses?.some((e) => e.payment_methods?.length) && (
                 <div>
                   <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Payment Methods
+                    Métodos de pago
                   </h3>
                   <div className="space-y-1">
                     {Array.from(
@@ -444,14 +503,14 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
                     <span className="flex items-center gap-1 text-sm font-medium text-green-700 bg-green-50 px-3 py-1 rounded-full">
                       <span className="inline-block w-2 h-2 bg-green-500 rounded-full" />
-                      {" Available"}
+                      {" Disponible"}
                     </span>
                   )}
                   {detail.evses.some((e) => e.status === "CHARGING") && (
                     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
                     <span className="flex items-center gap-1 text-sm font-medium text-amber-700 bg-amber-50 px-3 py-1 rounded-full">
                       <span className="inline-block w-2 h-2 bg-amber-500 rounded-full" />
-                      {" Charging"}
+                      {" En uso"}
                     </span>
                   )}
                 </div>
@@ -462,7 +521,7 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                 <div className="flex items-center gap-2 text-xs text-gray-500 justify-center pt-2">
                   <LuInfo size={12} />
                   <span>
-                    {typeof detail.source_type === "string" ? detail.source_type : "OCPI"} • {detail.access_restricted ? "Restricted" : "Public"}
+                    {typeof detail.source_type === "string" ? detail.source_type : "OCPI"} • {detail.access_restricted ? "Restringido" : "Público"}
                   </span>
                 </div>
               )}
@@ -486,6 +545,7 @@ const SPAIN_CENTER: [number, number] = [40.4168, -3.7038];
 
 export default function MapaRecarga() {
   const { t } = useTranslation();
+  const isTouchDevice = useIsCoarsePointer();
   const [markers, setMarkers] = useState<EVMarker[]>([]);
   const [userLocation, setUserLocation] = useState<[number, number]>(SPAIN_CENTER);
   const [locationGranted, setLocationGranted] = useState(false);
@@ -538,6 +598,9 @@ export default function MapaRecarga() {
                 });
               })()}
               </p>
+              {isTouchDevice && (
+                <p className="text-white/60 text-[11px] mt-1">Usa dos dedos para acercar/alejar el mapa</p>
+              )}
             </div>
 
             {loading && (
@@ -566,10 +629,13 @@ export default function MapaRecarga() {
         className="flex-1 z-0"
         style={{ zIndex: 0 }}
         zoomControl
+        scrollWheelZoom
+        dragging={!isTouchDevice}
+        touchZoom="center"
       >
         <TileLayer
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          attribution='&copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url={TILE_URL}
+          attribution={TILE_ATTRIBUTION}
         />
 
         <MapUpdater center={userLocation} enabled={locationGranted} />

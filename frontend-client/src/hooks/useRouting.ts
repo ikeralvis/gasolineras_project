@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { apiFetch } from "../api/http";
 
 export interface RouteLocation {
   name: string;
@@ -30,24 +31,26 @@ export function useRouting() {
     async (
       origin: RouteLocation,
       destination: RouteLocation,
-      opts?: { avoidTolls?: boolean }
+      opts?: { avoidTolls?: boolean; maxDetourTime?: number }
     ): Promise<RoutingResult | null> => {
       setLoading(true);
       setError(null);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/routing/directions`, {
+        const response = await apiFetch(`${API_BASE_URL}/api/routing/directions`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          credentials: "include",
           body: JSON.stringify({
             coordinates: [
               [origin.lng, origin.lat],
               [destination.lng, destination.lat],
             ],
+            origin: { lat: origin.lat, lon: origin.lng, nombre: origin.name },
+            destination: { lat: destination.lat, lon: destination.lng, nombre: destination.name },
             avoid_tolls: !!opts?.avoidTolls,
+            max_detour_time: opts?.maxDetourTime,
           }),
         });
 
