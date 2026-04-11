@@ -7,11 +7,13 @@ from app.clients.gcs_client import GCSClient
 from app.config import Settings
 from app.repositories.gasolineras_repository import GasolinerasRepository
 from app.services.constants import (
+    KEY_DIESEL_RENOVABLE,
     KEY_DIRECCION,
     KEY_GASOLEO_A,
     KEY_GASOLEO_B,
     KEY_GASOLEO_PREMIUM,
     KEY_P95,
+    KEY_P95_PREMIUM,
     KEY_P98,
     KEY_ROTULO,
     SPAIN_TZ,
@@ -57,10 +59,13 @@ class ExportService:
             "Provincia": base.get("provincia") or "",
             KEY_DIRECCION: base.get("direccion") or "",
             KEY_P95: self._format_price(base.get("precio_95_e5")),
+            KEY_P95_PREMIUM: self._format_price(base.get("precio_95_e5_premium")),
             KEY_P98: self._format_price(base.get("precio_98_e5")),
             KEY_GASOLEO_A: self._format_price(base.get("precio_gasoleo_a")),
             KEY_GASOLEO_B: self._format_price(base.get("precio_gasoleo_b")),
             KEY_GASOLEO_PREMIUM: self._format_price(base.get("precio_gasoleo_premium")),
+            "Precio Gasóleo Premium": self._format_price(base.get("precio_gasoleo_premium")),
+            KEY_DIESEL_RENOVABLE: self._format_price(base.get("precio_diesel_renovable")),
             "Latitud": base.get("latitud"),
             "Longitud": base.get("longitud"),
             "Horario": base.get("horario"),

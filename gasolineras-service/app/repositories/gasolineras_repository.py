@@ -44,8 +44,9 @@ class GasolinerasRepository:
                     """
                     INSERT INTO gasolineras
                         (ideess, rotulo, municipio, provincia, direccion,
-                         precio_95_e5, precio_98_e5, precio_gasoleo_a,
-                         precio_gasoleo_b, precio_gasoleo_premium,
+                         precio_95_e5, precio_95_e5_premium, precio_98_e5,
+                         precio_gasoleo_a, precio_gasoleo_b,
+                         precio_gasoleo_premium, precio_diesel_renovable,
                          latitud, longitud, geom,
                          horario, horario_parsed,
                          actualizado_en)
@@ -54,7 +55,7 @@ class GasolinerasRepository:
                     rows,
                     template=(
                         "(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,"
-                        " ST_GeomFromText(%s, 4326)::geography, %s, %s, %s)"
+                        " %s, %s, ST_GeomFromText(%s, 4326)::geography, %s, %s, %s)"
                     ),
                 )
 
@@ -141,8 +142,9 @@ class GasolinerasRepository:
                     """
                     SELECT
                         ideess, rotulo, municipio, provincia, direccion,
-                        precio_95_e5, precio_98_e5, precio_gasoleo_a,
-                        precio_gasoleo_b, precio_gasoleo_premium,
+                        precio_95_e5, precio_95_e5_premium, precio_98_e5,
+                        precio_gasoleo_a, precio_gasoleo_b,
+                        precio_gasoleo_premium, precio_diesel_renovable,
                         latitud, longitud, horario, horario_parsed
                     FROM gasolineras
                     WHERE geom IS NOT NULL
@@ -164,8 +166,9 @@ class GasolinerasRepository:
                     """
                     SELECT
                         ideess, rotulo, municipio, provincia, direccion,
-                        precio_95_e5, precio_98_e5, precio_gasoleo_a,
-                        precio_gasoleo_b, precio_gasoleo_premium,
+                        precio_95_e5, precio_95_e5_premium, precio_98_e5,
+                        precio_gasoleo_a, precio_gasoleo_b,
+                        precio_gasoleo_premium, precio_diesel_renovable,
                         latitud, longitud, horario, horario_parsed,
                         ST_Distance(geom, ST_MakePoint(%s, %s)::geography) / 1000.0 AS distancia_km
                     FROM gasolineras
@@ -207,8 +210,9 @@ class GasolinerasRepository:
         with get_db_conn() as conn:
             with get_cursor(conn) as cur:
                 cur.execute(
-                    f"SELECT precio_95_e5, precio_98_e5, precio_gasoleo_a, "
-                    f"precio_gasoleo_b, precio_gasoleo_premium FROM gasolineras {where}",
+                    f"SELECT precio_95_e5, precio_95_e5_premium, precio_98_e5, "
+                    f"precio_gasoleo_a, precio_gasoleo_b, precio_gasoleo_premium, "
+                    f"precio_diesel_renovable FROM gasolineras {where}",
                     params,
                 )
                 return [dict(r) for r in cur.fetchall()]
@@ -220,8 +224,9 @@ class GasolinerasRepository:
                     """
                     SELECT
                         g.ideess, g.rotulo, g.municipio, g.provincia, g.direccion,
-                        g.precio_95_e5, g.precio_98_e5, g.precio_gasoleo_a,
-                        g.precio_gasoleo_b, g.precio_gasoleo_premium,
+                        g.precio_95_e5, g.precio_95_e5_premium, g.precio_98_e5,
+                        g.precio_gasoleo_a, g.precio_gasoleo_b,
+                        g.precio_gasoleo_premium, g.precio_diesel_renovable,
                         g.latitud, g.longitud, g.horario, g.horario_parsed,
                         ST_Distance(g.geom, ref.geom) / 1000.0 AS distancia_km
                     FROM gasolineras g, gasolineras ref
@@ -255,10 +260,12 @@ class GasolinerasRepository:
                         provincia,
                         direccion,
                         precio_95_e5,
+                        precio_95_e5_premium,
                         precio_98_e5,
                         precio_gasoleo_a,
                         precio_gasoleo_b,
                         precio_gasoleo_premium,
+                        precio_diesel_renovable,
                         latitud,
                         longitud,
                         horario,

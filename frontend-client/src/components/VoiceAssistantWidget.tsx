@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, Mic, MicOff, Send, Sparkles, X } from "lucide-react";
-import { askVoiceAssistant, transcribeVoiceChunk } from "../api/voiceAssistant";
+import { askVoiceAssistant } from "../api/voiceAssistant";
 
 type ChatMessage = {
   id: string;
@@ -81,8 +81,6 @@ export default function VoiceAssistantWidget() {
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const processingChunkRef = useRef(false);
-  const processingChainRef = useRef<Promise<void>>(Promise.resolve());
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const recognitionRef = useRef<any>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
@@ -96,6 +94,9 @@ export default function VoiceAssistantWidget() {
   const liveModeRef = useRef(false);
   const liveListeningRef = useRef(false);
   const liveDraftRef = useRef("");
+  const adaptiveVolumeThresholdRef = useRef(liveTuning.volumeThreshold);
+  const calibrationRemainingRef = useRef(0);
+  const noiseFloorSamplesRef = useRef<number[]>([]);
 
   const canSend = useMemo(() => input.trim().length > 0 && !loading && !liveMode, [input, loading, liveMode]);
 
@@ -120,6 +121,12 @@ export default function VoiceAssistantWidget() {
   useEffect(() => {
     liveListeningRef.current = liveListening;
   }, [liveListening]);
+
+  useEffect(() => {
+    if (!liveModeRef.current) {
+      adaptiveVolumeThresholdRef.current = liveTuning.volumeThreshold;
+    }
+  }, [liveTuning.volumeThreshold]);
 
   function blobToBase64(blob: Blob): Promise<string> {
     return new Promise((resolve, reject) => {
@@ -162,6 +169,9 @@ export default function VoiceAssistantWidget() {
     }
     setLiveMicLevel(0);
     speechDetectedRef.current = false;
+    calibrationRemainingRef.current = 0;
+    noiseFloorSamplesRef.current = [];
+    adaptiveVolumeThresholdRef.current = liveTuning.volumeThreshold;
   }
 
   function stopBrowserRecognition() {
@@ -215,7 +225,6 @@ export default function VoiceAssistantWidget() {
     stopBrowserRecognition();
     cleanupAudioMetering();
 
-    processingChunkRef.current = false;
     setLiveListening(false);
     setLiveMode(false);
     liveListeningRef.current = false;
@@ -225,44 +234,6 @@ export default function VoiceAssistantWidget() {
     liveSendingRef.current = false;
     recordedChunksRef.current = [];
     liveDraftRef.current = "";
-  }
-
-  async function processLiveChunk(blob: Blob, mimeType: string) {
-    if (blob.size < 1800 || processingChunkRef.current) {
-      return;
-    }
-
-    processingChunkRef.current = true;
-    setLiveStatus(liveListening ? "Escuchando y transcribiendo..." : "Procesando audio final...");
-
-    try {
-      const audioBase64 = await blobToBase64(blob);
-      const stt = await transcribeVoiceChunk({
-        audioBase64,
-        mimeType,
-        language: "es",
-      });
-
-      const transcript = (stt?.text || "").trim();
-      if (!transcript || transcript.length < 3) {
-        setLiveStatus(liveListening ? "Escuchando..." : "No se detecto voz clara");
-        return;
-      }
-
-      liveDraftRef.current = mergeTranscript(liveDraftRef.current, transcript);
-      setLiveHeardText(liveDraftRef.current);
-      setLiveStatus(liveListening ? "Escuchando..." : "Audio listo para enviar");
-    } catch {
-      setLiveStatus("Error al transcribir audio");
-    } finally {
-      processingChunkRef.current = false;
-    }
-  }
-
-  function enqueueChunkProcessing(blob: Blob, mimeType: string) {
-    processingChainRef.current = processingChainRef.current.then(async () => {
-      await processLiveChunk(blob, mimeType);
-    });
   }
 
   function startAudioMetering(stream: MediaStream) {
@@ -293,7 +264,25 @@ export default function VoiceAssistantWidget() {
         const normalizedLevel = Math.min(1, rms * 12);
         setLiveMicLevel(normalizedLevel);
 
-        if (rms > liveTuning.volumeThreshold) {
+        if (calibrationRemainingRef.current > 0) {
+          noiseFloorSamplesRef.current.push(rms);
+          calibrationRemainingRef.current -= 1;
+
+          if (calibrationRemainingRef.current === 0 && noiseFloorSamplesRef.current.length > 0) {
+            const avgNoise =
+              noiseFloorSamplesRef.current.reduce((acc, value) => acc + value, 0) /
+              noiseFloorSamplesRef.current.length;
+            adaptiveVolumeThresholdRef.current = Math.max(liveTuning.volumeThreshold, avgNoise * 2.4);
+
+            if (liveListeningRef.current) {
+              setLiveStatus("Escuchando...");
+            }
+          }
+
+          return;
+        }
+
+        if (rms > adaptiveVolumeThresholdRef.current) {
           speechDetectedRef.current = true;
           clearSilenceTimer();
           if (liveListeningRef.current) {
@@ -305,7 +294,7 @@ export default function VoiceAssistantWidget() {
         if (
           liveListeningRef.current
           && speechDetectedRef.current
-          && liveDraftRef.current.trim().length >= liveTuning.minTextToSend
+          && recordedChunksRef.current.length > 0
           && silenceTimerRef.current == null
         ) {
           setLiveStatus("Silencio detectado. Enviando automaticamente...");
@@ -346,9 +335,6 @@ export default function VoiceAssistantWidget() {
       recorder.ondataavailable = (event) => {
         if (event.data && event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
-          if (!recognitionRef.current) {
-            enqueueChunkProcessing(event.data, mimeType);
-          }
         }
       };
       recorder.onerror = () => {
@@ -365,6 +351,9 @@ export default function VoiceAssistantWidget() {
       liveDraftRef.current = "";
       setLiveHeardText("");
       recordedChunksRef.current = [];
+      calibrationRemainingRef.current = 8;
+      noiseFloorSamplesRef.current = [];
+      adaptiveVolumeThresholdRef.current = liveTuning.volumeThreshold;
       recorder.start(liveTuning.timesliceMs);
 
       const RecognitionCtor = (globalThis as any).SpeechRecognition || (globalThis as any).webkitSpeechRecognition;
@@ -412,11 +401,19 @@ export default function VoiceAssistantWidget() {
       setLiveListening(true);
       liveModeRef.current = true;
       liveListeningRef.current = true;
-      setLiveStatus("Escuchando... (auto-envio por silencio activo)");
+      setLiveStatus("Escuchando... calibrando ruido ambiente");
     } catch {
       setLiveStatus("Permiso de microfono denegado");
       stopLiveModeImmediate();
     }
+  }
+
+  function scheduleLiveModeReset(delayMs = 700) {
+    setTimeout(() => {
+      setLiveMode(false);
+      liveModeRef.current = false;
+      setLiveStatus("Pulsa Live para hablar");
+    }, delayMs);
   }
 
   async function stopLiveModeAndSend(reason: "manual" | "silence" = "manual") {
@@ -454,30 +451,8 @@ export default function VoiceAssistantWidget() {
     stopBrowserRecognition();
     cleanupAudioMetering();
 
-    await processingChainRef.current;
-
-    let finalText = liveDraftRef.current.trim();
-    if (!finalText && recordedChunksRef.current.length > 0) {
-      try {
-        const finalBlob = new Blob(recordedChunksRef.current, { type: liveMimeTypeRef.current });
-        if (finalBlob.size > 2500) {
-          const finalAudioBase64 = await blobToBase64(finalBlob);
-          const sttFinal = await transcribeVoiceChunk({
-            audioBase64: finalAudioBase64,
-            mimeType: liveMimeTypeRef.current,
-            language: "es",
-          });
-          finalText = (sttFinal.text || "").trim();
-          if (finalText) {
-            setLiveHeardText(finalText);
-          }
-        }
-      } catch {
-        // Keep empty finalText behavior below.
-      }
-    }
-
-    if (!finalText) {
+    const finalBlob = new Blob(recordedChunksRef.current, { type: liveMimeTypeRef.current });
+    if (finalBlob.size <= 2500) {
       setMessages((prev) => [
         ...prev,
         {
@@ -487,14 +462,13 @@ export default function VoiceAssistantWidget() {
         },
       ]);
       setLiveStatus("No se detecto texto");
-      setTimeout(() => {
-        setLiveMode(false);
-        liveModeRef.current = false;
-        setLiveStatus("Pulsa Live para hablar");
-      }, 1000);
+      scheduleLiveModeReset(1000);
       liveSendingRef.current = false;
       return;
     }
+
+    const finalAudioBase64 = await blobToBase64(finalBlob);
+    const previewText = liveHeardText.trim() || liveDraftRef.current.trim();
 
     const pendingId = `a-live-pending-${Date.now()}`;
     setMessages((prev) => [
@@ -502,7 +476,7 @@ export default function VoiceAssistantWidget() {
       {
         id: `u-live-${Date.now()}`,
         role: "user",
-        text: finalText,
+        text: previewText || "[Audio enviado]",
       },
       {
         id: pendingId,
@@ -517,7 +491,9 @@ export default function VoiceAssistantWidget() {
     try {
       const location = await getCurrentLocation();
       const response = await askVoiceAssistant({
-        text: finalText,
+        text: previewText || undefined,
+        audioBase64: finalAudioBase64,
+        mimeType: liveMimeTypeRef.current,
         location: location ? { ...location, km: 8 } : undefined,
         includeAudio: true,
       });
@@ -559,11 +535,7 @@ export default function VoiceAssistantWidget() {
       liveDraftRef.current = "";
       setLiveHeardText("");
       setLiveMicLevel(0);
-      setTimeout(() => {
-        setLiveMode(false);
-        liveModeRef.current = false;
-        setLiveStatus("Pulsa Live para hablar");
-      }, 700);
+      scheduleLiveModeReset();
       liveSendingRef.current = false;
     }
   }

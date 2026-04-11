@@ -4,11 +4,13 @@ from typing import Optional
 
 from app.clients.gobierno_client import parse_float
 from app.services.constants import (
+    KEY_DIESEL_RENOVABLE,
     KEY_DIRECCION,
     KEY_GASOLEO_A,
     KEY_GASOLEO_B,
     KEY_GASOLEO_PREMIUM,
     KEY_P95,
+    KEY_P95_PREMIUM,
     KEY_P98,
     KEY_ROTULO,
 )
@@ -31,10 +33,12 @@ class MemoryStore:
             "provincia": (source.get("Provincia") or "").strip(),
             "direccion": (source.get(KEY_DIRECCION) or "").strip(),
             "precio_95_e5": parse_float(source.get(KEY_P95) or ""),
+            "precio_95_e5_premium": parse_float(source.get(KEY_P95_PREMIUM) or ""),
             "precio_98_e5": parse_float(source.get(KEY_P98) or ""),
             "precio_gasoleo_a": parse_float(source.get(KEY_GASOLEO_A) or ""),
             "precio_gasoleo_b": parse_float(source.get(KEY_GASOLEO_B) or ""),
             "precio_gasoleo_premium": parse_float(source.get(KEY_GASOLEO_PREMIUM) or ""),
+            "precio_diesel_renovable": parse_float(source.get(KEY_DIESEL_RENOVABLE) or ""),
             "latitud": source.get("Latitud"),
             "longitud": source.get("Longitud"),
             "horario": source.get("Horario"),
@@ -61,10 +65,12 @@ class MemoryStore:
                     "ideess": ideess,
                     "fecha": fecha_hoy,
                     "p95": row.get("precio_95_e5"),
+                    "p95p": row.get("precio_95_e5_premium"),
                     "p98": row.get("precio_98_e5"),
                     "pa": row.get("precio_gasoleo_a"),
                     "pb": row.get("precio_gasoleo_b"),
                     "pp": row.get("precio_gasoleo_premium"),
+                    "pdr": row.get("precio_diesel_renovable"),
                 }
             )
             self.history[ideess] = history[-retention_days:]

@@ -5,10 +5,12 @@ from zoneinfo import ZoneInfo
 KEY_DIRECCION = "Dirección"
 KEY_ROTULO = "Rótulo"
 KEY_P95 = "Precio Gasolina 95 E5"
+KEY_P95_PREMIUM = "Precio Gasolina 95 E5 Premium"
 KEY_P98 = "Precio Gasolina 98 E5"
 KEY_GASOLEO_A = "Precio Gasoleo A"
 KEY_GASOLEO_B = "Precio Gasoleo B"
-KEY_GASOLEO_PREMIUM = "Precio Gasóleo Premium"
+KEY_GASOLEO_PREMIUM = "Precio Gasoleo Premium"
+KEY_DIESEL_RENOVABLE = "Precio Diésel Renovable"
 
 try:
     SPAIN_TZ = ZoneInfo("Europe/Madrid")

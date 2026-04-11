@@ -8,6 +8,7 @@ function buildVoiceWsUrl(): string {
 }
 
 const VOICE_WS_URL = buildVoiceWsUrl();
+const VOICE_WS_KEEPALIVE_MS = 25000;
 
 type WsPending = {
   resolve: (value: any) => void;
@@ -18,6 +19,7 @@ type WsPending = {
 let ws: WebSocket | null = null;
 let openPromise: Promise<WebSocket> | null = null;
 const pending = new Map<string, WsPending>();
+let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
 
 function createRequestId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -32,6 +34,32 @@ function rejectAllPending(reason: Error) {
     item.reject(reason);
     pending.delete(requestId);
   }
+}
+
+function stopKeepalive() {
+  if (keepaliveTimer != null) {
+    clearInterval(keepaliveTimer);
+    keepaliveTimer = null;
+  }
+}
+
+function startKeepalive(socket: WebSocket) {
+  stopKeepalive();
+
+  keepaliveTimer = setInterval(() => {
+    if (socket.readyState !== WebSocket.OPEN) {
+      stopKeepalive();
+      return;
+    }
+
+    socket.send(
+      JSON.stringify({
+        id: `ping-${Date.now()}`,
+        action: "ping",
+        payload: {},
+      })
+    );
+  }, VOICE_WS_KEEPALIVE_MS);
 }
 
 function attachSocketHandlers(socket: WebSocket) {
@@ -88,6 +116,7 @@ function attachSocketHandlers(socket: WebSocket) {
   socket.onclose = () => {
     ws = null;
     openPromise = null;
+    stopKeepalive();
     rejectAllPending(new Error("voice-websocket-closed"));
   };
 
@@ -112,6 +141,7 @@ async function getSocket(): Promise<WebSocket> {
       ws = socket;
       openPromise = null;
       attachSocketHandlers(socket);
+      startKeepalive(socket);
       resolve(socket);
     };
 
@@ -130,7 +160,11 @@ async function getSocket(): Promise<WebSocket> {
   return openPromise;
 }
 
-async function sendWsRequest<T>(action: "intent" | "transcribe", payload: unknown, timeoutMs = 30000): Promise<T> {
+async function sendWsRequest<T>(
+  action: "dialog" | "audio_chunk" | "audio_commit" | "clear_buffer",
+  payload: unknown,
+  timeoutMs = 30000
+): Promise<T> {
   const socket = await getSocket();
   const id = createRequestId();
 
@@ -159,6 +193,9 @@ export interface VoiceLocation {
 }
 
 export interface VoiceAssistantResponse {
+  provider?: string;
+  model?: string;
+  context?: unknown;
   intent?: string;
   toolResult?: unknown;
   answer?: {
@@ -179,21 +216,15 @@ export interface VoiceAssistantResponse {
   message?: string;
 }
 
-export interface VoiceTranscriptionResponse {
-  text?: string;
-  provider?: string;
-  model?: string;
-  error?: string;
-  message?: string;
-}
-
 export async function askVoiceAssistant(params: {
-  text: string;
+  text?: string;
+  audioBase64?: string;
+  mimeType?: string;
   location?: VoiceLocation;
   includeAudio?: boolean;
 }): Promise<VoiceAssistantResponse> {
   try {
-    const data = await sendWsRequest<VoiceAssistantResponse>("intent", params, 45000);
+    const data = await sendWsRequest<VoiceAssistantResponse>("dialog", params, 60000);
     if (data?.error) {
       return data;
     }
@@ -201,26 +232,6 @@ export async function askVoiceAssistant(params: {
   } catch (error) {
     return {
       error: "voice-request-failed",
-      message: error instanceof Error ? error.message : "voice-websocket-failed",
-    };
-  }
-}
-
-export async function transcribeVoiceChunk(params: {
-  audioBase64: string;
-  mimeType?: string;
-  language?: string;
-  prompt?: string;
-}): Promise<VoiceTranscriptionResponse> {
-  try {
-    const data = await sendWsRequest<VoiceTranscriptionResponse>("transcribe", params, 45000);
-    if (data?.error) {
-      return data;
-    }
-    return data;
-  } catch (error) {
-    return {
-      error: "voice-transcription-failed",
       message: error instanceof Error ? error.message : "voice-websocket-failed",
     };
   }

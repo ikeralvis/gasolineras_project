@@ -11,11 +11,13 @@ from app.models.viewport import MarkersViewport
 from app.repositories.gasolineras_repository import GasolinerasRepository
 from app.repositories.history_repository import HistoryRepository
 from app.services.constants import (
+    KEY_DIESEL_RENOVABLE,
     KEY_DIRECCION,
     KEY_GASOLEO_A,
     KEY_GASOLEO_B,
     KEY_GASOLEO_PREMIUM,
     KEY_P95,
+    KEY_P95_PREMIUM,
     KEY_P98,
     KEY_ROTULO,
     SPAIN_TZ,
@@ -63,10 +65,13 @@ class GasolineraService:
             "Provincia": row.get("provincia") or "",
             KEY_DIRECCION: row.get("direccion") or "",
             KEY_P95: self._fmt(row.get("precio_95_e5")),
+            KEY_P95_PREMIUM: self._fmt(row.get("precio_95_e5_premium")),
             KEY_P98: self._fmt(row.get("precio_98_e5")),
             KEY_GASOLEO_A: self._fmt(row.get("precio_gasoleo_a")),
             KEY_GASOLEO_B: self._fmt(row.get("precio_gasoleo_b")),
-            "Precio Gasoleo Premium": self._fmt(row.get("precio_gasoleo_premium")),
+            KEY_GASOLEO_PREMIUM: self._fmt(row.get("precio_gasoleo_premium")),
+            "Precio Gasóleo Premium": self._fmt(row.get("precio_gasoleo_premium")),
+            KEY_DIESEL_RENOVABLE: self._fmt(row.get("precio_diesel_renovable")),
             "Latitud": row.get("latitud"),
             "Longitud": row.get("longitud"),
             "Horario": row.get("horario"),
@@ -382,10 +387,12 @@ class GasolineraService:
 
         fuels = {
             "gasolina_95": price_stats("precio_95_e5"),
+            "gasolina_95_premium": price_stats("precio_95_e5_premium"),
             "gasolina_98": price_stats("precio_98_e5"),
             "gasoleo_a": price_stats("precio_gasoleo_a"),
             "gasoleo_b": price_stats("precio_gasoleo_b"),
             "gasoleo_premium": price_stats("precio_gasoleo_premium"),
+            "diesel_renovable": price_stats("precio_diesel_renovable"),
         }
 
         return {
@@ -487,10 +494,12 @@ class GasolineraService:
                 row["fecha"] = row["fecha"].isoformat()
             row["precios"] = {
                 "Gasolina 95 E5": self._fmt(row.get("p95")),
+                "Gasolina 95 E5 Premium": self._fmt(row.get("p95p")),
                 "Gasolina 98 E5": self._fmt(row.get("p98")),
                 "Gasóleo A": self._fmt(row.get("pa")),
                 "Gasóleo B": self._fmt(row.get("pb")),
                 "Gasóleo Premium": self._fmt(row.get("pp")),
+                "Diésel Renovable": self._fmt(row.get("pdr")),
             }
 
         return {

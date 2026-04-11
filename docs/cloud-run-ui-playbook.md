@@ -169,10 +169,15 @@ Opcionales:
 
 ### voice-assistant-service
 Obligatorias:
-- `GATEWAY_BASE_URL=https://<gateway-url>`
-- `OPENAI_API_KEY=<secret>`
+- `GOOGLE_API_KEY=<secret>` (o `GEMINI_API_KEY=<secret>`)
+- `GEMINI_MODEL=gemini-2.5-flash-preview-native-audio-dialog`
 
 Recomendadas:
+- `GEMINI_VOICE_NAME=Aoede`
+- `GEMINI_LANGUAGE=es-ES`
+- `VOICE_ALLOWED_ORIGINS=https://<frontend-url>`
+- `VOICE_ENABLE_GAS_CONTEXT=false` (activar solo si quieres enriquecer prompts con contexto de gasolineras)
+- `GATEWAY_BASE_URL=https://<gateway-url>` (solo cuando `VOICE_ENABLE_GAS_CONTEXT=true`)
 - `INTERNAL_API_SECRET=<secret>`
 
 ### prediction-service

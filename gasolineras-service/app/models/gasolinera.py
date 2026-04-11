@@ -49,12 +49,47 @@ class Gasolinera(BaseModel):
         description="Precio de la gasolina 95 E5 en euros/litro",
         examples=["1.459", "1.529"]
     )
+
+    precio_gasolina_95_e5_premium: Optional[str] = Field(
+        None,
+        alias="Precio Gasolina 95 E5 Premium",
+        description="Precio de la gasolina 95 E5 Premium en euros/litro",
+        examples=["1.635", "1.699"]
+    )
+
+    precio_gasolina_98_e5: Optional[str] = Field(
+        None,
+        alias="Precio Gasolina 98 E5",
+        description="Precio de la gasolina 98 E5 en euros/litro",
+        examples=["1.675", "1.739"]
+    )
     
     precio_gasoleo_a: Optional[str] = Field(
         None,
         alias="Precio Gasoleo A",
         description="Precio del gasóleo A en euros/litro",
         examples=["1.329", "1.399"]
+    )
+
+    precio_gasoleo_b: Optional[str] = Field(
+        None,
+        alias="Precio Gasoleo B",
+        description="Precio del gasóleo B en euros/litro",
+        examples=["1.249", "1.319"]
+    )
+
+    precio_gasoleo_premium: Optional[str] = Field(
+        None,
+        alias="Precio Gasoleo Premium",
+        description="Precio del gasóleo premium en euros/litro",
+        examples=["1.499", "1.589"]
+    )
+
+    precio_diesel_renovable: Optional[str] = Field(
+        None,
+        alias="Precio Diésel Renovable",
+        description="Precio del diésel renovable en euros/litro",
+        examples=["2.065", "2.199"]
     )
     
     Latitud: Optional[float] = Field(
@@ -110,7 +145,12 @@ class Gasolinera(BaseModel):
                 "Provincia": "MADRID",
                 "Dirección": "CALLE MAYOR 123",
                 "Precio Gasolina 95 E5": "1.459",
+                "Precio Gasolina 95 E5 Premium": "1.635",
+                "Precio Gasolina 98 E5": "1.675",
                 "Precio Gasoleo A": "1.329",
+                "Precio Gasoleo B": "",
+                "Precio Gasoleo Premium": "",
+                "Precio Diésel Renovable": "2.065",
                 "Latitud": 40.4168,
                 "Longitud": -3.7038
             }

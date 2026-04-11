@@ -12,11 +12,13 @@ from app.config import Settings
 from app.repositories.gasolineras_repository import GasolinerasRepository
 from app.repositories.history_repository import HistoryRepository
 from app.services.constants import (
+    KEY_DIESEL_RENOVABLE,
     KEY_DIRECCION,
     KEY_GASOLEO_A,
     KEY_GASOLEO_B,
     KEY_GASOLEO_PREMIUM,
     KEY_P95,
+    KEY_P95_PREMIUM,
     KEY_P98,
     KEY_ROTULO,
     SPAIN_TZ,
@@ -111,10 +113,12 @@ class SyncService:
                 (g.get("Provincia") or "").strip(),
                 (g.get(KEY_DIRECCION) or "").strip(),
                 parse_float(g.get(KEY_P95) or ""),
+                parse_float(g.get(KEY_P95_PREMIUM) or ""),
                 parse_float(g.get(KEY_P98) or ""),
                 parse_float(g.get(KEY_GASOLEO_A) or ""),
                 parse_float(g.get(KEY_GASOLEO_B) or ""),
                 parse_float(g.get(KEY_GASOLEO_PREMIUM) or ""),
+                parse_float(g.get(KEY_DIESEL_RENOVABLE) or ""),
                 g.get("Latitud"),
                 g.get("Longitud"),
                 f"POINT({g['Longitud']} {g['Latitud']})",
@@ -142,10 +146,12 @@ class SyncService:
                 g.get("IDEESS"),
                 fecha_hoy,
                 parse_float(g.get(KEY_P95) or ""),
+                parse_float(g.get(KEY_P95_PREMIUM) or ""),
                 parse_float(g.get(KEY_P98) or ""),
                 parse_float(g.get(KEY_GASOLEO_A) or ""),
                 parse_float(g.get(KEY_GASOLEO_B) or ""),
                 parse_float(g.get(KEY_GASOLEO_PREMIUM) or ""),
+                parse_float(g.get(KEY_DIESEL_RENOVABLE) or ""),
             )
             for g in datos_validos
             if self.settings.historical_scope != "favoritas" or g.get("IDEESS") in favoritas_ids

@@ -7,6 +7,16 @@ import logging
 import httpx
 from typing import List, Dict, Optional
 
+from app.services.constants import (
+    KEY_DIESEL_RENOVABLE,
+    KEY_GASOLEO_A,
+    KEY_GASOLEO_B,
+    KEY_GASOLEO_PREMIUM,
+    KEY_P95,
+    KEY_P95_PREMIUM,
+    KEY_P98,
+)
+
 logger = logging.getLogger(__name__)
 
 # URL de la API del gobierno
@@ -163,11 +173,15 @@ def parse_gasolinera(raw_data: Dict) -> Optional[Dict]:
             "Municipio": raw_data.get("Municipio", "").strip(),
             "Provincia": raw_data.get("Provincia", "").strip(),
             "Dirección": raw_data.get("Dirección", "").strip(),
-            "Precio Gasolina 95 E5": raw_data.get("Precio Gasolina 95 E5", ""),
-            "Precio Gasolina 98 E5": raw_data.get("Precio Gasolina 98 E5", ""),
-            "Precio Gasoleo A": raw_data.get("Precio Gasoleo A", ""),
-            "Precio Gasoleo B": raw_data.get("Precio Gasoleo B", ""),
-            "Precio Gasóleo Premium": raw_data.get("Precio Gasóleo Premium", ""),
+            KEY_P95: raw_data.get(KEY_P95, ""),
+            KEY_P95_PREMIUM: raw_data.get(KEY_P95_PREMIUM, ""),
+            KEY_P98: raw_data.get(KEY_P98, ""),
+            KEY_GASOLEO_A: raw_data.get(KEY_GASOLEO_A, ""),
+            KEY_GASOLEO_B: raw_data.get(KEY_GASOLEO_B, ""),
+            # Algunas fuentes legacy devolvieron esta clave con tilde en "Gasóleo".
+            KEY_GASOLEO_PREMIUM: raw_data.get(KEY_GASOLEO_PREMIUM, raw_data.get("Precio Gasóleo Premium", "")),
+            # Fallback por si alguna exportación externa usa "Diesel" sin tilde.
+            KEY_DIESEL_RENOVABLE: raw_data.get(KEY_DIESEL_RENOVABLE, raw_data.get("Precio Diesel Renovable", "")),
             "Latitud": parse_float(lat_raw),
             "Longitud": parse_float(lon_raw),
             "Horario": horario_raw.strip() if horario_raw else None,

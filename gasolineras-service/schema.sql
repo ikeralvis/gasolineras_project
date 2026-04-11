@@ -16,10 +16,12 @@ CREATE TABLE IF NOT EXISTS gasolineras (
     provincia               VARCHAR(255),
     direccion               TEXT,
     precio_95_e5            NUMERIC(6,3),
+    precio_95_e5_premium    NUMERIC(6,3),
     precio_98_e5            NUMERIC(6,3),
     precio_gasoleo_a        NUMERIC(6,3),
     precio_gasoleo_b        NUMERIC(6,3),
     precio_gasoleo_premium  NUMERIC(6,3),
+    precio_diesel_renovable NUMERIC(6,3),
     latitud                 DOUBLE PRECISION,
     longitud                DOUBLE PRECISION,
     -- Columna geográfica PostGIS (EPSG:4326 = WGS84)
@@ -43,6 +45,8 @@ CREATE INDEX IF NOT EXISTS idx_gasolineras_geom ON gasolineras USING GIST(geom);
 -- ALTER TABLE gasolineras ADD COLUMN IF NOT EXISTS geom GEOGRAPHY(POINT, 4326);
 -- ALTER TABLE gasolineras ADD COLUMN IF NOT EXISTS horario TEXT;
 -- ALTER TABLE gasolineras ADD COLUMN IF NOT EXISTS horario_parsed JSONB;
+-- ALTER TABLE gasolineras ADD COLUMN IF NOT EXISTS precio_95_e5_premium NUMERIC(6,3);
+-- ALTER TABLE gasolineras ADD COLUMN IF NOT EXISTS precio_diesel_renovable NUMERIC(6,3);
 -- UPDATE gasolineras
 --   SET geom = ST_SetSRID(ST_MakePoint(longitud, latitud), 4326)::geography
 --   WHERE longitud IS NOT NULL AND latitud IS NOT NULL;
@@ -57,15 +61,21 @@ CREATE TABLE IF NOT EXISTS precios_historicos (
     ideess  VARCHAR(10) NOT NULL,
     fecha   DATE        NOT NULL,
     p95     NUMERIC(6,3),
+    p95p    NUMERIC(6,3),
     p98     NUMERIC(6,3),
     pa      NUMERIC(6,3),
     pb      NUMERIC(6,3),
     pp      NUMERIC(6,3),
+    pdr     NUMERIC(6,3),
     UNIQUE (ideess, fecha)  -- evita duplicados del mismo día
 );
 
 CREATE INDEX IF NOT EXISTS idx_historico_ideess_fecha
     ON precios_historicos (ideess, fecha DESC);
+
+-- Si ya existe la tabla de histórico, añade columnas nuevas con:
+-- ALTER TABLE precios_historicos ADD COLUMN IF NOT EXISTS p95p NUMERIC(6,3);
+-- ALTER TABLE precios_historicos ADD COLUMN IF NOT EXISTS pdr NUMERIC(6,3);
 
 -- ============================================================
 -- Limpieza de histórico > 30 días (ejecutar manualmente o

@@ -30,14 +30,16 @@ class HistoryRepository:
                     cur,
                     """
                     INSERT INTO precios_historicos
-                        (ideess, fecha, p95, p98, pa, pb, pp)
+                        (ideess, fecha, p95, p95p, p98, pa, pb, pp, pdr)
                     VALUES %s
                     ON CONFLICT (ideess, fecha) DO UPDATE SET
                         p95 = EXCLUDED.p95,
+                        p95p = EXCLUDED.p95p,
                         p98 = EXCLUDED.p98,
                         pa  = EXCLUDED.pa,
                         pb  = EXCLUDED.pb,
-                        pp  = EXCLUDED.pp
+                        pp  = EXCLUDED.pp,
+                        pdr = EXCLUDED.pdr
                     """,
                     rows,
                 )
@@ -48,7 +50,7 @@ class HistoryRepository:
             with get_cursor(conn) as cur:
                 cur.execute(
                     """
-                    SELECT ideess, fecha, p95, p98, pa, pb, pp
+                    SELECT ideess, fecha, p95, p95p, p98, pa, pb, pp, pdr
                     FROM precios_historicos
                     WHERE ideess = %s AND fecha BETWEEN %s AND %s
                     ORDER BY fecha ASC
