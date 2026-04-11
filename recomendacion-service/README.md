@@ -247,3 +247,107 @@ docker run -t -i -p 5000:5000 -v "${PWD}:/data" osrm/osrm-backend osrm-routed \
 Luego: `OSRM_BASE_URL=http://localhost:5000` en tu `.env`.
 
 Ventajas: sin límites de peticiones, latencia < 100 ms, sin depender de servicios externos.
+
+---
+
+## Contrato Frontend Recomendado (JSON)
+
+El backend ahora acepta nombres en español e inglés para transición sin breaking changes.
+
+```json
+{
+  "origin": { "lat": 40.4168, "lon": -3.7038, "name": "Madrid" },
+  "destination": { "lat": 41.3851, "lon": 2.1734, "name": "Barcelona" },
+  "current_position": { "lat": 40.4168, "lon": -3.7038 },
+  "combustible": "gasolina_95",
+  "max_detour_time": 5,
+  "max_desvio_km": 8,
+  "top_n": 20,
+  "peso_precio": 0.6,
+  "peso_desvio": 0.4,
+  "litros_deposito": 50,
+  "avoid_tolls": true
+}
+```
+
+Campos equivalentes aceptados por compatibilidad:
+- `origin` <-> `origen`
+- `destination` <-> `destino`
+- `current_position` <-> `posicion_actual`
+- `max_detour_time`/`max_detour_minutes` <-> `max_desvio_min`
+- `avoid_tolls` <-> `evitar_peajes`
+
+---
+
+## Viabilidad: carretera vs pueblo (OSM vs Mapbox vs Google)
+
+### Resultado práctico
+
+- **OSM/ORS/OSRM sí permite estimar** si una estación está en eje de viaje o exige desvío, gracias al cálculo `A->S->B - A->B` en minutos.
+- **OSM por sí solo no siempre clasifica semánticamente** "área de servicio de autopista" vs "estación urbana" con precisión uniforme.
+- Por eso el servicio incorpora enriquecimiento opcional con proveedores externos:
+  - `POI_ACCESS_PROVIDER=mapbox`
+  - `POI_ACCESS_PROVIDER=google`
+  - `POI_ACCESS_PROVIDER=auto` (elige Google/Mapbox si hay API key, si no OSM heurístico).
+
+### Calidad esperada por proveedor
+
+| Proveedor | Fortaleza | Limitación | Recomendación |
+|---|---|---|---|
+| OSM | Sin coste variable, reproducible, sin lock-in | Etiquetado irregular según zona | Base por defecto |
+| Mapbox Search | Mejor normalización de POI y contexto comercial | No garantiza etiqueta explícita de "service area" en todos los casos | Buen complemento |
+| Google Places | Cobertura alta y tipologías útiles (`rest_stop`, etc.) | Coste por uso y cuota | Mejor opción para clasificación premium |
+
+### Decisión sugerida
+
+- Mantener OSM para routing principal (ORS/OSRM) y desvío en tiempo.
+- Activar Google Places o Mapbox solo para enriquecer el top de candidatas (`ACCESS_ENRICHMENT_TOP_N`) y no disparar costes.
+
+---
+
+## GCP Cloud Run + Secret Manager (Esquema)
+
+### 1) Secretos recomendados
+
+- `ors-api-key`
+- `mapbox-access-token`
+- `google-places-api-key`
+
+### 2) Crear secretos
+
+```bash
+echo -n "TU_ORS_KEY" | gcloud secrets create ors-api-key --data-file=-
+echo -n "TU_MAPBOX_TOKEN" | gcloud secrets create mapbox-access-token --data-file=-
+echo -n "TU_GOOGLE_PLACES_KEY" | gcloud secrets create google-places-api-key --data-file=-
+```
+
+### 3) Dar acceso al runtime service account
+
+```bash
+gcloud projects add-iam-policy-binding PROJECT_ID \
+  --member="serviceAccount:SERVICE_ACCOUNT_EMAIL" \
+  --role="roles/secretmanager.secretAccessor"
+```
+
+### 4) Deploy Cloud Run con secretos y env vars
+
+```bash
+gcloud run deploy recomendacion-service \
+  --image europe-west1-docker.pkg.dev/PROJECT_ID/tankgo/recomendacion-img \
+  --region europe-west1 \
+  --platform managed \
+  --set-env-vars ROUTING_BACKEND=ors,ROUTE_CANDIDATES_SOURCE=auto,POI_ACCESS_PROVIDER=auto \
+  --set-secrets ORS_API_KEY=ors-api-key:latest,MAPBOX_ACCESS_TOKEN=mapbox-access-token:latest,GOOGLE_PLACES_API_KEY=google-places-api-key:latest
+```
+
+### 5) Stateless checklist
+
+- No usa estado local persistente para negocio.
+- Todo configurable por variables de entorno/secrets.
+- Compatible con escalado horizontal de Cloud Run.
+
+---
+
+## `.env.example`
+
+Se incluye `recomendacion-service/.env.example` con todas las variables necesarias para ejecutar localmente y en GCP sin hardcoding.

@@ -20,55 +20,53 @@ export interface RoutingResult {
   steps: RouteStep[];
 }
 
-const OSRM_BASE_URL = import.meta.env.VITE_OSRM_URL || "http://localhost:5000";
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 export function useRouting() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const getRoute = useCallback(
-    async (origin: RouteLocation, destination: RouteLocation): Promise<RoutingResult | null> => {
+    async (
+      origin: RouteLocation,
+      destination: RouteLocation,
+      opts?: { avoidTolls?: boolean }
+    ): Promise<RoutingResult | null> => {
       setLoading(true);
       setError(null);
 
       try {
-        const coordinates = `${origin.lng},${origin.lat};${destination.lng},${destination.lat}`;
-        const url = `${OSRM_BASE_URL}/route/v1/driving/${coordinates}?steps=true&geometries=geojson&overview=full`;
+        const response = await fetch(`${API_BASE_URL}/api/routing/directions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            coordinates: [
+              [origin.lng, origin.lat],
+              [destination.lng, destination.lat],
+            ],
+            avoid_tolls: !!opts?.avoidTolls,
+          }),
+        });
 
-        const response = await fetch(url);
         if (!response.ok) {
-          throw new Error(`OSRM error: ${response.statusText}`);
+          const errorBody = await response.json().catch(() => ({}));
+          throw new Error(errorBody?.detail || `Routing error: ${response.statusText}`);
         }
 
         const data = await response.json();
 
-        if (data.code !== "Ok" || !data.routes || data.routes.length === 0) {
+        if (!Array.isArray(data.coordinates) || data.coordinates.length === 0) {
           throw new Error("No route found");
         }
 
-        const route = data.routes[0];
-        const steps: RouteStep[] = [];
-
-        // Procesar pasos
-        if (route.legs) {
-          route.legs.forEach((leg: any) => {
-            if (leg.steps) {
-              leg.steps.forEach((step: any) => {
-                steps.push({
-                  distance: step.distance,
-                  duration: step.duration,
-                  instruction: step.maneuver?.instruction || "Continue",
-                });
-              });
-            }
-          });
-        }
-
         const result: RoutingResult = {
-          distance: route.distance,
-          duration: route.duration,
-          coordinates: route.geometry.coordinates,
-          steps,
+          distance: data.distance_m,
+          duration: data.duration_s,
+          coordinates: data.coordinates,
+          steps: [],
         };
 
         setLoading(false);

@@ -8,19 +8,26 @@ export type CombustibleTipo =
   | "glp"
   | "hidrogeno";
 
+type Coord = { lat: number; lon: number; nombre?: string };
+
 export interface RecomendacionRequestPayload {
-  origen: { lat: number; lon: number; nombre?: string };
-  destino: { lat: number; lon: number; nombre?: string };
-  posicion_actual?: { lat: number; lon: number; nombre?: string };
+  origen?: Coord;
+  destino?: Coord;
+  posicion_actual?: Coord;
+  origin?: Coord;
+  destination?: Coord;
+  current_position?: Coord;
   combustible: CombustibleTipo;
   max_desvio_km?: number;
   max_desvio_min?: number;
   max_detour_minutes?: number;
+  max_detour_time?: number;
   top_n?: number;
   peso_precio?: number;
   peso_desvio?: number;
   litros_deposito?: number;
   evitar_peajes?: boolean;
+  avoid_tolls?: boolean;
 }
 
 export interface RecomendacionResponse {
@@ -47,6 +54,9 @@ export interface RecomendacionResponse {
     porcentaje_ruta: number;
     ahorro_vs_mas_cara_eur?: number | null;
     distancia_desde_origen_km?: number;
+    tipo_acceso?: string | null;
+    fuente_tipo_acceso?: string | null;
+    confianza_tipo_acceso?: number | null;
   }>;
   opciones_parada?: Array<{
     posicion: number;
@@ -66,6 +76,9 @@ export interface RecomendacionResponse {
     porcentaje_ruta: number;
     ahorro_vs_mas_cara_eur?: number | null;
     distancia_desde_origen_km?: number;
+    tipo_acceso?: string | null;
+    fuente_tipo_acceso?: string | null;
+    confianza_tipo_acceso?: number | null;
   }>;
   geojson?: {
     type: "FeatureCollection";
@@ -83,13 +96,23 @@ export interface RecomendacionResponse {
 export async function requestRouteRecommendations(
   payload: RecomendacionRequestPayload
 ): Promise<RecomendacionResponse> {
+  const body = {
+    ...payload,
+    origen: payload.origen ?? payload.origin,
+    destino: payload.destino ?? payload.destination,
+    posicion_actual: payload.posicion_actual ?? payload.current_position,
+    max_desvio_min:
+      payload.max_desvio_min ?? payload.max_detour_minutes ?? payload.max_detour_time,
+    evitar_peajes: payload.evitar_peajes ?? payload.avoid_tolls ?? false,
+  };
+
   const response = await fetch(`${API_BASE_URL}/api/recomendacion/ruta`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
     credentials: "include",
-    body: JSON.stringify(payload),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

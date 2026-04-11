@@ -33,7 +33,8 @@ from app.services.postgis_candidates import (
     supports_postgis_fuel,
 )
 from app.services.recommender import build_recommendations
-from app.services.routing import get_route, haversine_km
+from app.services.geo_math import haversine_km
+from app.services.routing import get_route
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/recomendacion", tags=["Recomendación"])
@@ -87,7 +88,7 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
         except Exception as exc:
             raise HTTPException(
                 status_code=503,
-                detail=f"No se pudo calcular la ruta en OpenRouteService: {exc}",
+                detail=f"No se pudo calcular la ruta en el proveedor de mapas: {exc}",
             ) from exc
 
 
@@ -155,10 +156,12 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
     # 4. Añadir metadatos
     ts_end = datetime.now(timezone.utc)
     result.metadata = {
+        **(result.metadata or {}),
         "routing_backend": settings.ROUTING_BACKEND,
         "routing_via_gateway": False,
         "route_candidates_source": station_source,
-        "max_detour_minutes": body.max_desvio_min,
+        "max_detour_minutes_request": body.max_desvio_min,
+        "avoid_tolls": body.evitar_peajes,
         "gasolineras_fuente": settings.GASOLINERAS_API_URL,
         "timestamp_utc": ts_start.isoformat(),
         "procesado_en_ms": round((ts_end - ts_start).total_seconds() * 1000),

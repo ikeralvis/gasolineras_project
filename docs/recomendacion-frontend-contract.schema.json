@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tankgo.local/schemas/recomendacion-frontend-contract.schema.json",
+  "title": "Route Recommendation Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "origin",
+    "destination",
+    "combustible",
+    "max_detour_time",
+    "avoid_tolls"
+  ],
+  "properties": {
+    "origin": {
+      "$ref": "#/$defs/coordinate"
+    },
+    "destination": {
+      "$ref": "#/$defs/coordinate"
+    },
+    "current_position": {
+      "$ref": "#/$defs/coordinate"
+    },
+    "combustible": {
+      "type": "string",
+      "enum": [
+        "gasolina_95",
+        "gasolina_98",
+        "gasoleo_a",
+        "gasoleo_premium",
+        "glp",
+        "hidrogeno"
+      ]
+    },
+    "max_detour_time": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 120,
+      "description": "Tiempo extra máximo permitido en minutos"
+    },
+    "max_desvio_km": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 50,
+      "default": 8
+    },
+    "top_n": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100,
+      "default": 20
+    },
+    "peso_precio": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.6
+    },
+    "peso_desvio": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.4
+    },
+    "litros_deposito": {
+      "type": "number",
+      "minimum": 1,
+      "maximum": 200,
+      "default": 50
+    },
+    "avoid_tolls": {
+      "type": "boolean",
+      "default": false
+    }
+  },
+  "$defs": {
+    "coordinate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lat",
+        "lon"
+      ],
+      "properties": {
+        "lat": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
+        },
+        "lon": {
+          "type": "number",
+          "minimum": -180,
+          "maximum": 180
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

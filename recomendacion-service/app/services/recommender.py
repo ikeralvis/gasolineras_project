@@ -1,15 +1,14 @@
-"""Nucleo de recomendacion de gasolineras en ruta."""
+"""Orquestador de recomendación en ruta: I/O de routing + núcleo puro de scoring."""
 import asyncio
 import logging
-from typing import List, Optional, Tuple
+from typing import List
 
-from shapely.geometry import LineString, Point
+import httpx
 
 from app.config import settings
 from app.models.schemas import (
     Coordenada,
     EstadisticasRuta,
-    GasolineraInternal,
     GasolineraResumen,
     GasolinerasDestacadas,
     RecomendacionItem,
@@ -18,106 +17,36 @@ from app.models.schemas import (
     RouteResult,
     RutaBase,
 )
-from app.services.routing import get_detour_minutes_matrix, get_route_via_stop, haversine_km
+from app.services.poi_access import classify_station_access
+from app.services.recommendation_core import (
+    CandidateScore,
+    build_initial_candidates,
+    build_stop_option_candidates,
+    filter_viable_candidates,
+    score_candidates,
+    summarize_prices,
+)
+from app.services.routing import get_detour_minutes_matrix, get_route_via_stop
 
 logger = logging.getLogger(__name__)
 
 AVG_SPEED_KMH = 80.0
 ROAD_FACTOR = 1.3
-SERVICE_AREA_BONUS = 0.08
+HIGHWAY_ACCESS_CATEGORIES = {"service_area", "highway_exit"}
 
 
-def _build_route_corridor(coordinates: List[List[float]], buffer_km: float):
-    if len(coordinates) < 2:
-        lon, lat = coordinates[0]
-        return Point(lon, lat).buffer(buffer_km / 111.0)
-
-    line = LineString(coordinates)
-    buffer_deg = buffer_km / 111.0
-    return line.buffer(buffer_deg)
-
-
-def _pre_filter(stations: List[GasolineraInternal], corridor) -> List[GasolineraInternal]:
-    candidates = [s for s in stations if corridor.contains(Point(s.lon, s.lat))]
-    logger.debug("Pre-filtrado: %d/%d en corredor", len(candidates), len(stations))
-    return candidates
-
-
-def _calc_detour(origin_lat: float, origin_lon: float, station_lat: float, station_lon: float, dest_lat: float, dest_lon: float) -> float:
-    dist_a_s = haversine_km(origin_lat, origin_lon, station_lat, station_lon)
-    dist_s_b = haversine_km(station_lat, station_lon, dest_lat, dest_lon)
-    dist_a_b = haversine_km(origin_lat, origin_lon, dest_lat, dest_lon)
-    detour_straight = max(0.0, (dist_a_s + dist_s_b) - dist_a_b)
-    return detour_straight * ROAD_FACTOR
-
-
-def _position_along_route(station_lon: float, station_lat: float, route_line: LineString, route_dist_km: float) -> Tuple[float, float, float]:
-    fraction = route_line.project(Point(station_lon, station_lat), normalized=True)
-    pct = fraction * 100.0
-    return fraction, round(pct, 1), round(fraction * route_dist_km, 2)
-
-
-def _normalize(values: List[float]) -> List[float]:
-    min_v, max_v = min(values), max(values)
-    if max_v == min_v:
-        return [0.5] * len(values)
-    return [(v - min_v) / (max_v - min_v) for v in values]
-
-
-def _service_area_bonus(station: GasolineraInternal) -> float:
-    highway = (station.osm_highway or "").strip().lower()
-    if highway in {"services", "rest_area"}:
-        return SERVICE_AREA_BONUS
-
-    text = f"{station.nombre or ''} {station.direccion or ''}".lower()
-    if "area de servicio" in text or "service area" in text:
-        return SERVICE_AREA_BONUS * 0.75
-    return 0.0
-
-
-def _score_candidates(candidates: List[dict], peso_precio: float, peso_desvio: float) -> List[dict]:
-    if not candidates:
-        return []
-
-    prices = [c["precio"] for c in candidates]
-    detours = [c["desvio_km"] for c in candidates]
-
-    price_norms = _normalize(prices)
-    detour_norms = _normalize(detours)
-
-    for c, pn, dn in zip(candidates, price_norms, detour_norms):
-        base_score = peso_precio * (1 - pn) + peso_desvio * (1 - dn)
-        c["score"] = round(min(1.0, base_score + c.get("service_area_bonus", 0.0)), 4)
-
-    return sorted(candidates, key=lambda x: x["score"], reverse=True)
-
-
-def _build_stop_options(items: List[RecomendacionItem]) -> List[RecomendacionItem]:
-    if not items:
-        return []
-
-    best_overall = max(items, key=lambda x: x.score)
-    cheapest = min(items, key=lambda x: x.precio_litro)
-    mid_trip = min(items, key=lambda x: abs(x.porcentaje_ruta - 50.0))
-    shortest_detour = min(items, key=lambda x: x.desvio_km)
-
-    options: List[RecomendacionItem] = []
-    for candidate in [best_overall, cheapest, mid_trip, shortest_detour]:
-        if candidate.posicion not in {o.posicion for o in options}:
-            options.append(candidate)
-        if len(options) == 4:
-            break
-
-    return options
-
-
-async def _apply_matrix_detour_minutes(req: RecomendacionRequest, origin: Coordenada, dest: Coordenada, enriched: List[dict]) -> None:
+async def _apply_matrix_detour_minutes(
+    req: RecomendacionRequest,
+    origin: Coordenada,
+    dest: Coordenada,
+    enriched: List[CandidateScore],
+) -> None:
     if not enriched:
         return
 
-    sorted_by_approx = sorted(enriched, key=lambda c: (c["desvio_min"], c["precio"]))
+    sorted_by_approx = sorted(enriched, key=lambda c: (c.desvio_min, c.precio))
     matrix_pool = sorted_by_approx[: settings.MATRIX_MAX_CANDIDATES]
-    matrix_coords = [(item["station"].lon, item["station"].lat) for item in matrix_pool]
+    matrix_coords = [(item.station.lon, item.station.lat) for item in matrix_pool]
 
     matrix_detours = await get_detour_minutes_matrix(
         origin_lat=origin.lat,
@@ -131,21 +60,27 @@ async def _apply_matrix_detour_minutes(req: RecomendacionRequest, origin: Coorde
     for item, detour_min in zip(matrix_pool, matrix_detours):
         if detour_min is None:
             continue
-        item["desvio_min"] = round(detour_min, 1)
-        item["desvio_km"] = round((detour_min / 60.0) * AVG_SPEED_KMH, 2)
+        item.desvio_min = round(detour_min, 1)
+        item.desvio_km = round((detour_min / 60.0) * AVG_SPEED_KMH, 2)
 
 
-async def _refine_exact_detours(req: RecomendacionRequest, origin: Coordenada, dest: Coordenada, route_dist_km: float, enriched: List[dict]) -> None:
+async def _refine_exact_detours(
+    req: RecomendacionRequest,
+    origin: Coordenada,
+    dest: Coordenada,
+    route_dist_km: float,
+    enriched: List[CandidateScore],
+) -> None:
     if not enriched:
         return
 
     refine_limit = min(len(enriched), max(settings.MAX_REAL_DETOUR_CHECKS, req.top_n))
-    refine_pool = sorted(enriched, key=lambda c: (c["desvio_min"], c["precio"]))[:refine_limit]
+    refine_pool = sorted(enriched, key=lambda c: (c.desvio_min, c.precio))[:refine_limit]
     semaphore = asyncio.Semaphore(8)
 
-    async def _refine(item: dict):
+    async def _refine(item: CandidateScore):
         async with semaphore:
-            station: GasolineraInternal = item["station"]
+            station = item.station
             try:
                 via_route = await get_route_via_stop(
                     origin_lat=origin.lat,
@@ -157,87 +92,120 @@ async def _refine_exact_detours(req: RecomendacionRequest, origin: Coordenada, d
                     evitar_peajes=req.evitar_peajes,
                 )
                 real_detour_km = max(0.0, via_route.distancia_km - route_dist_km)
-                item["desvio_km"] = round(real_detour_km, 2)
-                item["desvio_min"] = round((real_detour_km / AVG_SPEED_KMH) * 60, 1)
+                item.desvio_km = round(real_detour_km, 2)
+                item.desvio_min = round((real_detour_km / AVG_SPEED_KMH) * 60, 1)
             except Exception:
                 return
 
     await asyncio.gather(*[_refine(item) for item in refine_pool], return_exceptions=True)
 
 
-async def build_recommendations(req: RecomendacionRequest, route: RouteResult, stations: List[GasolineraInternal]) -> RecomendacionResponse:
+async def _enrich_access_type(candidates: List[CandidateScore]) -> None:
+    if not candidates:
+        return
+
+    classify_count = min(
+        len(candidates),
+        max(0, settings.ACCESS_ENRICHMENT_TOP_N),
+    )
+    if classify_count <= 0:
+        return
+
+    targets = candidates[:classify_count]
+    semaphore = asyncio.Semaphore(5)
+
+    async with httpx.AsyncClient() as client:
+        async def _classify(item: CandidateScore):
+            async with semaphore:
+                classification = await classify_station_access(item.station, client=client)
+                item.station.access_category = classification["category"]
+                item.station.access_source = classification["source"]
+                item.station.access_confidence = round(classification["confidence"], 2)
+
+                # Bonus ligero cuando un proveedor confirma área de servicio en carretera.
+                if classification["category"] == "service_area" and item.score > 0:
+                    item.score = round(min(1.0, item.score + 0.03), 4)
+
+        await asyncio.gather(*[_classify(item) for item in targets], return_exceptions=True)
+
+
+def _apply_access_policy(candidates: List[CandidateScore]) -> List[CandidateScore]:
+    mode = settings.ACCESS_FILTER_MODE
+    if mode == "off":
+        return candidates
+
+    if mode == "prefer":
+        return sorted(
+            candidates,
+            key=lambda c: (
+                0 if c.station.access_category in HIGHWAY_ACCESS_CATEGORIES else 1,
+                -c.score,
+            ),
+        )
+
+    strict_candidates = [
+        item for item in candidates if item.station.access_category in HIGHWAY_ACCESS_CATEGORIES
+    ]
+    if strict_candidates:
+        return strict_candidates
+
+    # Fallback de seguridad para no dejar al usuario sin opciones.
+    return candidates
+
+
+async def build_recommendations(
+    req: RecomendacionRequest,
+    route: RouteResult,
+    stations,
+) -> RecomendacionResponse:
     route_dist_km = route.distancia_km
     origin = req.origen
     dest = req.destino
-    current_position = req.posicion_actual or origin
 
-    pre_filter_km = min(req.max_desvio_km * 3, 50.0)
-    corridor = _build_route_corridor(route.coordinates, pre_filter_km)
-    pre_candidates = _pre_filter(stations, corridor)
-
-    route_line = LineString(route.coordinates)
-    current_progress = route_line.project(Point(current_position.lon, current_position.lat), normalized=True)
-
-    enriched: List[dict] = []
-    for station in pre_candidates:
-        if not station.tiene_precio:
-            continue
-
-        detour_km = _calc_detour(origin.lat, origin.lon, station.lat, station.lon, dest.lat, dest.lon)
-        if detour_km > req.max_desvio_km:
-            continue
-
-        fraction, pct, dist_from_origin = _position_along_route(station.lon, station.lat, route_line, route_dist_km)
-        if fraction + 1e-6 < current_progress:
-            continue
-
-        detour_min = round((detour_km / AVG_SPEED_KMH) * 60, 1)
-        if req.max_desvio_min is not None and detour_min > req.max_desvio_min:
-            continue
-
-        enriched.append(
-            {
-                "station": station,
-                "precio": station.precio,
-                "desvio_km": round(detour_km, 2),
-                "desvio_min": detour_min,
-                "service_area_bonus": _service_area_bonus(station),
-                "fraction": fraction,
-                "pct": pct,
-                "dist_from_origin": dist_from_origin,
-            }
-        )
+    (
+        enriched,
+        _,
+        current_progress,
+        detour_limit_min,
+        detour_limit_km,
+    ) = build_initial_candidates(
+        req=req,
+        route=route,
+        stations=stations,
+        avg_speed_kmh=AVG_SPEED_KMH,
+        road_factor=ROAD_FACTOR,
+        default_detour_minutes=settings.DEFAULT_MAX_DESVIO_MIN,
+    )
 
     await _apply_matrix_detour_minutes(req, origin, dest, enriched)
     await _refine_exact_detours(req, origin, dest, route_dist_km, enriched)
 
-    enriched = [
-        item
-        for item in enriched
-        if item["fraction"] + 1e-6 >= current_progress
-        and item["desvio_km"] <= req.max_desvio_km
-        and (req.max_desvio_min is None or item["desvio_min"] <= req.max_desvio_min)
-    ]
+    enriched = filter_viable_candidates(
+        enriched,
+        current_progress=current_progress,
+        detour_limit_min=detour_limit_min,
+        detour_limit_km=detour_limit_km,
+    )
 
-    scored = _score_candidates(enriched, req.peso_precio, req.peso_desvio)
+    scored = score_candidates(enriched, req.peso_precio, req.peso_desvio)
+    await _enrich_access_type(scored)
+    scored = _apply_access_policy(scored)
+    scored = sorted(scored, key=lambda c: c.score, reverse=True)
     top = scored[: req.top_n]
 
-    all_prices = [c["precio"] for c in enriched] if enriched else [0.0]
-    precio_min = min(all_prices)
-    precio_max = max(all_prices)
-    precio_medio = round(sum(all_prices) / len(all_prices), 3) if all_prices else 0.0
+    precio_min, precio_max, precio_medio = summarize_prices(enriched)
 
     items: List[RecomendacionItem] = []
     for i, candidate in enumerate(top, start=1):
-        station: GasolineraInternal = candidate["station"]
+        station = candidate.station
 
         ahorro = None
-        if req.litros_deposito and precio_max > candidate["precio"]:
-            ahorro = round((precio_max - candidate["precio"]) * req.litros_deposito, 2)
+        if req.litros_deposito and precio_max > candidate.precio:
+            ahorro = round((precio_max - candidate.precio) * req.litros_deposito, 2)
 
         dif_vs_barata = None
-        if len(all_prices) > 1:
-            dif_vs_barata = round(candidate["precio"] - precio_min, 3)
+        if len(enriched) > 1:
+            dif_vs_barata = round(candidate.precio - precio_min, 3)
 
         items.append(
             RecomendacionItem(
@@ -252,14 +220,17 @@ async def build_recommendations(req: RecomendacionRequest, route: RouteResult, s
                     lon=station.lon,
                     horario=station.horario,
                 ),
-                precio_litro=candidate["precio"],
-                desvio_km=candidate["desvio_km"],
-                desvio_min_estimado=candidate["desvio_min"],
-                distancia_desde_origen_km=candidate["dist_from_origin"],
-                porcentaje_ruta=candidate["pct"],
-                score=candidate["score"],
+                precio_litro=candidate.precio,
+                desvio_km=candidate.desvio_km,
+                desvio_min_estimado=candidate.desvio_min,
+                distancia_desde_origen_km=candidate.dist_from_origin,
+                porcentaje_ruta=candidate.pct,
+                score=candidate.score,
                 ahorro_vs_mas_cara_eur=ahorro,
                 diferencia_vs_mas_barata_eur_litro=dif_vs_barata,
+                tipo_acceso=station.access_category,
+                fuente_tipo_acceso=station.access_source,
+                confianza_tipo_acceso=station.access_confidence,
             )
         )
 
@@ -286,8 +257,13 @@ async def build_recommendations(req: RecomendacionRequest, route: RouteResult, s
         ),
         destacadas=destacadas,
         recomendaciones=items,
-        opciones_parada=_build_stop_options(items),
-        metadata={},
+        opciones_parada=build_stop_option_candidates(items),
+        metadata={
+            "detour_strategy": "time_based",
+            "max_detour_minutes_effective": detour_limit_min,
+            "max_detour_km_effective": round(detour_limit_km, 2),
+            "poi_access_provider": settings.POI_ACCESS_PROVIDER,
+        },
         geojson={
             "type": "FeatureCollection",
             "features": [
@@ -303,7 +279,10 @@ async def build_recommendations(req: RecomendacionRequest, route: RouteResult, s
                 *[
                     {
                         "type": "Feature",
-                        "geometry": {"type": "Point", "coordinates": [item.gasolinera.lon, item.gasolinera.lat]},
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [item.gasolinera.lon, item.gasolinera.lat],
+                        },
                         "properties": {
                             "feature_type": "gas_station",
                             "ranking": item.posicion,
@@ -313,6 +292,9 @@ async def build_recommendations(req: RecomendacionRequest, route: RouteResult, s
                             "desvio_min_estimado": item.desvio_min_estimado,
                             "score": item.score,
                             "porcentaje_ruta": item.porcentaje_ruta,
+                            "tipo_acceso": item.tipo_acceso,
+                            "fuente_tipo_acceso": item.fuente_tipo_acceso,
+                            "confianza_tipo_acceso": item.confianza_tipo_acceso,
                         },
                     }
                     for item in items

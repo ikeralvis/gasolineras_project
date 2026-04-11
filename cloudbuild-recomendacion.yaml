@@ -1,29 +1,47 @@
 steps:
   # 1. Construir la imagen Docker apuntando a la carpeta del microservicio
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/recomendacion-img', './recomendacion-service']
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}', './recomendacion-service']
 
   # 2. Subir la imagen al registro de Google (Artifact Registry)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/recomendacion-img']
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}']
 
   # 3. Desplegar en Cloud Run
-  # Nota: no se fuerza allow-unauthenticated aqui para evitar fallos IAM en trigger.
+  # Mantiene el servicio privado con IAM (sin allow-unauthenticated).
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'recomendacion-service'
+      - '${_SERVICE_NAME}'
       - '--image'
-      - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/recomendacion-img'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}'
       - '--region'
-      - 'europe-west1'
+      - '${_REGION}'
       - '--platform'
       - 'managed'
+      - '--no-allow-unauthenticated'
+      - '--set-env-vars'
+      - 'ROUTING_BACKEND=${_ROUTING_BACKEND},ROUTING_FAILOVER_TO_OSRM=${_ROUTING_FAILOVER_TO_OSRM},ALLOW_STRAIGHT_LINE_FALLBACK=${_ALLOW_STRAIGHT_LINE_FALLBACK},ROUTE_CANDIDATES_SOURCE=${_ROUTE_CANDIDATES_SOURCE},POI_ACCESS_PROVIDER=${_POI_ACCESS_PROVIDER},ACCESS_FILTER_MODE=${_ACCESS_FILTER_MODE},GASOLINERAS_API_URL=${_GASOLINERAS_API_URL}'
+      - '--set-secrets'
+      - 'ORS_API_KEY=ors-api-key:latest'
 
 images:
-  - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/recomendacion-img'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}'
+
+substitutions:
+  _REGION: 'europe-west1'
+  _REPOSITORY: 'tankgo'
+  _IMAGE_NAME: 'recomendacion-img'
+  _SERVICE_NAME: 'recomendacion-service'
+  _ROUTING_BACKEND: 'ors'
+  _ROUTING_FAILOVER_TO_OSRM: 'true'
+  _ALLOW_STRAIGHT_LINE_FALLBACK: 'false'
+  _ROUTE_CANDIDATES_SOURCE: 'auto'
+  _POI_ACCESS_PROVIDER: 'osm'
+  _ACCESS_FILTER_MODE: 'strict'
+  _GASOLINERAS_API_URL: 'https://gateway-hono-1059394991995.europe-west1.run.app/api/gasolineras/?limit=20000'
 
 options:
   logging: CLOUD_LOGGING_ONLY

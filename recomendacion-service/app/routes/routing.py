@@ -2,7 +2,7 @@
 from typing import Literal, Optional
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.services.routing import get_matrix_durations, get_route_by_coordinates
 
@@ -14,7 +14,11 @@ class RoutingDirectionsRequest(BaseModel):
         ...,
         description="Lista de coordenadas [lon, lat] para trazar la ruta.",
     )
-    avoid_tolls: bool = Field(False, description="Evitar peajes cuando el backend lo soporte.")
+    avoid_tolls: bool = Field(
+        False,
+        description="Evitar peajes cuando el backend lo soporte.",
+        validation_alias=AliasChoices("avoid_tolls", "evitar_peajes"),
+    )
     backend: Optional[Literal["ors", "osrm"]] = Field(
         None,
         description="Backend de routing. Si se omite, usa el configurado por defecto.",
@@ -36,7 +40,11 @@ class RoutingMatrixRequest(BaseModel):
     coordinates: list[list[float]] = Field(..., description="Lista de coordenadas [lon, lat].")
     sources: list[int] = Field(..., description="Indices de origen en coordinates.")
     destinations: list[int] = Field(..., description="Indices de destino en coordinates.")
-    avoid_tolls: bool = Field(False, description="Evitar peajes cuando el backend lo soporte.")
+    avoid_tolls: bool = Field(
+        False,
+        description="Evitar peajes cuando el backend lo soporte.",
+        validation_alias=AliasChoices("avoid_tolls", "evitar_peajes"),
+    )
     backend: Optional[Literal["ors", "osrm"]] = Field(
         None,
         description="Backend de routing. Matrix solo se soporta en ORS.",

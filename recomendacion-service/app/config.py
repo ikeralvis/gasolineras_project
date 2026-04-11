@@ -55,10 +55,21 @@ class Settings(BaseSettings):
     DEFAULT_WEIGHT_DETOUR: float = 0.4
     # Desvío máximo permitido en km para incluir una gasolinera
     DEFAULT_MAX_DESVIO_KM: float = 5.0
+    DEFAULT_MAX_DESVIO_MIN: float = 5.0
     # Número de recomendaciones a devolver por defecto
     DEFAULT_TOP_N: int = 5
     # Radio de pre-filtrado geométrico (km) antes del cálculo de desvío real
     PRE_FILTER_RADIUS_KM: float = 20.0
+
+    # ── Clasificación POI de acceso vial ─────────────────────────────────────
+    POI_ACCESS_PROVIDER: Literal["osm", "mapbox", "google", "auto"] = "auto"
+    ACCESS_FILTER_MODE: Literal["off", "prefer", "strict"] = "prefer"
+    ACCESS_ENRICHMENT_TOP_N: int = 10
+    ACCESS_ENRICHMENT_TIMEOUT_S: float = 6.0
+    MAPBOX_SEARCH_BASE_URL: str = "https://api.mapbox.com/geocoding/v5/mapbox.places"
+    MAPBOX_ACCESS_TOKEN: str = ""
+    GOOGLE_PLACES_BASE_URL: str = "https://places.googleapis.com/v1/places:searchNearby"
+    GOOGLE_PLACES_API_KEY: str = ""
 
     # ── Timeouts HTTP ─────────────────────────────────────────────────────────
     ROUTING_TIMEOUT_S: float = 10.0
