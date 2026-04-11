@@ -14,7 +14,20 @@ No usa pipeline STT -> LLM -> TTS separado.
 
 - GET /health
 - GET /capabilities
+- POST /voice/dialog
 - GET /ws/voice
+
+### POST /voice/dialog
+
+Alternativa HTTP al transporte WebSocket, util para entornos con Cloud Run privado en IAM
+cuando el navegador no puede abrir WS directo al servicio.
+
+Body (JSON):
+{
+  "text": "dime la mas cercana",
+  "includeAudio": false,
+  "location": { "lat": 40.41, "lon": -3.70, "km": 8 }
+}
 
 ## Protocolo WebSocket
 

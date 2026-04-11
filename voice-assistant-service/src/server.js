@@ -195,9 +195,23 @@ app.get("/health", async () => ({
 app.get("/capabilities", async () => ({
   service: "voice-assistant-service",
   wsPath: "/ws/voice",
+  httpDialogPath: "/voice/dialog",
   actions: ["ping", "dialog", "audio_chunk", "audio_commit", "clear_buffer"],
   runtime: getPublicVoiceConfig(),
 }));
+
+app.post("/voice/dialog", async (req, reply) => {
+  const authToken = parseAuthTokenFromHeader(req.headers.authorization || "");
+  const payload = req.body && typeof req.body === "object" ? req.body : {};
+
+  try {
+    const data = await handleDialog(payload, authToken);
+    return reply.code(200).send(data);
+  } catch (error) {
+    const normalized = normalizeError(error, 500, "internal-error");
+    return reply.code(normalized.statusCode || 500).send(normalized);
+  }
+});
 
 app.get("/ws/voice", { websocket: true }, (connection, req) => {
   const socket = connection.socket;

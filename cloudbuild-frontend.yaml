@@ -27,21 +27,23 @@ steps:
           exit 1;
         fi
 
-        if [ -z "$$VOICE_WS_URL" ]; then
-          echo "ERROR: _VITE_VOICE_WS_URL vacío. Define el websocket público del voice-assistant.";
-          exit 1;
-        fi
-        if [[ "$$VOICE_WS_URL_LOWER" == *"localhost"* ]]; then
-          echo "ERROR: _VITE_VOICE_WS_URL no puede apuntar a localhost en Cloud Build.";
-          exit 1;
-        fi
-        if [[ "$$VOICE_WS_URL" != wss://* && "$$VOICE_WS_URL" != ws://* && "$$VOICE_WS_URL" != https://* && "$$VOICE_WS_URL" != http://* ]]; then
-          echo "ERROR: _VITE_VOICE_WS_URL debe empezar por ws://, wss://, http:// o https://.";
-          exit 1;
+        if [ -n "$$VOICE_WS_URL" ]; then
+          if [[ "$$VOICE_WS_URL_LOWER" == *"localhost"* ]]; then
+            echo "ERROR: _VITE_VOICE_WS_URL no puede apuntar a localhost en Cloud Build.";
+            exit 1;
+          fi
+          if [[ "$$VOICE_WS_URL" != wss://* && "$$VOICE_WS_URL" != ws://* && "$$VOICE_WS_URL" != https://* && "$$VOICE_WS_URL" != http://* ]]; then
+            echo "ERROR: _VITE_VOICE_WS_URL debe empezar por ws://, wss://, http:// o https://.";
+            exit 1;
+          fi
         fi
 
         echo "INFO: Usando _VITE_API_BASE_URL=$$API_BASE_URL"
-        echo "INFO: Usando _VITE_VOICE_WS_URL=$$VOICE_WS_URL"
+        if [ -n "$$VOICE_WS_URL" ]; then
+          echo "INFO: Usando _VITE_VOICE_WS_URL=$$VOICE_WS_URL"
+        else
+          echo "INFO: _VITE_VOICE_WS_URL vacío: frontend usará fallback HTTP vía /api/voice/dialog"
+        fi
 
         if [ -z "$$GOOGLE_CLIENT_ID" ]; then
           echo "ERROR: Secret GOOGLE_CLIENT_ID vacío o no accesible";

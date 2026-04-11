@@ -1,4 +1,7 @@
+import { apiFetchJson } from "./http";
+
 const DEFAULT_LOCAL_VOICE_WS_URL = "ws://localhost:8090/ws/voice";
+const VOICE_HTTP_DIALOG_PATH = "/api/voice/dialog";
 
 function isLocalHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
@@ -82,6 +85,7 @@ let ws: WebSocket | null = null;
 let openPromise: Promise<WebSocket> | null = null;
 const pending = new Map<string, WsPending>();
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
+let wsTransportDisabled = false;
 
 function createRequestId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -285,8 +289,26 @@ export async function askVoiceAssistant(params: {
   location?: VoiceLocation;
   includeAudio?: boolean;
 }): Promise<VoiceAssistantResponse> {
+  if (!wsTransportDisabled) {
+    try {
+      const data = await sendWsRequest<VoiceAssistantResponse>("dialog", params, 60000);
+      if (data?.error) {
+        return data;
+      }
+      return data;
+    } catch (error) {
+      // If direct websocket transport is blocked (common with private Cloud Run IAM),
+      // fallback to gateway HTTP proxy for this and following requests.
+      wsTransportDisabled = true;
+      console.warn("[voice] websocket unavailable, falling back to HTTP proxy", error);
+    }
+  }
+
   try {
-    const data = await sendWsRequest<VoiceAssistantResponse>("dialog", params, 60000);
+    const data = await apiFetchJson<VoiceAssistantResponse>(VOICE_HTTP_DIALOG_PATH, {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
     if (data?.error) {
       return data;
     }
@@ -294,7 +316,7 @@ export async function askVoiceAssistant(params: {
   } catch (error) {
     return {
       error: "voice-request-failed",
-      message: error instanceof Error ? error.message : "voice-websocket-failed",
+      message: error instanceof Error ? error.message : "voice-http-fallback-failed",
     };
   }
 }
