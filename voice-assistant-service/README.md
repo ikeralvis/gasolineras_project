@@ -1,14 +1,13 @@
-# Voice Assistant Service (Google Gemini Native Audio Dialog)
+# Voice Assistant Service (Google Gemini Live + Native Audio Dialog)
 
 Microservicio lean de voz en tiempo real para TankGo, 100% Google (AI Studio + Gemini).
 
 ## Objetivo
 
 - Recibir audio o texto por WebSocket.
-- Enviar el turno directamente a Gemini Native Audio Dialog.
-- Devolver texto y audio en una sola respuesta.
-
-No usa pipeline STT -> LLM -> TTS separado.
+- Procesar con Gemini Live (Native Audio Dialog) por WebSocket hacia Gemini.
+- Permitir Function Calling para consultar precios (`get_prices`) en el backend de gasolineras.
+- Responder en espanol natural con audio (y fallback seguro a pipeline dialog + TTS).
 
 ## Endpoints
 
@@ -83,10 +82,15 @@ Respuesta estandar:
   "action": "dialog",
   "ok": true,
   "data": {
-    "provider": "google-ai-studio-gemini",
-    "model": "gemini-2.5-flash-preview-native-audio-dialog",
+    "provider": "google-ai-studio-gemini-live",
+    "model": "models/gemini-2.5-flash-native-audio-latest",
     "answer": { "text": "..." },
-    "tts": { "audioBase64": "...", "mimeType": "audio/wav" }
+    "tts": {
+      "provider": "google-ai-studio-gemini-live",
+      "model": "models/gemini-2.5-flash-native-audio-latest",
+      "audioBase64": "...",
+      "mimeType": "audio/wav"
+    }
   }
 }
 
@@ -96,9 +100,23 @@ Ver .env.example.
 
 Variables clave:
 - GOOGLE_API_KEY (o GEMINI_API_KEY)
-- GEMINI_MODEL
+- GEMINI_USE_LIVE_API
+- GEMINI_LIVE_MODEL
+- GEMINI_DIALOG_MODEL (o GEMINI_MODEL como alias)
+- GEMINI_TTS_MODEL
 - GEMINI_VOICE_NAME
 - GEMINI_LANGUAGE
+
+### Function Calling disponible
+
+El modelo puede invocar la funcion `get_prices` para obtener precios de estaciones cercanas.
+
+Args esperados:
+- `lat` (number)
+- `lon` (number)
+- `km` (number, opcional)
+- `fuel` (string, opcional)
+- `limit` (integer, opcional)
 
 Contexto opcional de gasolineras:
 - VOICE_ENABLE_GAS_CONTEXT=true

@@ -88,6 +88,97 @@ function buildContextFromStation(station) {
   };
 }
 
+function normalizeFuelName(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  const aliases = {
+    gasolina95: "gasolina95",
+    gasolina_95: "gasolina95",
+    gasolina98: "gasolina98",
+    gasolina_98: "gasolina98",
+    diesel: "gasoleoA",
+    gasoleoa: "gasoleoA",
+    gasoleo_a: "gasoleoA",
+    gasoleo: "gasoleoA",
+    gasoleopremium: "gasoleoPremium",
+    gasoleo_premium: "gasoleoPremium",
+  };
+
+  return aliases[raw] || "gasolina95";
+}
+
+function buildStationSummary(station) {
+  const prices = {
+    gasolina95: sanitizePrice(station?.["Precio Gasolina 95 E5"]),
+    gasolina98: sanitizePrice(station?.["Precio Gasolina 98 E5"]),
+    gasoleoA: sanitizePrice(station?.["Precio Gasoleo A"]),
+    gasoleoPremium: sanitizePrice(station?.["Precio Gasoleo Premium"]),
+  };
+
+  const stationNameKey = Object.keys(station || {}).find((key) => {
+    const normalized = key
+      .toLowerCase()
+      .normalize("NFD")
+      .replaceAll(/[\u0300-\u036f]/g, "");
+    return normalized === "rotulo";
+  });
+
+  return {
+    id: String(station?.IDEESS || station?.id || ""),
+    name: stationNameKey ? String(station?.[stationNameKey] || "") : "",
+    address: String(station?.Direccion || ""),
+    municipality: String(station?.Municipio || ""),
+    province: String(station?.Provincia || ""),
+    distanceKm: Number.isFinite(Number(station?.distancia_km)) ? Number(station.distancia_km) : null,
+    prices,
+  };
+}
+
+export async function getPricesForVoice(args = {}) {
+  const lat = Number(args.lat);
+  const lon = Number(args.lon);
+  const km = Number(args.km || 8);
+  const limit = Math.min(Math.max(Number(args.limit || 5), 1), 10);
+  const fuel = normalizeFuelName(args.fuel);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return {
+      ok: false,
+      error: "lat-lon-required",
+      message: "lat y lon son obligatorios para consultar precios.",
+    };
+  }
+
+  if (!Number.isFinite(km) || km <= 0 || km > voiceEnv.gateway.maxKm) {
+    return {
+      ok: false,
+      error: "invalid-km",
+      message: `km debe estar entre 0 y ${voiceEnv.gateway.maxKm}.`,
+      maxKm: voiceEnv.gateway.maxKm,
+    };
+  }
+
+  const data = await fetchJson(`/api/gasolineras/cerca?lat=${lat}&lon=${lon}&km=${km}&limit=${limit}`);
+  const stations = Array.isArray(data?.gasolineras) ? data.gasolineras : [];
+  const summaries = stations.map(buildStationSummary);
+
+  const sorted = [...summaries].sort((a, b) => {
+    const pa = a?.prices?.[fuel];
+    const pb = b?.prices?.[fuel];
+    if (pa == null && pb == null) return 0;
+    if (pa == null) return 1;
+    if (pb == null) return -1;
+    return pa - pb;
+  });
+
+  return {
+    ok: true,
+    fuel,
+    km,
+    total: sorted.length,
+    stations: sorted,
+  };
+}
+
 export async function getNearestStationContext({ location }) {
   if (!voiceEnv.gateway.enableGasContext) {
     return null;

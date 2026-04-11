@@ -67,13 +67,16 @@ export const voiceEnv = Object.freeze({
 
   gemini: {
     apiKey: pickFirstNonEmpty(process.env.GOOGLE_API_KEY, process.env.GEMINI_API_KEY),
-    model: process.env.GEMINI_MODEL || "gemini-2.5-flash-preview-native-audio-dialog",
+    useLiveApi: asBoolean(process.env.GEMINI_USE_LIVE_API, true),
+    liveModel: process.env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-latest",
+    dialogModel: process.env.GEMINI_DIALOG_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
+    ttsModel: process.env.GEMINI_TTS_MODEL || "gemini-2.5-flash-preview-tts",
     voiceName: process.env.GEMINI_VOICE_NAME || "Aoede",
     timeoutMs: asNumber(process.env.GEMINI_TIMEOUT_MS, 12000),
     maxOutputTokens: asNumber(process.env.GEMINI_MAX_OUTPUT_TOKENS, 512),
     temperature: asNumber(process.env.GEMINI_TEMPERATURE, 0.35),
     language: process.env.GEMINI_LANGUAGE || "es-ES",
-    responseModalities: asCsv(process.env.GEMINI_RESPONSE_MODALITIES, ["TEXT", "AUDIO"]),
+    responseModalities: asCsv(process.env.GEMINI_RESPONSE_MODALITIES, ["TEXT"]),
   },
 
   gateway: {
@@ -87,8 +90,12 @@ export const voiceEnv = Object.freeze({
 
 export function getPublicVoiceConfig() {
   return {
-    provider: "google-ai-studio-gemini",
-    model: voiceEnv.gemini.model,
+    provider: voiceEnv.gemini.useLiveApi ? "google-ai-studio-gemini-live" : "google-ai-studio-gemini",
+    useLiveApi: voiceEnv.gemini.useLiveApi,
+    liveModel: voiceEnv.gemini.liveModel,
+    model: voiceEnv.gemini.dialogModel,
+    dialogModel: voiceEnv.gemini.dialogModel,
+    ttsModel: voiceEnv.gemini.ttsModel,
     language: voiceEnv.gemini.language,
     responseModalities: voiceEnv.gemini.responseModalities,
     includeLatencyMeta: voiceEnv.includeLatencyMeta,
