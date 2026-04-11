@@ -11,6 +11,18 @@ Aplicación web React para consultar gasolineras en España con funcionalidades 
 - **Historial de precios**: Consulta de la evolución de precios de combustible.
 - **Interfaz moderna**: Diseño responsivo con Tailwind CSS.
 
+## ⚙️ Configuración de voz (WebSocket)
+
+El widget de voz resuelve la URL del WebSocket en este orden:
+
+1. `VITE_VOICE_WS_URL` (si está definida, tiene prioridad total)
+2. `VITE_VOICE_SERVICE_URL` (se transforma automáticamente a `ws://` o `wss://` y usa `/ws/voice`)
+3. Fallback automático:
+	- En local: `ws://localhost:8090/ws/voice`
+	- En no local: `ws(s)://<host-actual>/ws/voice`
+
+Recomendación para Cloud Run: definir explícitamente `VITE_VOICE_WS_URL` con el dominio público del servicio de voz.
+
 ---
 
 ## 🔐 Sistema de Autenticación

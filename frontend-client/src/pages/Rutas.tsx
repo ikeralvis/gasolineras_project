@@ -47,6 +47,23 @@ type GasStation = {
 
 type PickMode = "origin" | "destination" | null;
 
+function pickDefaultStop(stations: GasStation[]): GasStation | null {
+  if (!stations.length) return null;
+
+  // Prefer candidates near the middle of the route with low detour and good price.
+  return [...stations].sort((a, b) => {
+    const aMid = Math.abs((a.porcentaje_ruta ?? 50) - 50);
+    const bMid = Math.abs((b.porcentaje_ruta ?? 50) - 50);
+    if (aMid !== bMid) return aMid - bMid;
+
+    if (a.desvio_min_estimado !== b.desvio_min_estimado) {
+      return a.desvio_min_estimado - b.desvio_min_estimado;
+    }
+
+    return a.precio_litro - b.precio_litro;
+  })[0];
+}
+
 const fuelOptions: Array<{ value: CombustibleTipo; i18nKey: string }> = [
   { value: "gasolina_95", i18nKey: "fuel.gasoline95" },
   { value: "gasolina_98", i18nKey: "fuel.gasoline98" },
@@ -312,8 +329,6 @@ export default function Rutas() {
         .map((coord) => [coord[1], coord[0]] as [number, number]);
 
       const fullList = data.recomendaciones?.map(mapApiItemToStation) ?? [];
-      const options = (data.opciones_parada?.length ? data.opciones_parada : data.recomendaciones?.slice(0, 3)) ?? [];
-      const optionList = options.map(mapApiItemToStation);
 
       setRouteCoordinates(leafletCoords);
       setRouteInfo({
@@ -321,7 +336,7 @@ export default function Rutas() {
         durationMin: data.ruta_base.duracion_min,
       });
       setGasStationsNearRoute(fullList);
-      setSelectedStop(optionList[0] || fullList[0] || null);
+      setSelectedStop(pickDefaultStop(fullList));
       setShowSearchPanel(false);
     } catch (error) {
       setRouteError(error instanceof Error ? error.message : t("routes.genericRouteError"));
@@ -349,7 +364,7 @@ export default function Rutas() {
     }
   };
 
-  const openGoogleMaps = () => {
+  const startNavigationInGoogleMaps = () => {
     if (!origin || !destination) return;
 
     const url = new URL("https://www.google.com/maps/dir/");
@@ -372,17 +387,7 @@ export default function Rutas() {
     return [40.4168, -3.7038] as [number, number];
   }, [selectedStop, destination, origin]);
 
-  const stopOptions = useMemo(() => {
-    if (!gasStationsNearRoute.length) return [];
-
-    const byScore = [...gasStationsNearRoute].sort((a, b) => b.score - a.score)[0];
-    const byPrice = [...gasStationsNearRoute].sort((a, b) => a.precio_litro - b.precio_litro)[0];
-    const byDetour = [...gasStationsNearRoute].sort((a, b) => a.desvio_km - b.desvio_km)[0];
-
-    return [byScore, byPrice, byDetour].filter(
-      (station, index, array) => station && array.findIndex((s) => s.id === station.id) === index
-    );
-  }, [gasStationsNearRoute]);
+  const candidateStops = useMemo(() => gasStationsNearRoute, [gasStationsNearRoute]);
 
   return (
     <div className="relative min-h-[calc(100vh-60px)] overflow-hidden bg-[#edf2ff]">
@@ -426,7 +431,7 @@ export default function Rutas() {
       <section
         className={isTouchDevice && showSearchPanel
           ? "fixed inset-0 z-[1300] bg-white"
-          : "pointer-events-none absolute left-0 right-0 top-0 z-[1100] px-3 pt-3 md:left-4 md:right-auto md:w-[430px] md:px-0 md:pt-4"}
+          : "pointer-events-none absolute left-0 right-0 top-0 z-40 px-3 pt-3 md:left-4 md:right-auto md:w-[430px] md:px-0 md:pt-4"}
       >
         <div className={isTouchDevice && showSearchPanel ? "h-full overflow-y-auto p-4" : "pointer-events-auto w-full"}>
           {showSearchPanel ? (
@@ -664,12 +669,14 @@ export default function Rutas() {
                 <button
                   type="button"
                   className="w-full rounded-xl border border-[#c7d8f8] bg-[#edf4ff] px-3 py-2 text-sm font-semibold text-[#1f427f] disabled:opacity-60"
-                  onClick={openGoogleMaps}
+                  onClick={startNavigationInGoogleMaps}
                   disabled={!origin || !destination}
                 >
                   <span className="inline-flex items-center gap-1.5">
                     <LuNavigation size={14} />
-                    {selectedStop ? t("routes.openInGoogleWithStop") : t("routes.openInGoogle")}
+                    {selectedStop
+                      ? t("routes.openInGoogleWithStop", { defaultValue: "Iniciar ruta con parada" })
+                      : t("routes.openInGoogle", { defaultValue: "Iniciar ruta" })}
                   </span>
                 </button>
 
@@ -684,7 +691,7 @@ export default function Rutas() {
             <button
               type="button"
               className={isTouchDevice
-                ? "fixed bottom-5 right-5 inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white px-4 py-3 text-sm font-semibold text-[#16356f] shadow-xl"
+                ? "fixed bottom-[5.75rem] right-5 inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white px-4 py-3 text-sm font-semibold text-[#16356f] shadow-xl"
                 : "inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white/95 px-4 py-2 text-sm font-semibold text-[#16356f] shadow-lg"}
               onClick={() => setShowSearchPanel(true)}
             >
@@ -702,7 +709,7 @@ export default function Rutas() {
       )}
 
       {routeInfo && (
-        <section className="pointer-events-none absolute bottom-0 left-0 right-0 z-[1150] p-2 md:left-auto md:right-5 md:top-24 md:w-[430px] md:bottom-auto md:p-0">
+        <section className="pointer-events-none absolute bottom-[5.5rem] left-0 right-0 z-40 p-2 md:left-auto md:right-5 md:top-24 md:w-[430px] md:bottom-auto md:p-0">
           <div className="pointer-events-auto rounded-t-3xl border border-[#cad8ef] bg-white/97 p-3 shadow-[0_-14px_40px_rgba(30,58,138,.16)] md:rounded-2xl">
             <div className="mb-3 grid grid-cols-2 gap-2">
               <div className="rounded-xl bg-[#edf4ff] px-3 py-2">
@@ -724,20 +731,41 @@ export default function Rutas() {
                 })}
               </span>
             </div>
-            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-              {stopOptions.map((station) => (
+            <div className="mb-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+              {candidateStops.map((station) => (
                 <button
                   key={station.id}
                   type="button"
-                  className={`min-w-[220px] rounded-xl border px-3 py-2 text-left ${selectedStop?.id === station.id ? "border-[#1d4ed8] bg-[#eef4ff]" : "border-[#d5e2f7] bg-white"}`}
+                  className={`w-full rounded-xl border px-3 py-2 text-left ${selectedStop?.id === station.id ? "border-[#1d4ed8] bg-[#eef4ff]" : "border-[#d5e2f7] bg-white"}`}
                   onClick={() => setSelectedStop(station)}
                 >
-                  <p className="truncate text-sm font-bold text-[#12316a]">{station.nombre}</p>
-                  <p className="truncate text-xs text-[#6782b0]">{station.municipio} {station.provincia ? `· ${station.provincia}` : ""}</p>
-                  <p className="mt-1 text-xs font-semibold text-[#23467f]">€{station.precio_litro.toFixed(3)} · +{station.desvio_km.toFixed(1)} km</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold text-[#12316a]">{station.nombre}</p>
+                      <p className="truncate text-xs text-[#6782b0]">{station.municipio} {station.provincia ? `· ${station.provincia}` : ""}</p>
+                    </div>
+                    <span className="shrink-0 rounded-full bg-[#e7efff] px-2 py-0.5 text-[11px] font-semibold text-[#1f4fa0]">
+                      {Math.round(station.porcentaje_ruta)}%
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-[#23467f]">€{station.precio_litro.toFixed(3)} · +{station.desvio_km.toFixed(1)} km · +{Math.round(station.desvio_min_estimado)} min</p>
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              className="mb-3 w-full rounded-xl bg-[#1f4fa0] px-3 py-2.5 text-sm font-bold text-white disabled:opacity-60"
+              onClick={startNavigationInGoogleMaps}
+              disabled={!origin || !destination}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <LuNavigation size={15} />
+                {selectedStop
+                  ? t("routes.openInGoogleWithStop", { defaultValue: "Iniciar ruta con parada" })
+                  : t("routes.openInGoogle", { defaultValue: "Iniciar ruta" })}
+              </span>
+            </button>
 
             {selectedStop && (
               <article className="rounded-xl border border-[#cad9f3] bg-[#f8fbff] p-3">

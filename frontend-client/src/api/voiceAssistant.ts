@@ -1,10 +1,72 @@
-function buildVoiceWsUrl(): string {
-  const fromEnv = (import.meta.env.VITE_VOICE_WS_URL ?? "").trim();
-  if (fromEnv) {
-    return fromEnv;
+const DEFAULT_LOCAL_VOICE_WS_URL = "ws://localhost:8090/ws/voice";
+
+function isLocalHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+function toWsUrlFromHttpBase(rawHttpBase: string): string | null {
+  if (!rawHttpBase) {
+    return null;
   }
 
-  return "ws://localhost:8090/ws/voice";
+  try {
+    const parsed = new URL(rawHttpBase);
+    if (!/^https?:$/i.test(parsed.protocol)) {
+      return null;
+    }
+
+    parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
+    parsed.pathname = "/ws/voice";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function normalizeVoiceWsUrl(rawValue: string): string | null {
+  const value = rawValue.trim();
+  if (!value) {
+    return null;
+  }
+
+  if (/^wss?:\/\//i.test(value)) {
+    return value;
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return toWsUrlFromHttpBase(value);
+  }
+
+  if (value.startsWith("/") && globalThis.window !== undefined) {
+    const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${protocol}//${globalThis.window.location.host}${value}`;
+  }
+
+  return null;
+}
+
+function buildVoiceWsUrl(): string {
+  const fromExplicitWsEnv = normalizeVoiceWsUrl(import.meta.env.VITE_VOICE_WS_URL ?? "");
+  if (fromExplicitWsEnv) {
+    return fromExplicitWsEnv;
+  }
+
+  const fromVoiceServiceEnv = toWsUrlFromHttpBase((import.meta.env.VITE_VOICE_SERVICE_URL ?? "").trim());
+  if (fromVoiceServiceEnv) {
+    return fromVoiceServiceEnv;
+  }
+
+  if (globalThis.window !== undefined) {
+    const protocol = globalThis.window.location.protocol === "https:" ? "wss:" : "ws:";
+    if (isLocalHostname(globalThis.window.location.hostname)) {
+      return DEFAULT_LOCAL_VOICE_WS_URL;
+    }
+    return `${protocol}//${globalThis.window.location.host}/ws/voice`;
+  }
+
+  return DEFAULT_LOCAL_VOICE_WS_URL;
 }
 
 const VOICE_WS_URL = buildVoiceWsUrl();

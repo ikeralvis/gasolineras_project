@@ -1,6 +1,6 @@
 steps:
   # 1. Construir la imagen del Frontend
-  # Define _VITE_API_BASE_URL en el trigger de Cloud Build.
+  # Define _VITE_API_BASE_URL y _VITE_VOICE_WS_URL en el trigger de Cloud Build.
   # VITE_GOOGLE_CLIENT_ID se inyecta desde Secret Manager en build-time.
   - name: 'gcr.io/cloud-builders/docker'
     entrypoint: 'bash'
@@ -9,8 +9,10 @@ steps:
       - '-c'
       - |
         API_BASE_URL="$(printf '%s' "${_VITE_API_BASE_URL}" | tr -d '\r\n')"
+        VOICE_WS_URL="$(printf '%s' "${_VITE_VOICE_WS_URL}" | tr -d '\r\n')"
         GOOGLE_CLIENT_ID="$(printf '%s' "$$VITE_GOOGLE_CLIENT_ID_SECRET" | tr -d '\r\n')"
         API_BASE_URL_LOWER="$(printf '%s' "$$API_BASE_URL" | tr '[:upper:]' '[:lower:]')"
+        VOICE_WS_URL_LOWER="$(printf '%s' "$$VOICE_WS_URL" | tr '[:upper:]' '[:lower:]')"
 
         if [ -z "$$API_BASE_URL" ]; then
           echo "ERROR: _VITE_API_BASE_URL vacío. Define este valor en el trigger de Cloud Build.";
@@ -25,7 +27,21 @@ steps:
           exit 1;
         fi
 
+        if [ -z "$$VOICE_WS_URL" ]; then
+          echo "ERROR: _VITE_VOICE_WS_URL vacío. Define el websocket público del voice-assistant.";
+          exit 1;
+        fi
+        if [[ "$$VOICE_WS_URL_LOWER" == *"localhost"* ]]; then
+          echo "ERROR: _VITE_VOICE_WS_URL no puede apuntar a localhost en Cloud Build.";
+          exit 1;
+        fi
+        if [[ "$$VOICE_WS_URL" != wss://* && "$$VOICE_WS_URL" != ws://* && "$$VOICE_WS_URL" != https://* && "$$VOICE_WS_URL" != http://* ]]; then
+          echo "ERROR: _VITE_VOICE_WS_URL debe empezar por ws://, wss://, http:// o https://.";
+          exit 1;
+        fi
+
         echo "INFO: Usando _VITE_API_BASE_URL=$$API_BASE_URL"
+        echo "INFO: Usando _VITE_VOICE_WS_URL=$$VOICE_WS_URL"
 
         if [ -z "$$GOOGLE_CLIENT_ID" ]; then
           echo "ERROR: Secret GOOGLE_CLIENT_ID vacío o no accesible";
@@ -39,6 +55,7 @@ steps:
         docker build \
           -t europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img \
           --build-arg VITE_API_BASE_URL=$$API_BASE_URL \
+          --build-arg VITE_VOICE_WS_URL=$$VOICE_WS_URL \
           --build-arg VITE_GOOGLE_CLIENT_ID=$$GOOGLE_CLIENT_ID \
           frontend-client
 
@@ -67,6 +84,7 @@ images:
 
 substitutions:
   _VITE_API_BASE_URL: ''
+  _VITE_VOICE_WS_URL: ''
 
 availableSecrets:
   secretManager:
