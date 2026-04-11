@@ -1,6 +1,7 @@
-import { apiFetchJson } from "./http";
+import { API_BASE_URL, apiFetchJson } from "./http";
 
-const DEFAULT_LOCAL_VOICE_WS_URL = "ws://localhost:8090/ws/voice";
+const VOICE_WS_PROXY_PATH = "/api/voice/ws";
+const DEFAULT_LOCAL_VOICE_WS_URL = "ws://localhost:8080/api/voice/ws";
 const VOICE_HTTP_DIALOG_PATH = "/api/voice/dialog";
 
 function isLocalHostname(hostname: string): boolean {
@@ -19,7 +20,7 @@ function toWsUrlFromHttpBase(rawHttpBase: string): string | null {
     }
 
     parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
-    parsed.pathname = "/ws/voice";
+    parsed.pathname = VOICE_WS_PROXY_PATH;
     parsed.search = "";
     parsed.hash = "";
     return parsed.toString();
@@ -56,9 +57,9 @@ function buildVoiceWsUrl(): string {
     return fromExplicitWsEnv;
   }
 
-  const fromVoiceServiceEnv = toWsUrlFromHttpBase((import.meta.env.VITE_VOICE_SERVICE_URL ?? "").trim());
-  if (fromVoiceServiceEnv) {
-    return fromVoiceServiceEnv;
+  const fromApiBaseEnv = toWsUrlFromHttpBase((API_BASE_URL || "").trim());
+  if (fromApiBaseEnv) {
+    return fromApiBaseEnv;
   }
 
   if (globalThis.window !== undefined) {
@@ -66,7 +67,7 @@ function buildVoiceWsUrl(): string {
     if (isLocalHostname(globalThis.window.location.hostname)) {
       return DEFAULT_LOCAL_VOICE_WS_URL;
     }
-    return `${protocol}//${globalThis.window.location.host}/ws/voice`;
+    return `${protocol}//${globalThis.window.location.host}${VOICE_WS_PROXY_PATH}`;
   }
 
   return DEFAULT_LOCAL_VOICE_WS_URL;

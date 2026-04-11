@@ -476,7 +476,7 @@ export default function VoiceAssistantWidget() {
       {
         id: `u-live-${Date.now()}`,
         role: "user",
-        text: previewText || "[Audio enviado]",
+        text: previewText || "[Consulta por voz enviada]",
       },
       {
         id: pendingId,
@@ -515,8 +515,22 @@ export default function VoiceAssistantWidget() {
         ];
       });
 
-      await playAssistantAudio(response?.tts?.audioBase64, response?.tts?.mimeType);
-      setLiveStatus("Respuesta completada");
+      const hasTtsAudio = Boolean(response?.tts?.audioBase64);
+      if (hasTtsAudio) {
+        await playAssistantAudio(response?.tts?.audioBase64, response?.tts?.mimeType);
+        setLiveStatus("Respuesta de voz reproducida");
+      } else {
+        const ttsReason = response?.tts?.note ? ` (${response.tts.note})` : "";
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `a-live-audio-${Date.now()}`,
+            role: "assistant",
+            text: `Te he respondido en texto porque no se pudo generar audio${ttsReason}.`,
+          },
+        ]);
+        setLiveStatus("Respuesta en texto (sin audio)");
+      }
     } catch {
       setMessages((prev) => {
         const trimmed = prev.filter((m) => m.id !== pendingId);

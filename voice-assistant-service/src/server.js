@@ -7,7 +7,7 @@ import {
   createAllowedOriginMatcher,
   createRequestId,
   extractClientIp,
-  parseAuthTokenFromHeader,
+  parseAuthTokenFromHeaders,
   wsSend,
 } from "./core/network.js";
 import { createRateLimiter } from "./core/rateLimit.js";
@@ -201,7 +201,7 @@ app.get("/capabilities", async () => ({
 }));
 
 app.post("/voice/dialog", async (req, reply) => {
-  const authToken = parseAuthTokenFromHeader(req.headers.authorization || "");
+  const authToken = parseAuthTokenFromHeaders(req.headers);
   const payload = req.body && typeof req.body === "object" ? req.body : {};
 
   try {
@@ -228,7 +228,7 @@ app.get("/ws/voice", { websocket: true }, (connection, req) => {
   }
 
   const connectionId = createRequestId();
-  const authToken = parseAuthTokenFromHeader(req.headers.authorization || "");
+  const authToken = parseAuthTokenFromHeaders(req.headers);
   const ip = extractClientIp(req.headers, req.socket);
   const watchdog = createWatchdog(socket, connectionId);
   const streamState = {

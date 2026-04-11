@@ -194,13 +194,21 @@ function buildLiveResponseModalities(includeAudio) {
 function buildLiveResult({
   model,
   includeAudio,
+  userText,
+  location,
   textChunks,
   audioBuffers,
   audioMimeType,
   toolOutputs,
   gasContext,
 }) {
-  const answerText = textChunks.join("\n").trim() || "No he podido generar una respuesta en este turno.";
+  const rawAnswerText = textChunks.join("\n").trim() || "No he podido generar una respuesta en este turno.";
+  const answerText = enforceToolGroundedAnswer({
+    userText,
+    generatedText: rawAnswerText,
+    toolOutputs,
+    location,
+  });
   const audioBase64 = audioBuffers.length ? Buffer.concat(audioBuffers).toString("base64") : null;
   let ttsNote = "audio-disabled";
   if (includeAudio) {
@@ -241,6 +249,80 @@ function normalizeToolArgs(args, location) {
   }
 
   return normalized;
+}
+
+function isPriceSensitiveIntent(text) {
+  const normalized = String(text || "").toLowerCase();
+  return /(precio|precios|gasolina|gasoleo|diesel|gasoil|litro|barat|cuesta|eur\/l|euro)/.test(normalized);
+}
+
+function hasValidLocation(location) {
+  return Number.isFinite(Number(location?.lat)) && Number.isFinite(Number(location?.lon));
+}
+
+function formatPriceForSpeech(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return "N/D";
+  }
+  return `${numeric.toFixed(3)} EUR/l`;
+}
+
+function renderToolGroundedPriceAnswer(toolOutput) {
+  if (!toolOutput?.ok) {
+    if (toolOutput?.error === "lat-lon-required") {
+      return "Para darte precios reales necesito tu ubicacion. Activa la geolocalizacion y vuelve a intentarlo.";
+    }
+
+    if (toolOutput?.error === "invalid-km") {
+      return "Necesito un radio valido para consultar precios reales. Prueba con un radio menor.";
+    }
+
+    return "Ahora mismo no he podido obtener precios reales de gasolineras. Prueba de nuevo en unos segundos.";
+  }
+
+  const stations = Array.isArray(toolOutput.stations) ? toolOutput.stations : [];
+  if (!stations.length) {
+    return "No encuentro estaciones en ese radio ahora mismo. Si quieres, amplia la distancia de busqueda.";
+  }
+
+  const fuel = toolOutput.fuel || "gasolina95";
+  const top = stations.slice(0, 3);
+
+  const rows = top.map((station, index) => {
+    const label = station?.name || "Estacion sin nombre";
+    const municipality = station?.municipality ? ` (${station.municipality})` : "";
+    const distance = Number.isFinite(Number(station?.distanceKm))
+      ? `, a ${Number(station.distanceKm).toFixed(1)} km`
+      : "";
+    const price = formatPriceForSpeech(station?.prices?.[fuel]);
+    return `${index + 1}. ${label}${municipality}: ${price}${distance}.`;
+  });
+
+  return [
+    `Precios reales para ${fuel} en un radio de ${toolOutput.km || "8"} km:`,
+    ...rows,
+    "Los importes salen del servicio de gasolineras en tiempo real.",
+  ].join(" ");
+}
+
+function enforceToolGroundedAnswer({ userText, generatedText, toolOutputs, location }) {
+  if (!isPriceSensitiveIntent(userText)) {
+    return generatedText;
+  }
+
+  const toolOutput = Array.isArray(toolOutputs)
+    ? toolOutputs.find((entry) => entry?.name === "get_prices")?.output || null
+    : null;
+
+  if (!toolOutput) {
+    if (!hasValidLocation(location)) {
+      return "Para darte precios reales necesito tu ubicacion. Activa la geolocalizacion y vuelve a intentarlo.";
+    }
+    return "No tengo datos reales de precios en este turno, asi que prefiero no inventar importes.";
+  }
+
+  return renderToolGroundedPriceAnswer(toolOutput);
 }
 
 async function executeToolCalls({ functionCalls, session, location }) {
@@ -414,6 +496,47 @@ async function synthesizeSpeechWithFallbacks({ ai, text }) {
   throw lastError || new Error("No Gemini TTS model candidate succeeded");
 }
 
+async function maybeSynthesizeSpeech({ ai, includeAudio, text }) {
+  if (!includeAudio) {
+    return {
+      provider: "google-ai-studio-gemini",
+      model: null,
+      note: "audio-disabled",
+      audioBase64: null,
+      mimeType: null,
+    };
+  }
+
+  if (!String(text || "").trim()) {
+    return {
+      provider: "google-ai-studio-gemini",
+      model: null,
+      note: "no-text-for-tts",
+      audioBase64: null,
+      mimeType: null,
+    };
+  }
+
+  try {
+    const generatedTts = await synthesizeSpeechWithFallbacks({ ai, text });
+    return {
+      provider: "google-ai-studio-gemini",
+      model: generatedTts.model,
+      note: "ok",
+      audioBase64: generatedTts.audioBase64,
+      mimeType: generatedTts.audioMimeType,
+    };
+  } catch (error) {
+    return {
+      provider: "google-ai-studio-gemini",
+      model: null,
+      note: `tts-fallback-failed: ${extractErrorMessage(error)}`,
+      audioBase64: null,
+      mimeType: null,
+    };
+  }
+}
+
 async function runLiveDialogForModel({
   ai,
   model,
@@ -465,6 +588,8 @@ async function runLiveDialogForModel({
           buildLiveResult({
             model,
             includeAudio,
+            userText: text,
+            location,
             textChunks,
             audioBuffers,
             audioMimeType,
@@ -624,7 +749,54 @@ async function runLiveDialogWithFallbacks(params) {
   throw lastError || new Error("No Gemini live model candidate succeeded");
 }
 
-async function runTwoStepDialog({ ai, text, audioBase64, mimeType, includeAudio, gasContext }) {
+async function runTwoStepDialog({ ai, text, audioBase64, mimeType, includeAudio, gasContext, location }) {
+  if (isPriceSensitiveIntent(text)) {
+    let toolOutput;
+
+    if (hasValidLocation(location)) {
+      try {
+        toolOutput = await getPricesForVoice(normalizeToolArgs({}, location));
+      } catch (error) {
+        toolOutput = {
+          ok: false,
+          error: "tool-execution-failed",
+          message: extractErrorMessage(error),
+        };
+      }
+    } else {
+      toolOutput = {
+        ok: false,
+        error: "lat-lon-required",
+      };
+    }
+
+    const toolOutputs = [{ name: "get_prices", output: toolOutput }];
+    const answerText = enforceToolGroundedAnswer({
+      userText: text,
+      generatedText: "",
+      toolOutputs,
+      location,
+    });
+    const tts = await maybeSynthesizeSpeech({
+      ai,
+      includeAudio,
+      text: answerText,
+    });
+
+    return {
+      provider: "google-ai-studio-gemini",
+      model: "tool-grounded-response",
+      context: {
+        bootstrap: gasContext?.data || null,
+        toolOutputs,
+      },
+      answer: {
+        text: answerText,
+      },
+      tts,
+    };
+  }
+
   const userParts = buildUserParts({
     text,
     audioBase64,
@@ -638,44 +810,19 @@ async function runTwoStepDialog({ ai, text, audioBase64, mimeType, includeAudio,
   });
 
   const output = extractGeminiOutput(generatedDialog.response);
-
-  let tts = {
-    provider: "google-ai-studio-gemini",
-    model: null,
-    note: "audio-disabled",
-    audioBase64: null,
-    mimeType: null,
-  };
-
-  if (includeAudio && output.text?.trim()) {
-    try {
-      const generatedTts = await synthesizeSpeechWithFallbacks({
-        ai,
-        text: output.text,
-      });
-
-      tts = {
-        provider: "google-ai-studio-gemini",
-        model: generatedTts.model,
-        note: "ok",
-        audioBase64: generatedTts.audioBase64,
-        mimeType: generatedTts.audioMimeType,
-      };
-    } catch (error) {
-      tts = {
-        provider: "google-ai-studio-gemini",
-        model: null,
-        note: `tts-fallback-failed: ${extractErrorMessage(error)}`,
-        audioBase64: null,
-        mimeType: null,
-      };
-    }
-  }
+  const tts = await maybeSynthesizeSpeech({
+    ai,
+    includeAudio,
+    text: output.text,
+  });
 
   return {
     provider: "google-ai-studio-gemini",
     model: generatedDialog.model,
-    context: gasContext?.data || null,
+    context: {
+      bootstrap: gasContext?.data || null,
+      toolOutputs: [],
+    },
     answer: {
       text: output.text,
     },
@@ -740,5 +887,6 @@ export async function runGeminiNativeDialog({
     mimeType,
     includeAudio,
     gasContext,
+    location,
   });
 }

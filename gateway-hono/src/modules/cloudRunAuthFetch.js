@@ -67,6 +67,15 @@ async function buildHeadersWithCloudRunAuth(url, inputHeaders = {}) {
   return headers;
 }
 
+export async function getCloudRunIdTokenForUrl(url) {
+  if (!CLOUD_RUN_SERVICE_AUTH_ENABLED || !isCloudRunServiceUrl(url)) {
+    return null;
+  }
+
+  const audience = new URL(url).origin;
+  return fetchIdTokenFromMetadata(audience);
+}
+
 export async function fetchWithCloudRunAuth(url, options = {}) {
   const headers = await buildHeadersWithCloudRunAuth(url, options.headers || {});
   return fetch(url, {

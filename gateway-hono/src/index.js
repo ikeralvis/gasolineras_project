@@ -6,7 +6,8 @@ import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { setupOpenApiModule } from "./modules/openapi.js";
 import { registerHealthRoute } from "./modules/health.js";
 import { registerUsuariosRoutes } from "./modules/proxyUsuarios.js";
-import { fetchWithCloudRunAuth } from "./modules/cloudRunAuthFetch.js";
+import { fetchWithCloudRunAuth, getCloudRunIdTokenForUrl } from "./modules/cloudRunAuthFetch.js";
+import { WebSocketServer, WebSocket } from "ws";
 
 // ========================================
 // 🔧 CONFIGURACIÓN
@@ -19,11 +20,25 @@ const VOICE_ASSISTANT_SERVICE = process.env.VOICE_ASSISTANT_SERVICE_URL || "http
 const PREDICTION_SERVICE = process.env.PREDICTION_SERVICE_URL || "";
 const GEOCODING_BASE_URL = process.env.GEOCODING_BASE_URL || "https://nominatim.openstreetmap.org";
 const GEOCODING_USER_AGENT = process.env.GEOCODING_USER_AGENT || "TankGo/1.0 (geocoding proxy)";
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+function normalizeOriginUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, "");
+  }
+}
+
+const FRONTEND_URL = normalizeOriginUrl(process.env.FRONTEND_URL || "http://localhost:5173");
 const GATEWAY_PUBLIC_URL = process.env.GATEWAY_PUBLIC_URL || "";
 const FRONTEND_URLS = (process.env.FRONTEND_URLS || "")
   .split(",")
-  .map((o) => o.trim())
+  .map((o) => normalizeOriginUrl(o))
   .filter(Boolean);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 const OPENAPI_TIMEOUT_MS = Number(process.env.OPENAPI_TIMEOUT_MS || 12000);
@@ -33,6 +48,10 @@ const HEALTH_TIMEOUT_MS = Number(process.env.HEALTH_TIMEOUT_MS || 12000);
 const GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED = (process.env.GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED || "true").toLowerCase() === "true";
 const GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES = Number(process.env.GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES || 60);
 const GASOLINERAS_STARTUP_ENSURE_FRESH = (process.env.GASOLINERAS_STARTUP_ENSURE_FRESH || "true").toLowerCase() === "true";
+const VOICE_WS_PROXY_PATH = "/api/voice/ws";
+const VOICE_WS_UPSTREAM_PATH = "/ws/voice";
+const VOICE_WS_CONNECT_TIMEOUT_MS = Number(process.env.VOICE_WS_CONNECT_TIMEOUT_MS || 10000);
+const VOICE_WS_MAX_BUFFERED_MESSAGES = Number(process.env.VOICE_WS_MAX_BUFFERED_MESSAGES || 50);
 
 const SERVICE_REGISTRY = {
   usuarios: {
@@ -89,6 +108,81 @@ function getAuthTokenFromRequest(c) {
     return authHeader.slice("Bearer ".length);
   }
   return getCookie(c, "authToken") || null;
+}
+
+function getCookieValue(cookieHeader, name) {
+  if (!cookieHeader || typeof cookieHeader !== "string") {
+    return null;
+  }
+
+  const token = `${name}=`;
+  for (const segment of cookieHeader.split(";")) {
+    const trimmed = segment.trim();
+    if (trimmed.startsWith(token)) {
+      return decodeURIComponent(trimmed.slice(token.length));
+    }
+  }
+
+  return null;
+}
+
+function getAuthTokenFromUpgradeRequest(req) {
+  const authHeader = req.headers?.authorization;
+  if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
+    return authHeader.slice("Bearer ".length).trim();
+  }
+
+  const fromCookie = getCookieValue(req.headers?.cookie, "authToken");
+  return fromCookie || null;
+}
+
+function isAllowedVoiceWsOrigin(origin) {
+  if (!origin) {
+    return true;
+  }
+
+  const normalizedOrigin = normalizeOriginUrl(origin);
+  const allowedOrigins = new Set([FRONTEND_URL, ...FRONTEND_URLS].filter(Boolean));
+  if (!IS_PRODUCTION) {
+    ["http://localhost:5173", "http://localhost:80", "http://localhost"].forEach((url) => {
+      allowedOrigins.add(url);
+    });
+  }
+
+  return allowedOrigins.has(normalizedOrigin);
+}
+
+function buildVoiceUpstreamWsUrl(pathname, search) {
+  const upstream = new URL(VOICE_ASSISTANT_SERVICE);
+  upstream.protocol = upstream.protocol === "https:" ? "wss:" : "ws:";
+  upstream.pathname = pathname;
+  upstream.search = search || "";
+  upstream.hash = "";
+  return upstream.toString();
+}
+
+async function buildVoiceUpstreamWsHeaders(req) {
+  const headers = {};
+  const idToken = await getCloudRunIdTokenForUrl(VOICE_ASSISTANT_SERVICE);
+  if (idToken) {
+    headers["X-Serverless-Authorization"] = `Bearer ${idToken}`;
+  }
+
+  const userToken = getAuthTokenFromUpgradeRequest(req);
+  if (userToken) {
+    headers["X-User-Authorization"] = `Bearer ${userToken}`;
+  }
+
+  const forwardedFor = req.headers?.["x-forwarded-for"];
+  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
+    headers["X-Forwarded-For"] = forwardedFor;
+  }
+
+  if (typeof req.headers?.["user-agent"] === "string") {
+    headers["User-Agent"] = req.headers["user-agent"];
+  }
+
+  return headers;
 }
 
 // ========================================
@@ -158,6 +252,8 @@ app.use(
         return FRONTEND_URL;
       }
 
+      const normalizedOrigin = normalizeOriginUrl(origin);
+
       // CORS por configuración: cloud mediante FRONTEND_URL/FRONTEND_URLS,
       // y localhost extra sólo en entorno no productivo.
       const allowedOrigins = new Set([FRONTEND_URL, ...FRONTEND_URLS].filter(Boolean));
@@ -167,7 +263,7 @@ app.use(
         });
       }
 
-      return allowedOrigins.has(origin) ? origin : null;
+      return allowedOrigins.has(normalizedOrigin) ? normalizedOrigin : null;
     },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
@@ -780,7 +876,136 @@ async function ensureGasolinerasFresh(reason = "scheduler") {
 // ========================================
 // 🚀 INICIAR SERVIDOR
 // ========================================
-serve({ fetch: app.fetch, port: PORT });
+const server = serve({ fetch: app.fetch, port: PORT });
+
+const voiceWsBridgeServer = new WebSocketServer({ noServer: true });
+
+voiceWsBridgeServer.on("connection", (clientSocket, req, requestUrl) => {
+  let upstreamSocket = null;
+  const bufferedClientFrames = [];
+
+  const closeClientWithError = (message) => {
+    try {
+      if (clientSocket.readyState === WebSocket.OPEN) {
+        clientSocket.send(
+          JSON.stringify({
+            type: "response",
+            ok: false,
+            error: "voice-ws-bridge-error",
+            message,
+          })
+        );
+      }
+    } catch {
+      // Ignore send errors.
+    }
+
+    try {
+      clientSocket.close(1011, "voice-ws-bridge-error");
+    } catch {
+      // Ignore close errors.
+    }
+  };
+
+  const closeUpstream = () => {
+    if (!upstreamSocket) {
+      return;
+    }
+
+    try {
+      if (upstreamSocket.readyState === WebSocket.OPEN || upstreamSocket.readyState === WebSocket.CONNECTING) {
+        upstreamSocket.close();
+      }
+    } catch {
+      // Ignore close errors.
+    }
+  };
+
+  clientSocket.on("message", (raw) => {
+    if (!upstreamSocket || upstreamSocket.readyState === WebSocket.CONNECTING) {
+      if (bufferedClientFrames.length >= VOICE_WS_MAX_BUFFERED_MESSAGES) {
+        closeClientWithError("voice-ws-buffer-overflow");
+        closeUpstream();
+        return;
+      }
+      bufferedClientFrames.push(raw);
+      return;
+    }
+
+    if (upstreamSocket.readyState === WebSocket.OPEN) {
+      upstreamSocket.send(raw);
+    }
+  });
+
+  clientSocket.on("close", () => {
+    closeUpstream();
+  });
+
+  clientSocket.on("error", () => {
+    closeUpstream();
+  });
+
+  void (async () => {
+    try {
+      const upstreamUrl = buildVoiceUpstreamWsUrl(VOICE_WS_UPSTREAM_PATH, requestUrl?.search || "");
+      const upstreamHeaders = await buildVoiceUpstreamWsHeaders(req);
+
+      upstreamSocket = new WebSocket(upstreamUrl, {
+        headers: upstreamHeaders,
+        handshakeTimeout: VOICE_WS_CONNECT_TIMEOUT_MS,
+      });
+
+      upstreamSocket.on("open", () => {
+        for (const frame of bufferedClientFrames.splice(0)) {
+          upstreamSocket.send(frame);
+        }
+      });
+
+      upstreamSocket.on("message", (raw) => {
+        if (clientSocket.readyState === WebSocket.OPEN) {
+          clientSocket.send(raw);
+        }
+      });
+
+      upstreamSocket.on("close", (code, reason) => {
+        if (clientSocket.readyState === WebSocket.OPEN || clientSocket.readyState === WebSocket.CONNECTING) {
+          clientSocket.close(Number(code) || 1000, String(reason || ""));
+        }
+      });
+
+      upstreamSocket.on("error", (error) => {
+        console.error("[voice][ws-bridge] upstream error:", error?.message || error);
+        closeClientWithError("voice-upstream-ws-unavailable");
+      });
+    } catch (error) {
+      console.error("[voice][ws-bridge] setup failed:", error?.message || error);
+      closeClientWithError("voice-ws-bridge-setup-failed");
+    }
+  })();
+});
+
+server.on("upgrade", (req, socket, head) => {
+  try {
+    const requestUrl = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
+
+    if (requestUrl.pathname !== VOICE_WS_PROXY_PATH) {
+      socket.destroy();
+      return;
+    }
+
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+    if (!isAllowedVoiceWsOrigin(origin)) {
+      socket.destroy();
+      return;
+    }
+
+    voiceWsBridgeServer.handleUpgrade(req, socket, head, (clientSocket) => {
+      voiceWsBridgeServer.emit("connection", clientSocket, req, requestUrl);
+    });
+  } catch {
+    socket.destroy();
+  }
+});
 
 if (GASOLINERAS_AUTO_ENSURE_FRESH_ENABLED) {
   if (GASOLINERAS_STARTUP_ENSURE_FRESH) {

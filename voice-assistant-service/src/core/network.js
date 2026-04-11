@@ -20,6 +20,20 @@ export function parseAuthTokenFromHeader(authHeader = "") {
   return authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length).trim() : null;
 }
 
+export function parseAuthTokenFromHeaders(headers = {}) {
+  if (!headers || typeof headers !== "object") {
+    return null;
+  }
+
+  const userAuthHeader = headers["x-user-authorization"] || headers["X-User-Authorization"];
+  const userToken = parseAuthTokenFromHeader(String(userAuthHeader || ""));
+  if (userToken) {
+    return userToken;
+  }
+
+  return parseAuthTokenFromHeader(String(headers.authorization || headers.Authorization || ""));
+}
+
 export function createAllowedOriginMatcher(allowedOriginsRaw, allowedOrigins) {
   const wildcard = String(allowedOriginsRaw || "").trim() === "*" || allowedOrigins.includes("*");
 
