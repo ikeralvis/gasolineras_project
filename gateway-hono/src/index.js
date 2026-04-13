@@ -293,9 +293,14 @@ app.use(
 
       const normalizedOrigin = normalizeOriginUrl(origin);
 
-      // CORS por configuración: cloud mediante FRONTEND_URL/FRONTEND_URLS,
-      // y localhost extra sólo en entorno no productivo.
-      const allowedOrigins = new Set([FRONTEND_URL, ...FRONTEND_URLS].filter(Boolean));
+      // CORS por configuración: cloud mediante FRONTEND_URL/FRONTEND_URLS.
+      // Incluye también VOICE_WS_ALLOWED_ORIGINS para evitar desalineación entre
+      // el bridge WS y el fallback HTTP de voz.
+      const allowedOrigins = new Set([
+        FRONTEND_URL,
+        ...FRONTEND_URLS,
+        ...VOICE_WS_ALLOWED_ORIGINS,
+      ].filter(Boolean));
       if (!IS_PRODUCTION) {
         ["http://localhost:5173", "http://localhost:80", "http://localhost"].forEach((url) => {
           allowedOrigins.add(url);
