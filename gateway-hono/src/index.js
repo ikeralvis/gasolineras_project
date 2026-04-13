@@ -307,7 +307,15 @@ app.use(
         });
       }
 
-      return allowedOrigins.has(normalizedOrigin) ? normalizedOrigin : null;
+      if (allowedOrigins.has(normalizedOrigin)) {
+        return normalizedOrigin;
+      }
+
+      console.warn("[cors] blocked origin", {
+        origin: normalizedOrigin,
+        allowedOrigins: Array.from(allowedOrigins),
+      });
+      return null;
     },
     allowMethods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowHeaders: ["Content-Type", "Authorization"],
@@ -1084,8 +1092,17 @@ console.log(`
 ║      • Usuarios:     ${USUARIOS_SERVICE}                 ║
 ║      • Gasolineras:  ${GASOLINERAS_SERVICE}              ║
 ║      • Recomendación: ${RECOMENDACION_SERVICE}           ║
+║      • Voice:        ${VOICE_ASSISTANT_SERVICE}          ║
 ║      • EV Charging:   Integrado en Gasolineras           ║
 ║      • Prediction:    ${PREDICTION_SERVICE || "(no configurado)"}      ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
 `);
+
+console.log("🌐 CORS/WS origins configurados:", {
+  frontendUrl: FRONTEND_URL,
+  frontendUrls: FRONTEND_URLS,
+  voiceWsAllowedOrigins: VOICE_WS_ALLOWED_ORIGINS,
+  gatewayPublicUrl: GATEWAY_PUBLIC_URL,
+  isProduction: IS_PRODUCTION,
+});
