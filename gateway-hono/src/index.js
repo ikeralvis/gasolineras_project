@@ -13,11 +13,11 @@ import { WebSocketServer, WebSocket } from "ws";
 // 🔧 CONFIGURACIÓN
 // ========================================
 const PORT = process.env.PORT || 8080;
-const USUARIOS_SERVICE = process.env.USUARIOS_SERVICE_URL || "http://usuarios:3001";
-const GASOLINERAS_SERVICE = process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000";
-const RECOMENDACION_SERVICE = process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001";
-const VOICE_ASSISTANT_SERVICE = process.env.VOICE_ASSISTANT_SERVICE_URL || "http://voice-assistant:8090";
-const PREDICTION_SERVICE = process.env.PREDICTION_SERVICE_URL || "";
+const USUARIOS_SERVICE = normalizeServiceBaseUrl(process.env.USUARIOS_SERVICE_URL || "http://usuarios:3001");
+const GASOLINERAS_SERVICE = normalizeServiceBaseUrl(process.env.GASOLINERAS_SERVICE_URL || "http://gasolineras:8000");
+const RECOMENDACION_SERVICE = normalizeServiceBaseUrl(process.env.RECOMENDACION_SERVICE_URL || "http://recomendacion:8001");
+const VOICE_ASSISTANT_SERVICE = normalizeServiceBaseUrl(process.env.VOICE_ASSISTANT_SERVICE_URL || "http://voice-assistant:8090");
+const PREDICTION_SERVICE = normalizeServiceBaseUrl(process.env.PREDICTION_SERVICE_URL || "");
 const GEOCODING_BASE_URL = process.env.GEOCODING_BASE_URL || "https://nominatim.openstreetmap.org";
 const GEOCODING_USER_AGENT = process.env.GEOCODING_USER_AGENT || "TankGo/1.0 (geocoding proxy)";
 
@@ -32,6 +32,36 @@ function normalizeOriginUrl(value) {
   } catch {
     return raw.replace(/\/+$/, "");
   }
+}
+
+function normalizeServiceBaseUrl(value) {
+  return String(value || "").trim().replace(/\/+$/, "");
+}
+
+function normalizeWsCloseCode(rawCode) {
+  const code = Number(rawCode);
+  if (!Number.isInteger(code)) {
+    return 1000;
+  }
+
+  const isValidStandardCode = code >= 1000 && code <= 1014 && ![1004, 1005, 1006].includes(code);
+  const isValidAppCode = code >= 3000 && code <= 4999;
+  return isValidStandardCode || isValidAppCode ? code : 1000;
+}
+
+function normalizeWsCloseReason(rawReason) {
+  let reasonText = "";
+
+  if (typeof rawReason === "string") {
+    reasonText = rawReason;
+  } else if (Buffer.isBuffer(rawReason)) {
+    reasonText = rawReason.toString("utf8");
+  } else {
+    reasonText = String(rawReason || "");
+  }
+
+  // RFC6455 limits close reason payload to 123 bytes.
+  return reasonText.slice(0, 123);
 }
 
 const FRONTEND_URL = normalizeOriginUrl(process.env.FRONTEND_URL || "http://localhost:5173");
@@ -1021,7 +1051,7 @@ voiceWsBridgeServer.on("connection", (clientSocket, req, requestUrl) => {
 
       upstreamSocket.on("close", (code, reason) => {
         if (clientSocket.readyState === WebSocket.OPEN || clientSocket.readyState === WebSocket.CONNECTING) {
-          clientSocket.close(Number(code) || 1000, String(reason || ""));
+          clientSocket.close(normalizeWsCloseCode(code), normalizeWsCloseReason(reason));
         }
       });
 

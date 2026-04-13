@@ -37,7 +37,7 @@ function canonicalTagForPath(path) {
 }
 
 function clonePathItem(pathItem) {
-  return JSON.parse(JSON.stringify(pathItem || {}));
+  return structuredClone(pathItem || {});
 }
 
 function normalizePathItem(path, pathItem) {
@@ -210,6 +210,53 @@ function buildBaseAggregatedSpec() {
           },
         },
       },
+      "/api/voice/capabilities": {
+        get: {
+          summary: "Capabilities de voice-assistant",
+          description: "Devuelve informacion publica del servicio de voz",
+          tags: ["Voice"],
+          responses: {
+            200: { description: "Capabilities del servicio de voz" },
+            503: { description: "Servicio de voz no disponible" },
+          },
+        },
+      },
+      "/api/voice/dialog": {
+        post: {
+          summary: "Dialogo de voz",
+          description: "Proxy HTTP del servicio de voz para texto o audio",
+          tags: ["Voice"],
+          requestBody: {
+            required: true,
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    text: { type: "string" },
+                    audioBase64: { type: "string" },
+                    mimeType: { type: "string" },
+                    includeAudio: { type: "boolean" },
+                    location: {
+                      type: "object",
+                      properties: {
+                        lat: { type: "number" },
+                        lon: { type: "number" },
+                        km: { type: "number" },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            200: { description: "Respuesta del asistente de voz" },
+            400: { description: "Peticion invalida" },
+            500: { description: "Error interno" },
+          },
+        },
+      },
     },
     components: {
       securitySchemes: {},
@@ -230,6 +277,7 @@ function buildBaseAggregatedSpec() {
         name: "Prediction",
         description: "Prediccion de precios (proxeado a prediction-service cuando este configurado)",
       },
+      { name: "Voice", description: "Dialogo y capacidades del servicio de voz" },
       { name: "Health", description: "Health checks y monitoreo" },
     ],
   };
