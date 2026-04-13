@@ -68,7 +68,7 @@ export const voiceEnv = Object.freeze({
   gemini: {
     apiKey: pickFirstNonEmpty(process.env.GOOGLE_API_KEY, process.env.GEMINI_API_KEY),
     useLiveApi: asBoolean(process.env.GEMINI_USE_LIVE_API, true),
-    liveModel: process.env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-latest",
+    liveModel: process.env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-dialog",
     dialogModel: process.env.GEMINI_DIALOG_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
     ttsModel: process.env.GEMINI_TTS_MODEL || "gemini-2.5-flash-preview-tts",
     voiceName: process.env.GEMINI_VOICE_NAME || "Aoede",

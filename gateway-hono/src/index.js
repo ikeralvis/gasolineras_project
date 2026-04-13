@@ -40,7 +40,12 @@ const FRONTEND_URLS = (process.env.FRONTEND_URLS || "")
   .split(",")
   .map((o) => normalizeOriginUrl(o))
   .filter(Boolean);
+const VOICE_WS_ALLOWED_ORIGINS = (process.env.VOICE_WS_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((o) => normalizeOriginUrl(o))
+  .filter(Boolean);
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
+const HAS_EXPLICIT_VOICE_SERVICE_URL = Boolean(String(process.env.VOICE_ASSISTANT_SERVICE_URL || "").trim());
 const OPENAPI_TIMEOUT_MS = Number(process.env.OPENAPI_TIMEOUT_MS || 12000);
 const OPENAPI_RETRY_MS = Number(process.env.OPENAPI_RETRY_MS || 10000);
 const OPENAPI_REFRESH_MS = Number(process.env.OPENAPI_REFRESH_MS || 300000);
@@ -50,7 +55,7 @@ const GASOLINERAS_AUTO_ENSURE_INTERVAL_MINUTES = Number(process.env.GASOLINERAS_
 const GASOLINERAS_STARTUP_ENSURE_FRESH = (process.env.GASOLINERAS_STARTUP_ENSURE_FRESH || "true").toLowerCase() === "true";
 const VOICE_WS_PROXY_PATH = "/api/voice/ws";
 const VOICE_WS_UPSTREAM_PATH = "/ws/voice";
-const VOICE_WS_CONNECT_TIMEOUT_MS = Number(process.env.VOICE_WS_CONNECT_TIMEOUT_MS || 10000);
+const VOICE_WS_CONNECT_TIMEOUT_MS = Number(process.env.VOICE_WS_CONNECT_TIMEOUT_MS || 20000);
 const VOICE_WS_MAX_BUFFERED_MESSAGES = Number(process.env.VOICE_WS_MAX_BUFFERED_MESSAGES || 50);
 
 const SERVICE_REGISTRY = {
@@ -92,6 +97,10 @@ if (!INTERNAL_API_SECRET) {
   console.warn("⚠️  WARNING: INTERNAL_API_SECRET no configurado. Usando valor por defecto (inseguro en producción)");
 }
 const INTERNAL_SECRET = INTERNAL_API_SECRET || "dev-internal-secret-change-in-production";
+
+if (IS_PRODUCTION && !HAS_EXPLICIT_VOICE_SERVICE_URL) {
+  console.warn("⚠️  WARNING: VOICE_ASSISTANT_SERVICE_URL no configurado en producción; el bridge WS /api/voice/ws puede fallar en Cloud Run.");
+}
 
 // Configuración de cookies
 const COOKIE_CONFIG = {
@@ -136,13 +145,38 @@ function getAuthTokenFromUpgradeRequest(req) {
   return fromCookie || null;
 }
 
-function isAllowedVoiceWsOrigin(origin) {
-  if (!origin) {
+function getUpgradeRequestOrigin(req) {
+  const protocolHeader = req.headers?.["x-forwarded-proto"];
+  const hostHeader = req.headers?.host;
+
+  const protocol = typeof protocolHeader === "string" && protocolHeader.trim()
+    ? protocolHeader.split(",")[0].trim()
+    : "https";
+
+  if (typeof hostHeader !== "string" || !hostHeader.trim()) {
+    return "";
+  }
+
+  return normalizeOriginUrl(`${protocol}://${hostHeader}`);
+}
+
+function isAllowedVoiceWsOrigin(req) {
+  const rawOrigin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+  if (!rawOrigin) {
     return true;
   }
 
-  const normalizedOrigin = normalizeOriginUrl(origin);
-  const allowedOrigins = new Set([FRONTEND_URL, ...FRONTEND_URLS].filter(Boolean));
+  const normalizedOrigin = normalizeOriginUrl(rawOrigin);
+  const gatewayPublicOrigin = normalizeOriginUrl(GATEWAY_PUBLIC_URL);
+  const requestOrigin = getUpgradeRequestOrigin(req);
+  const allowedOrigins = new Set([
+    FRONTEND_URL,
+    ...FRONTEND_URLS,
+    ...VOICE_WS_ALLOWED_ORIGINS,
+    gatewayPublicOrigin,
+    requestOrigin,
+  ].filter(Boolean));
+
   if (!IS_PRODUCTION) {
     ["http://localhost:5173", "http://localhost:80", "http://localhost"].forEach((url) => {
       allowedOrigins.add(url);
@@ -166,6 +200,7 @@ async function buildVoiceUpstreamWsHeaders(req) {
   const idToken = await getCloudRunIdTokenForUrl(VOICE_ASSISTANT_SERVICE);
   if (idToken) {
     headers["X-Serverless-Authorization"] = `Bearer ${idToken}`;
+    headers.Authorization = `Bearer ${idToken}`;
   }
 
   const userToken = getAuthTokenFromUpgradeRequest(req);
@@ -180,6 +215,10 @@ async function buildVoiceUpstreamWsHeaders(req) {
 
   if (typeof req.headers?.["user-agent"] === "string") {
     headers["User-Agent"] = req.headers["user-agent"];
+  }
+
+  if (typeof req.headers?.origin === "string" && req.headers.origin.trim()) {
+    headers.Origin = req.headers.origin;
   }
 
   return headers;
@@ -993,8 +1032,12 @@ server.on("upgrade", (req, socket, head) => {
       return;
     }
 
-    const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
-    if (!isAllowedVoiceWsOrigin(origin)) {
+    if (!isAllowedVoiceWsOrigin(req)) {
+      const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
+      console.warn("[voice][ws-bridge] blocked origin", {
+        origin,
+        host: req.headers.host || "",
+      });
       socket.destroy();
       return;
     }

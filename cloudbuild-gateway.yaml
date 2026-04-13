@@ -21,6 +21,11 @@ steps:
       - 'europe-west1'
       - '--platform'
       - 'managed'
+      - '--timeout'
+      - '1800'
+      - '--concurrency'
+      - '80'
+      - '--session-affinity'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/gateway-img'

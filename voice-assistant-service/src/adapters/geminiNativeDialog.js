@@ -5,6 +5,12 @@ import { getNearestStationContext, getPricesForVoice } from "./gatewayTools.js";
 let aiClient = null;
 
 const FALLBACK_LIVE_MODELS = [
+  "models/gemini-3-flash-live-latest",
+  "gemini-3-flash-live-latest",
+  "models/gemini-3-flash-live",
+  "gemini-3-flash-live",
+  "models/gemini-2.5-flash-native-audio-dialog",
+  "gemini-2.5-flash-native-audio-dialog",
   "models/gemini-2.5-flash-native-audio-latest",
   "gemini-2.5-flash-native-audio-latest",
   "models/gemini-3.1-flash-live-preview",

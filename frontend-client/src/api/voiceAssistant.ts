@@ -75,6 +75,8 @@ function buildVoiceWsUrl(): string {
 
 const VOICE_WS_URL = buildVoiceWsUrl();
 const VOICE_WS_KEEPALIVE_MS = 25000;
+const VOICE_WS_FAILURE_THRESHOLD = 2;
+const VOICE_WS_RETRY_COOLDOWN_MS = 20000;
 
 type WsPending = {
   resolve: (value: any) => void;
@@ -86,7 +88,8 @@ let ws: WebSocket | null = null;
 let openPromise: Promise<WebSocket> | null = null;
 const pending = new Map<string, WsPending>();
 let keepaliveTimer: ReturnType<typeof setInterval> | null = null;
-let wsTransportDisabled = false;
+let wsConsecutiveFailures = 0;
+let wsDisabledUntilTs = 0;
 
 function createRequestId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -110,6 +113,45 @@ function stopKeepalive() {
   }
 }
 
+function hardResetSocket() {
+  stopKeepalive();
+  rejectAllPending(new Error("voice-websocket-reset"));
+
+  if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+    try {
+      ws.close();
+    } catch {
+      // Ignore close errors.
+    }
+  }
+
+  ws = null;
+  openPromise = null;
+}
+
+function canUseWsTransport() {
+  return Date.now() >= wsDisabledUntilTs;
+}
+
+function markWsSuccess() {
+  wsConsecutiveFailures = 0;
+  wsDisabledUntilTs = 0;
+}
+
+function markWsFailure(error: unknown) {
+  wsConsecutiveFailures += 1;
+  if (wsConsecutiveFailures >= VOICE_WS_FAILURE_THRESHOLD) {
+    wsDisabledUntilTs = Date.now() + VOICE_WS_RETRY_COOLDOWN_MS;
+  }
+
+  hardResetSocket();
+  console.warn("[voice] websocket unavailable, using HTTP fallback", {
+    error,
+    consecutiveFailures: wsConsecutiveFailures,
+    retryAfterMs: Math.max(wsDisabledUntilTs - Date.now(), 0),
+  });
+}
+
 function startKeepalive(socket: WebSocket) {
   stopKeepalive();
 
@@ -129,6 +171,14 @@ function startKeepalive(socket: WebSocket) {
   }, VOICE_WS_KEEPALIVE_MS);
 }
 
+function shouldResetSocketFromMessage(message: any): boolean {
+  if (message?.type === "error") {
+    return true;
+  }
+
+  return message?.type === "response" && message?.ok === false && !message?.id;
+}
+
 function attachSocketHandlers(socket: WebSocket) {
   socket.onmessage = (event) => {
     let message: any;
@@ -136,6 +186,11 @@ function attachSocketHandlers(socket: WebSocket) {
       message = JSON.parse(String(event.data || ""));
     } catch (error) {
       console.warn("[voice] invalid websocket message", error);
+      return;
+    }
+
+    if (shouldResetSocketFromMessage(message)) {
+      hardResetSocket();
       return;
     }
 
@@ -290,18 +345,17 @@ export async function askVoiceAssistant(params: {
   location?: VoiceLocation;
   includeAudio?: boolean;
 }): Promise<VoiceAssistantResponse> {
-  if (!wsTransportDisabled) {
+  if (canUseWsTransport()) {
     try {
       const data = await sendWsRequest<VoiceAssistantResponse>("dialog", params, 60000);
+      markWsSuccess();
       if (data?.error) {
         return data;
       }
       return data;
     } catch (error) {
-      // If direct websocket transport is blocked (common with private Cloud Run IAM),
-      // fallback to gateway HTTP proxy for this and following requests.
-      wsTransportDisabled = true;
-      console.warn("[voice] websocket unavailable, falling back to HTTP proxy", error);
+      // Use HTTP fallback for this request and retry websocket automatically later.
+      markWsFailure(error);
     }
   }
 
