@@ -51,6 +51,19 @@ function getCurrentLocation(): Promise<{ lat: number; lon: number } | null> {
   });
 }
 
+function formatTtsFallbackReason(note?: string): string {
+  const normalized = String(note || "").trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.includes("timeout")) {
+    return " (el servicio de audio tardó demasiado en responder)";
+  }
+
+  return "";
+}
+
 export default function VoiceAssistantWidget() {
   const isMobileDevice = /android|iphone|ipad|ipod|mobile/i.test(globalThis.navigator?.userAgent ?? "");
   const liveTuning = useMemo(
@@ -520,7 +533,7 @@ export default function VoiceAssistantWidget() {
         await playAssistantAudio(response?.tts?.audioBase64, response?.tts?.mimeType);
         setLiveStatus("Respuesta de voz reproducida");
       } else {
-        const ttsReason = response?.tts?.note ? ` (${response.tts.note})` : "";
+        const ttsReason = formatTtsFallbackReason(response?.tts?.note);
         setMessages((prev) => [
           ...prev,
           {

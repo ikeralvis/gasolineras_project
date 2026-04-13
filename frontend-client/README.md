@@ -15,13 +15,13 @@ Aplicación web React para consultar gasolineras en España con funcionalidades 
 
 El widget de voz resuelve la URL del WebSocket en este orden:
 
-1. `VITE_VOICE_WS_URL` (si está definida, tiene prioridad total)
-2. `VITE_VOICE_SERVICE_URL` (se transforma automáticamente a `ws://` o `wss://` y usa `/ws/voice`)
+1. `VITE_VOICE_WS_URL` (solo si apunta al bridge del gateway: `/api/voice/ws`)
+2. `VITE_API_BASE_URL` (se transforma automáticamente a `ws://` o `wss://` y usa `/api/voice/ws`)
 3. Fallback automático:
-	- En local: `ws://localhost:8090/ws/voice`
-	- En no local: `ws(s)://<host-actual>/ws/voice`
+	- En local: `ws://localhost:8080/api/voice/ws`
+	- En no local: `ws(s)://<host-actual>/api/voice/ws`
 
-Recomendación para Cloud Run: definir explícitamente `VITE_VOICE_WS_URL` con el dominio público del servicio de voz.
+Recomendación para Cloud Run: usar siempre el gateway como punto de entrada de voz. No apuntar a `wss://.../ws/voice` del servicio de voz privado.
 
 ---
 

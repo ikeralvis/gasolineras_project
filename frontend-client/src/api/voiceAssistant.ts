@@ -51,10 +51,37 @@ function normalizeVoiceWsUrl(rawValue: string): string | null {
   return null;
 }
 
+function isGatewayVoiceWsPath(pathname: string): boolean {
+  return pathname === VOICE_WS_PROXY_PATH;
+}
+
+function isSafeExplicitVoiceWsUrl(rawUrl: string): boolean {
+  try {
+    const parsed = new URL(rawUrl);
+    if (!isGatewayVoiceWsPath(parsed.pathname)) {
+      return false;
+    }
+
+    const apiBase = (API_BASE_URL || "").trim();
+    if (!apiBase) {
+      return true;
+    }
+
+    const apiOrigin = new URL(apiBase).origin;
+    return parsed.origin === apiOrigin;
+  } catch {
+    return false;
+  }
+}
+
 function buildVoiceWsUrl(): string {
   const fromExplicitWsEnv = normalizeVoiceWsUrl(import.meta.env.VITE_VOICE_WS_URL ?? "");
-  if (fromExplicitWsEnv) {
+  if (fromExplicitWsEnv && isSafeExplicitVoiceWsUrl(fromExplicitWsEnv)) {
     return fromExplicitWsEnv;
+  }
+
+  if (fromExplicitWsEnv) {
+    console.warn("[voice] ignoring unsafe VITE_VOICE_WS_URL; using gateway bridge");
   }
 
   const fromApiBaseEnv = toWsUrlFromHttpBase((API_BASE_URL || "").trim());

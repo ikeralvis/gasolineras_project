@@ -36,6 +36,10 @@ steps:
             echo "ERROR: _VITE_VOICE_WS_URL debe empezar por ws://, wss://, http:// o https://.";
             exit 1;
           fi
+          if [[ "$$VOICE_WS_URL" != */api/voice/ws && "$$VOICE_WS_URL" != */api/voice/ws\?* ]]; then
+            echo "ERROR: _VITE_VOICE_WS_URL debe apuntar al bridge del gateway (/api/voice/ws), no al servicio de voz directo (/ws/voice).";
+            exit 1;
+          fi
         fi
 
         echo "INFO: Usando _VITE_API_BASE_URL=$$API_BASE_URL"
