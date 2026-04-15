@@ -31,6 +31,7 @@ function canonicalTagForPath(path) {
   if (cleanPath.startsWith("/api/recomendacion") || cleanPath.startsWith("/api/recomendaciones")) return "Recomendaciones";
   if (cleanPath.startsWith("/api/routing")) return "Routing";
   if (cleanPath.startsWith("/api/prediction")) return "Prediction";
+  if (cleanPath.startsWith("/api/voice")) return "Voice";
   if (cleanPath.startsWith("/api/geocoding") || cleanPath === "/health") return "Gateway";
 
   return null;
@@ -359,6 +360,33 @@ function mapEvChargingPaths(aggregatedSpec, spec) {
   }
 }
 
+function mapVoicePaths(aggregatedSpec, spec) {
+  if (!spec?.paths) {
+    return;
+  }
+
+  // El voice service expone /health, /capabilities, /voice/dialog
+  // El gateway los sirve en /api/voice/*
+  for (const [path, methods] of Object.entries(spec.paths)) {
+    // Saltar rutas internas
+    if (path === "/openapi.json") continue;
+
+    let gatewayPath;
+    if (path.startsWith("/voice/")) {
+      gatewayPath = `/api${path}`;
+    } else if (path === "/health") {
+      gatewayPath = "/api/voice/health";
+    } else if (path === "/capabilities") {
+      gatewayPath = "/api/voice/capabilities";
+    } else {
+      gatewayPath = `/api/voice${path}`;
+    }
+
+    const cleanGatewayPath = sanitizeGatewayPath(gatewayPath);
+    aggregatedSpec.paths[cleanGatewayPath] = normalizePathItem(cleanGatewayPath, methods);
+  }
+}
+
 function mapPredictionPaths(aggregatedSpec, spec) {
   if (!spec?.paths) {
     return;
@@ -423,6 +451,7 @@ export function setupOpenApiModule(app, {
       mapRecomendacionPaths(aggregatedSpec, specs.recomendacion);
       mapEvChargingPaths(aggregatedSpec, specs.ev_charging);
       mapPredictionPaths(aggregatedSpec, specs.prediction);
+      mapVoicePaths(aggregatedSpec, specs.voice_assistant);
       mergeSecuritySchemes(aggregatedSpec, specs);
 
       console.log(`📋 Documentacion agregada: ${Object.keys(aggregatedSpec.paths).length} endpoints`);

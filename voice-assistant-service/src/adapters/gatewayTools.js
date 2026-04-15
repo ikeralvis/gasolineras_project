@@ -179,6 +179,38 @@ export async function getPricesForVoice(args = {}) {
   };
 }
 
+/**
+ * Devuelve gasolineras cercanas ordenadas por distancia (no por precio).
+ * Útil para responder "¿qué gasolineras hay cerca?" sin importar el precio.
+ */
+export async function getNearestStations(args = {}) {
+  const lat = Number(args.lat);
+  const lon = Number(args.lon);
+  const km = Number(args.km || 5);
+  const limit = Math.min(Math.max(Number(args.limit || 5), 1), 10);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return { ok: false, error: "lat-lon-required", message: "lat y lon son obligatorios." };
+  }
+
+  if (!Number.isFinite(km) || km <= 0 || km > voiceEnv.gateway.maxKm) {
+    return { ok: false, error: "invalid-km", message: `km debe estar entre 0 y ${voiceEnv.gateway.maxKm}.` };
+  }
+
+  const data = await fetchJson(`/api/gasolineras/cerca?lat=${lat}&lon=${lon}&km=${km}&limit=${limit}`);
+  const stations = Array.isArray(data?.gasolineras) ? data.gasolineras : [];
+
+  const summaries = stations
+    .map(buildStationSummary)
+    .sort((a, b) => {
+      if (a.distanceKm == null) return 1;
+      if (b.distanceKm == null) return -1;
+      return a.distanceKm - b.distanceKm;
+    });
+
+  return { ok: true, km, total: summaries.length, sortedBy: "distance", stations: summaries };
+}
+
 export async function getNearestStationContext({ location }) {
   if (!voiceEnv.gateway.enableGasContext) {
     return null;

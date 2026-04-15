@@ -11,7 +11,7 @@ import {
   wsSend,
 } from "./core/network.js";
 import { createRateLimiter } from "./core/rateLimit.js";
-import { runGeminiNativeDialog } from "./adapters/geminiNativeDialog.js";
+import { runPipelineDialog } from "./adapters/pipelineDialog.js";
 
 const app = Fastify({
   logger: false,
@@ -107,7 +107,7 @@ function validateDialogPayload(payload) {
 async function handleDialog(payload, authToken) {
   const dialog = validateDialogPayload(payload);
 
-  return runGeminiNativeDialog({
+  return runPipelineDialog({
     text: dialog.text,
     audioBase64: dialog.audioBase64,
     mimeType: dialog.mimeType,
@@ -190,6 +190,104 @@ app.get("/health", async () => ({
   service: "voice-assistant-service",
   transport: ["http", "ws"],
   runtime: getPublicVoiceConfig(),
+}));
+
+app.get("/openapi.json", async () => ({
+  openapi: "3.1.0",
+  info: {
+    title: "Voice Assistant Service",
+    version: "2.0.0",
+    description: "Servicio de voz TankGo: pipeline STT (Gemini) → LLM con tool calling → TTS (Gemini). Accesible via HTTP y WebSocket.",
+  },
+  paths: {
+    "/health": {
+      get: {
+        summary: "Health check",
+        tags: ["Voice"],
+        responses: { 200: { description: "Servicio operativo" } },
+      },
+    },
+    "/voice/dialog": {
+      post: {
+        summary: "Diálogo de voz (HTTP)",
+        description: "Envía texto o audio en base64 y recibe respuesta en texto y audio TTS. Para audio en streaming usar WebSocket /ws/voice.",
+        tags: ["Voice"],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: {
+                type: "object",
+                properties: {
+                  text: { type: "string", description: "Texto de la consulta (alternativo a audioBase64)." },
+                  audioBase64: { type: "string", description: "Audio en base64 (alternativo a text)." },
+                  mimeType: { type: "string", example: "audio/webm", description: "MIME type del audio." },
+                  includeAudio: { type: "boolean", default: true, description: "Si devolver respuesta de voz TTS." },
+                  location: {
+                    type: "object",
+                    description: "Ubicación del usuario para buscar gasolineras cercanas.",
+                    properties: {
+                      lat: { type: "number" },
+                      lon: { type: "number" },
+                      km: { type: "number", default: 8 },
+                    },
+                    required: ["lat", "lon"],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Respuesta del asistente",
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    provider: { type: "string", example: "pipeline" },
+                    pipeline: {
+                      type: "object",
+                      properties: {
+                        stt: { type: "string" },
+                        llm: { type: "string" },
+                        tts: { type: "string" },
+                      },
+                    },
+                    answer: {
+                      type: "object",
+                      properties: { text: { type: "string" } },
+                    },
+                    tts: {
+                      type: "object",
+                      properties: {
+                        provider: { type: "string" },
+                        note: { type: "string" },
+                        audioBase64: { type: "string", nullable: true },
+                        mimeType: { type: "string", nullable: true },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: "Petición inválida (falta texto o audio)" },
+          429: { description: "Rate limit superado" },
+          500: { description: "Error interno" },
+        },
+      },
+    },
+    "/capabilities": {
+      get: {
+        summary: "Capacidades del servicio",
+        tags: ["Voice"],
+        responses: { 200: { description: "Información de modelos y límites configurados" } },
+      },
+    },
+  },
+  tags: [{ name: "Voice", description: "Endpoints del servicio de voz TankGo" }],
 }));
 
 app.get("/capabilities", async () => ({
@@ -335,7 +433,7 @@ app.get("/ws/voice", { websocket: true }, (connection, req) => {
 
 try {
   await app.listen({ port: voiceEnv.port, host: "0.0.0.0" });
-  console.log(`[voice-assistant-service] gemini-native-audio listening on :${voiceEnv.port}`);
+  console.log(`[voice-assistant-service] pipeline (STT→LLM→TTS) listening on :${voiceEnv.port}`);
 } catch (error) {
   console.error("[voice-assistant-service] startup error", error);
   process.exit(1);

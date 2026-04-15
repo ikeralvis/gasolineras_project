@@ -36,6 +36,11 @@ export function parseAuthTokenFromHeaders(headers = {}) {
 
 export function createAllowedOriginMatcher(allowedOriginsRaw, allowedOrigins) {
   const wildcard = String(allowedOriginsRaw || "").trim() === "*" || allowedOrigins.includes("*");
+  const normalizedAllowedOrigins = new Set(
+    allowedOrigins
+      .map((origin) => normalizeOrigin(origin))
+      .filter(Boolean)
+  );
 
   return (origin) => {
     if (wildcard) {
@@ -44,8 +49,23 @@ export function createAllowedOriginMatcher(allowedOriginsRaw, allowedOrigins) {
     if (!origin) {
       return true;
     }
-    return allowedOrigins.includes(origin);
+
+    const normalizedOrigin = normalizeOrigin(origin);
+    return normalizedAllowedOrigins.has(normalizedOrigin);
   };
+}
+
+function normalizeOrigin(origin) {
+  const raw = String(origin || "").trim();
+  if (!raw) {
+    return "";
+  }
+
+  try {
+    return new URL(raw).origin;
+  } catch {
+    return raw.replace(/\/+$/, "");
+  }
 }
 
 export function wsSend(socket, payload) {

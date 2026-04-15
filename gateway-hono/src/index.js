@@ -106,7 +106,7 @@ const SERVICE_REGISTRY = {
   },
   voice_assistant: {
     url: VOICE_ASSISTANT_SERVICE,
-    openapiPath: null,
+    openapiPath: "/openapi.json",
     healthPaths: ["/health"],
     optional: true,
   },
@@ -245,10 +245,6 @@ async function buildVoiceUpstreamWsHeaders(req) {
 
   if (typeof req.headers?.["user-agent"] === "string") {
     headers["User-Agent"] = req.headers["user-agent"];
-  }
-
-  if (typeof req.headers?.origin === "string" && req.headers.origin.trim()) {
-    headers.Origin = req.headers.origin;
   }
 
   return headers;
@@ -854,7 +850,7 @@ async function proxyVoice(c) {
     const headers = {};
     for (const [key, value] of c.req.raw.headers) {
       const lowerKey = key.toLowerCase();
-      if (lowerKey !== "host" && lowerKey !== "accept-encoding") {
+      if (lowerKey !== "host" && lowerKey !== "accept-encoding" && lowerKey !== "origin") {
         headers[key] = value;
       }
     }

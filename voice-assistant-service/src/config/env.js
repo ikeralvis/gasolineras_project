@@ -67,16 +67,13 @@ export const voiceEnv = Object.freeze({
 
   gemini: {
     apiKey: pickFirstNonEmpty(process.env.GOOGLE_API_KEY, process.env.GEMINI_API_KEY),
-    useLiveApi: asBoolean(process.env.GEMINI_USE_LIVE_API, true),
-    liveModel: process.env.GEMINI_LIVE_MODEL || "models/gemini-2.5-flash-native-audio-dialog",
     dialogModel: process.env.GEMINI_DIALOG_MODEL || process.env.GEMINI_MODEL || "gemini-2.5-flash",
     ttsModel: process.env.GEMINI_TTS_MODEL || "gemini-2.5-flash-preview-tts",
     voiceName: process.env.GEMINI_VOICE_NAME || "Aoede",
-    timeoutMs: asNumber(process.env.GEMINI_TIMEOUT_MS, 12000),
+    timeoutMs: asNumber(process.env.GEMINI_TIMEOUT_MS, 15000),
     maxOutputTokens: asNumber(process.env.GEMINI_MAX_OUTPUT_TOKENS, 512),
     temperature: asNumber(process.env.GEMINI_TEMPERATURE, 0.35),
     language: process.env.GEMINI_LANGUAGE || "es-ES",
-    responseModalities: asCsv(process.env.GEMINI_RESPONSE_MODALITIES, ["TEXT"]),
   },
 
   gateway: {
@@ -90,14 +87,11 @@ export const voiceEnv = Object.freeze({
 
 export function getPublicVoiceConfig() {
   return {
-    provider: voiceEnv.gemini.useLiveApi ? "google-ai-studio-gemini-live" : "google-ai-studio-gemini",
-    useLiveApi: voiceEnv.gemini.useLiveApi,
-    liveModel: voiceEnv.gemini.liveModel,
-    model: voiceEnv.gemini.dialogModel,
+    provider: "pipeline",
+    pipeline: { stt: "gemini", llm: "gemini", tts: "gemini" },
     dialogModel: voiceEnv.gemini.dialogModel,
     ttsModel: voiceEnv.gemini.ttsModel,
     language: voiceEnv.gemini.language,
-    responseModalities: voiceEnv.gemini.responseModalities,
     includeLatencyMeta: voiceEnv.includeLatencyMeta,
     includeAudioByDefault: voiceEnv.includeAudioByDefault,
     wsHeartbeatIntervalMs: voiceEnv.wsHeartbeatIntervalMs,

@@ -9,10 +9,14 @@ type ChatMessage = {
   pending?: boolean;
 };
 
-const QUICK_PROMPTS = [
-  "Dime la más cercana",
-  "Cual es la más cercana en 5 km",
-  "Buscame una gasolinera cerca",
+type QuickPrompt = { label: string; text: string };
+
+const QUICK_PROMPTS: QuickPrompt[] = [
+  { label: "📍 Las más cercanas", text: "¿Qué gasolineras hay cerca de mí?" },
+  { label: "💰 Más barata en 5 km", text: "¿Cuál es la gasolinera más barata de gasolina 95 en 5 kilómetros?" },
+  { label: "⛽ Gasolina 95", text: "¿Dónde está la gasolina 95 más barata cerca?" },
+  { label: "🛢️ Diésel barato", text: "¿Cuál es el diésel más barato cerca de mí?" },
+  { label: "💸 Precio mínimo 3 km", text: "¿Cuál es la gasolinera más barata en menos de 3 kilómetros?" },
 ];
 
 function mergeTranscript(base: string, incoming: string): string {
@@ -770,12 +774,12 @@ export default function VoiceAssistantWidget() {
                 <div className="mb-2 flex flex-wrap gap-1.5">
                   {QUICK_PROMPTS.map((q) => (
                     <button
-                      key={q}
+                      key={q.label}
                       type="button"
-                      onClick={() => sendPrompt(q)}
+                      onClick={() => sendPrompt(q.text)}
                       className="rounded-full border border-[#D7DBFF] bg-[#F5F7FF] px-2.5 py-1 text-[11px] text-[#253778] hover:bg-[#EAF0FF]"
                     >
-                      {q}
+                      {q.label}
                     </button>
                   ))}
                 </div>

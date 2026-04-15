@@ -33,7 +33,7 @@ import pandas as pd
 import psycopg2
 import uvicorn
 import yfinance as yf
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from google.cloud import storage as gcs
 from psycopg2.extras import execute_values
 
@@ -713,8 +713,12 @@ def run_batch():
 
 app = FastAPI(
     title="Prediction Service",
-    version="1.0.0",
-    description="Serving de predicciones desde Neon",
+    version="2.0.0",
+    description=(
+        "Servicio de predicción de precios de combustible con LightGBM quantile. "
+        "Opera en modo batch (Cloud Run Job / Cloud Scheduler) o API (Cloud Run Service). "
+        "Las predicciones se generan para las estaciones con más favoritos de todos los usuarios."
+    ),
 )
 
 
@@ -821,6 +825,148 @@ def get_station_prediction(
         "fuel_filter": fuel,
         "records": len(predictions),
         "predictions": predictions,
+    }
+
+
+@app.get(
+    "/api/prediction/batch",
+    summary="Predicciones para múltiples estaciones",
+    description=(
+        "Devuelve predicciones para una lista de IDEESS en una sola llamada. "
+        "Útil para el asistente de voz y el frontend cuando ya se conocen las estaciones cercanas."
+    ),
+    responses={
+        200: {"description": "Predicciones agrupadas por IDEESS"},
+        400: {"description": "Parámetros inválidos"},
+        500: {"description": "Error consultando predicciones"},
+    },
+)
+def get_batch_predictions(
+    ideess: Annotated[
+        str,
+        Query(description="Lista de IDEESS separados por coma, máximo 20. Ejemplo: 15158,152,10889"),
+    ],
+    fuel: Annotated[Optional[str], Query(description="Filtra por combustible")] = None,
+    run_date: Annotated[
+        Optional[str],
+        Query(description="YYYY-MM-DD. Si no se indica usa la última ejecución disponible"),
+    ] = None,
+):
+    if not DATABASE_URL:
+        raise HTTPException(status_code=500, detail="DATABASE_URL no configurado")
+
+    ids = [s.strip() for s in ideess.split(",") if s.strip()]
+    if not ids:
+        raise HTTPException(status_code=400, detail="ideess es obligatorio")
+    if len(ids) > 20:
+        raise HTTPException(status_code=400, detail="Máximo 20 IDEESS por petición")
+
+    ensure_prediction_table()
+
+    query_fuel = " AND fuel = %s" if fuel else ""
+    extra_params = [fuel] if fuel else []
+
+    try:
+        with get_db_conn() as conn:
+            with conn.cursor() as cur:
+                selected_run_date = run_date
+                if not selected_run_date:
+                    placeholders = ",".join(["%s"] * len(ids))
+                    cur.execute(
+                        f"SELECT MAX(run_date) FROM {PREDICTION_TABLE} WHERE ideess IN ({placeholders}){query_fuel}",
+                        ids + extra_params,
+                    )
+                    row = cur.fetchone()
+                    selected_run_date = row[0].isoformat() if row and row[0] else None
+
+                if not selected_run_date:
+                    return {"run_date": None, "total": 0, "by_station": {}}
+
+                placeholders = ",".join(["%s"] * len(ids))
+                cur.execute(
+                    f"""
+                    SELECT ideess, fuel, forecast_date, run_date,
+                           precio_predicho, margen_min, margen_max, favorites_count
+                    FROM {PREDICTION_TABLE}
+                    WHERE ideess IN ({placeholders}){query_fuel} AND run_date = %s
+                    ORDER BY ideess ASC, fuel ASC, forecast_date ASC;
+                    """,
+                    ids + extra_params + [selected_run_date],
+                )
+                records = cur.fetchall()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error consultando predicciones: {e}")
+
+    by_station: dict = {}
+    for r in records:
+        sid = r[0]
+        if sid not in by_station:
+            by_station[sid] = []
+        by_station[sid].append(
+            {
+                "ideess": r[0],
+                "fuel": r[1],
+                "forecast_date": r[2].isoformat() if isinstance(r[2], date) else str(r[2]),
+                "run_date": r[3].isoformat() if isinstance(r[3], date) else str(r[3]),
+                "precio_predicho": float(r[4]),
+                "margen_min": float(r[5]) if r[5] is not None else None,
+                "margen_max": float(r[6]) if r[6] is not None else None,
+                "favorites_count": int(r[7]) if r[7] is not None else None,
+            }
+        )
+
+    return {
+        "run_date": selected_run_date,
+        "fuel_filter": fuel,
+        "total": len(records),
+        "by_station": by_station,
+    }
+
+
+@app.post(
+    "/api/prediction/trigger",
+    summary="Disparar batch de predicciones",
+    description=(
+        "Lanza el pipeline batch de entrenamiento y predicción en segundo plano. "
+        "Protegido con X-Internal-Secret. "
+        "En GCP: Cloud Scheduler llama a este endpoint para lanzar el batch automáticamente."
+    ),
+    responses={
+        202: {"description": "Batch lanzado en segundo plano"},
+        401: {"description": "Secreto interno no válido"},
+        409: {"description": "Ya hay un batch en ejecución"},
+    },
+)
+def trigger_batch(request: Request):
+    from fastapi import BackgroundTasks
+    import threading
+
+    secret = request.headers.get("X-Internal-Secret", "")
+    if secret != INTERNAL_API_SECRET:
+        raise HTTPException(status_code=401, detail="X-Internal-Secret inválido")
+
+    # Evitar ejecuciones simultáneas con un flag simple en memoria
+    if getattr(trigger_batch, "_running", False):
+        raise HTTPException(status_code=409, detail="Ya hay un batch en ejecución")
+
+    def run_in_thread():
+        trigger_batch._running = True
+        try:
+            run_batch()
+        except Exception as e:
+            print(f"❌ Error en batch disparado vía API: {e}")
+        finally:
+            trigger_batch._running = False
+
+    thread = threading.Thread(target=run_in_thread, daemon=True)
+    thread.start()
+
+    return {
+        "status": "accepted",
+        "message": "Batch de predicciones lanzado en segundo plano",
+        "started_at": datetime.now(timezone.utc).isoformat(),
     }
 
 
