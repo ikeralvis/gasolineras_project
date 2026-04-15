@@ -9,16 +9,16 @@ steps:
     entrypoint: gcloud
     args:
       - 'run'
-      - 'deploy'
-      - 'prediction-service'
+      - 'jobs'
+      - 'update'
+      - '${_PREDICTION_JOB_NAME}'
       - '--image'
       - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/prediccion-img'
       - '--region'
       - 'europe-west1'
-      - '--platform'
-      - 'managed'
-      - '--set-env-vars'
-      - 'RUN_HTTP_API=true,API_HOST=0.0.0.0'
+
+substitutions:
+  _PREDICTION_JOB_NAME: 'prediction-service'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/prediccion-img'

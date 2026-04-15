@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check src/adapters/pipelineDialog.js)",
+      "Bash(node --check src/config/env.js)",
+      "Bash(node --check src/server.js)",
+      "Bash(python3 -c \"import json; nb = json.load\\(open\\('/c/Users/ikera/Desktop/Proyectos/gasolineras_project/prediction-service/Prediccion_lightgbm.ipynb'\\)\\); cells = [c for c in nb['cells'] if c['cell_type'] == 'code']; print\\(f'Found {len\\(cells\\)} code cells'\\); [print\\(f'\\\\n=== CELL {i} ===\\\\n' + ''.join\\(c['source']\\)\\) for i, c in enumerate\\(cells[:10]\\)]\")",
+      "Bash(node --check src/adapters/gatewayTools.js)"
+    ]
+  }
+}

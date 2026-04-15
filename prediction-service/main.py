@@ -23,9 +23,9 @@ import urllib.parse
 import urllib.request
 import warnings
 from datetime import date, datetime
+from datetime import timezone
 from pathlib import Path
 from typing import Annotated, Optional
-from datetime import timezone
 
 import lightgbm as lgb
 import numpy as np
@@ -33,7 +33,7 @@ import pandas as pd
 import psycopg2
 import uvicorn
 import yfinance as yf
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query
 from google.cloud import storage as gcs
 from psycopg2.extras import execute_values
 
@@ -49,6 +49,7 @@ API_PORT = int(os.environ.get("API_PORT", "8001"))
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
 PREDICTION_TABLE = os.environ.get("PREDICTION_TABLE", "prediction_forecasts")
+DATABASE_URL_NOT_CONFIGURED = "DATABASE_URL no configurado"
 
 # Input dataset
 GCS_BUCKET = os.environ.get("GCS_BUCKET", "").strip()
@@ -70,7 +71,12 @@ TOP_N_STATIONS = int(os.environ.get("TOP_N_STATIONS", "500"))
 MIN_FAVORITES_COUNT = int(os.environ.get("MIN_FAVORITES_COUNT", "1"))
 STATION_IDS = [s.strip() for s in os.environ.get("STATION_IDS", "15158,152,10889").split(",") if s.strip()]
 USUARIOS_SERVICE_URL = os.environ.get("USUARIOS_SERVICE_URL", "http://usuarios:3001")
-INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "dev-internal-secret-change-in-production")
+INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "").strip()
+USE_CLOUD_RUN_IAM = os.environ.get("USE_CLOUD_RUN_IAM", "true").lower() == "true"
+
+# Data freshness validation (recommended for scheduled batch runs)
+REQUIRE_FRESH_RAW_DATA = os.environ.get("REQUIRE_FRESH_RAW_DATA", "true").lower() == "true"
+RAW_MAX_AGE_HOURS = int(os.environ.get("RAW_MAX_AGE_HOURS", "36"))
 
 # Forecast/train config
 FUELS = [f.strip() for f in os.environ.get("FUELS", "Precio Gasolina 95 E5|Precio Gasoleo A").split("|") if f.strip()]
@@ -88,12 +94,110 @@ _gcs_client = None
 
 
 # ─────────────────────────────────────────────────────────────────
+# RUNTIME VALIDATION
+# ─────────────────────────────────────────────────────────────────
+
+def validate_runtime_config():
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL no configurado (Neon/PostgreSQL requerido)")
+
+    if SOURCE_MODE not in {"env", "favorites"}:
+        raise RuntimeError("SOURCE_MODE inválido: usa 'env' o 'favorites'")
+
+    if SOURCE_MODE == "env" and not STATION_IDS:
+        raise RuntimeError("SOURCE_MODE=env requiere STATION_IDS no vacío")
+
+    if SOURCE_MODE == "favorites" and FAVORITES_SOURCE not in {"sql", "usuarios-service"}:
+        raise RuntimeError("FAVORITES_SOURCE inválido: usa 'sql' o 'usuarios-service'")
+
+    if SOURCE_MODE == "favorites" and FAVORITES_SOURCE == "usuarios-service" and not USUARIOS_SERVICE_URL:
+        raise RuntimeError("FAVORITES_SOURCE=usuarios-service requiere USUARIOS_SERVICE_URL")
+
+    if not FUELS:
+        raise RuntimeError("FUELS no puede estar vacío")
+
+
+def _validate_raw_freshness_gcs():
+    client = get_gcs()
+    bucket = client.bucket(GCS_BUCKET)
+
+    latest_updated = None
+    parquet_count = 0
+    for blob in bucket.list_blobs(prefix=GCS_RAW_PREFIX):
+        if not blob.name.endswith(".parquet"):
+            continue
+        parquet_count += 1
+        if latest_updated is None or blob.updated > latest_updated:
+            latest_updated = blob.updated
+
+    if parquet_count == 0 or latest_updated is None:
+        raise RuntimeError(
+            f"No hay parquet en gs://{GCS_BUCKET}/{GCS_RAW_PREFIX}. "
+            "Ejecuta primero el sync/export diario."
+        )
+
+    if latest_updated.tzinfo is None:
+        latest_updated = latest_updated.replace(tzinfo=timezone.utc)
+
+    age_hours = (datetime.now(timezone.utc) - latest_updated).total_seconds() / 3600.0
+    if age_hours > RAW_MAX_AGE_HOURS:
+        raise RuntimeError(
+            "Raw desactualizado en GCS. "
+            f"Última actualización: {latest_updated.isoformat()} "
+            f"({age_hours:.1f}h > {RAW_MAX_AGE_HOURS}h)"
+        )
+
+    print(
+        "✅ Raw GCS fresco: "
+        f"{parquet_count} parquet(s), última actualización {latest_updated.isoformat()} "
+        f"({age_hours:.1f}h)"
+    )
+
+
+def _validate_raw_freshness_local():
+    files = glob.glob(LOCAL_RAW_GLOB)
+    if not files:
+        raise RuntimeError(
+            f"No hay parquet local para LOCAL_RAW_GLOB={LOCAL_RAW_GLOB}. "
+            "Ejecuta primero el export diario."
+        )
+
+    latest_mtime = max(os.path.getmtime(path) for path in files)
+    latest_updated = datetime.fromtimestamp(latest_mtime, tz=timezone.utc)
+    age_hours = (datetime.now(timezone.utc) - latest_updated).total_seconds() / 3600.0
+
+    if age_hours > RAW_MAX_AGE_HOURS:
+        raise RuntimeError(
+            "Raw local desactualizado. "
+            f"Última actualización: {latest_updated.isoformat()} "
+            f"({age_hours:.1f}h > {RAW_MAX_AGE_HOURS}h)"
+        )
+
+    print(
+        "✅ Raw local fresco: "
+        f"{len(files)} parquet(s), última actualización {latest_updated.isoformat()} "
+        f"({age_hours:.1f}h)"
+    )
+
+
+def validate_raw_freshness():
+    if not REQUIRE_FRESH_RAW_DATA:
+        print("ℹ️ Validación de frescura RAW desactivada (REQUIRE_FRESH_RAW_DATA=false)")
+        return
+
+    if GCS_BUCKET:
+        _validate_raw_freshness_gcs()
+    else:
+        _validate_raw_freshness_local()
+
+
+# ─────────────────────────────────────────────────────────────────
 # DB HELPERS
 # ─────────────────────────────────────────────────────────────────
 
 def _db_conn_string() -> str:
     if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL no configurado")
+        raise RuntimeError(DATABASE_URL_NOT_CONFIGURED)
     if "sslmode=" in DATABASE_URL:
         return DATABASE_URL
     separator = "&" if "?" in DATABASE_URL else "?"
@@ -234,8 +338,42 @@ def _http_get_json(url: str, headers: Optional[dict] = None, timeout: int = 10) 
         return json.loads(payload)
 
 
+def _is_cloud_run_service_url(url: str) -> bool:
+    try:
+        parsed = urllib.parse.urlparse(url)
+        return parsed.scheme == "https" and parsed.hostname and parsed.hostname.endswith(".run.app")
+    except Exception:
+        return False
+
+
+def _get_cloud_run_id_token_for_url(service_url: str, timeout: int = 10) -> str:
+    parsed = urllib.parse.urlparse(service_url)
+    audience = f"{parsed.scheme}://{parsed.netloc}"
+    metadata_url = (
+        "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity"
+        f"?audience={urllib.parse.quote(audience, safe='')}&format=full"
+    )
+    req = urllib.request.Request(metadata_url, headers={"Metadata-Flavor": "Google"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8").strip()
+
+
+def _build_internal_headers(service_url: str) -> dict:
+    headers = {}
+
+    if INTERNAL_API_SECRET:
+        headers["X-Internal-Secret"] = INTERNAL_API_SECRET
+
+    if USE_CLOUD_RUN_IAM and _is_cloud_run_service_url(service_url):
+        token = _get_cloud_run_id_token_for_url(service_url)
+        headers["Authorization"] = f"Bearer {token}"
+        headers["X-Serverless-Authorization"] = f"Bearer {token}"
+
+    return headers
+
+
 def _fetch_favorites_from_service() -> list[tuple[str, Optional[int]]]:
-    headers = {"X-Internal-Secret": INTERNAL_API_SECRET}
+    headers = _build_internal_headers(USUARIOS_SERVICE_URL)
 
     # Endpoint con stats (preferido para aplicar top_n y min_favorites en origen)
     stats_qs = urllib.parse.urlencode(
@@ -661,6 +799,9 @@ def run_batch():
     print(f"🚀 Batch iniciado: {datetime.now().isoformat()}")
     print(f"   SOURCE_MODE={SOURCE_MODE} | FAVORITES_SOURCE={FAVORITES_SOURCE}")
 
+    validate_runtime_config()
+    validate_raw_freshness()
+
     raw_paths = resolve_raw_files()
     df = load_raw_data(raw_paths)
     brent_df = load_brent()
@@ -756,7 +897,7 @@ def get_station_prediction(
     ] = None,
 ):
     if not DATABASE_URL:
-        raise HTTPException(status_code=500, detail="DATABASE_URL no configurado")
+        raise HTTPException(status_code=500, detail=DATABASE_URL_NOT_CONFIGURED)
 
     ensure_prediction_table()
 
@@ -853,7 +994,7 @@ def get_batch_predictions(
     ] = None,
 ):
     if not DATABASE_URL:
-        raise HTTPException(status_code=500, detail="DATABASE_URL no configurado")
+        raise HTTPException(status_code=500, detail=DATABASE_URL_NOT_CONFIGURED)
 
     ids = [s.strip() for s in ideess.split(",") if s.strip()]
     if not ids:
@@ -927,47 +1068,20 @@ def get_batch_predictions(
 
 @app.post(
     "/api/prediction/trigger",
-    summary="Disparar batch de predicciones",
+    summary="Endpoint deshabilitado (usar Cloud Run Jobs)",
     description=(
-        "Lanza el pipeline batch de entrenamiento y predicción en segundo plano. "
-        "Protegido con X-Internal-Secret. "
-        "En GCP: Cloud Scheduler llama a este endpoint para lanzar el batch automáticamente."
+        "Este endpoint ya no dispara batch en background. "
+        "Para fiabilidad en GCP usa Cloud Run Jobs + Cloud Scheduler."
     ),
     responses={
-        202: {"description": "Batch lanzado en segundo plano"},
-        401: {"description": "Secreto interno no válido"},
-        409: {"description": "Ya hay un batch en ejecución"},
+        410: {"description": "Endpoint deshabilitado para ejecución batch"},
     },
 )
-def trigger_batch(request: Request):
-    from fastapi import BackgroundTasks
-    import threading
-
-    secret = request.headers.get("X-Internal-Secret", "")
-    if secret != INTERNAL_API_SECRET:
-        raise HTTPException(status_code=401, detail="X-Internal-Secret inválido")
-
-    # Evitar ejecuciones simultáneas con un flag simple en memoria
-    if getattr(trigger_batch, "_running", False):
-        raise HTTPException(status_code=409, detail="Ya hay un batch en ejecución")
-
-    def run_in_thread():
-        trigger_batch._running = True
-        try:
-            run_batch()
-        except Exception as e:
-            print(f"❌ Error en batch disparado vía API: {e}")
-        finally:
-            trigger_batch._running = False
-
-    thread = threading.Thread(target=run_in_thread, daemon=True)
-    thread.start()
-
-    return {
-        "status": "accepted",
-        "message": "Batch de predicciones lanzado en segundo plano",
-        "started_at": datetime.now(timezone.utc).isoformat(),
-    }
+def trigger_batch_disabled():
+    raise HTTPException(
+        status_code=410,
+        detail="Endpoint deshabilitado. Usa Cloud Run Jobs + Cloud Scheduler para ejecutar predicción.",
+    )
 
 
 if __name__ == "__main__":
