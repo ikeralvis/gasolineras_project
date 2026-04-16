@@ -1,10 +1,21 @@
 import axios from 'axios';
+import { getAuthToken } from '../api/tokenStore';
 import type { RegisterData } from '../types/auth';
 
 const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const http = axios.create({
   baseURL: API_URL,
   withCredentials: true,
+});
+
+// Inyectar Bearer token en cada petición de axios.
+// Mismo motivo que en apiFetch: evitar ITP de Safari en iOS.
+http.interceptors.request.use((config) => {
+  const token = getAuthToken();
+  if (token && !config.headers['Authorization']) {
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export const authAPI = {

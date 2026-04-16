@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { authAPI } from '../services/auth';
+import { setAuthToken, clearAuthToken } from '../api/tokenStore';
 import type { User } from '../types/auth';
 
 type RegisterPayload = {
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const { token: newToken, user: userData } = await authAPI.login({ email, password });
       setToken(newToken);
       setUser(userData);
+      if (newToken) setAuthToken(newToken);
       return userData;
     } catch (error: unknown) {
       console.error('❌ Error en login:', error);
@@ -74,6 +76,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       // Flujo legacy: mantener firma, pero resolver perfil con cookie/autorización ya establecida.
       setToken(newToken);
+      setAuthToken(newToken);
       const userData = await authAPI.getProfile();
       setUser(userData);
       return userData;
@@ -102,8 +105,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       const { token: newToken } = await response.json();
-      setToken(newToken || 'cookie-session');
-      
+      setToken(newToken ?? null);
+      if (newToken) setAuthToken(newToken);
+
       const userData = await authAPI.getProfile();
       setUser(userData);
       return userData;
@@ -133,6 +137,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     void authAPI.logout();
     setUser(null);
     setToken(null);
+    clearAuthToken();
   }, []);
 
   const contextValue = useMemo(() => ({

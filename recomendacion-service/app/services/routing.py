@@ -33,6 +33,10 @@ def _normalize_backend(backend: Optional[str]) -> str:
     return selected
 
 
+def _supports_toll_avoidance(backend: str) -> bool:
+    return backend == "ors"
+
+
 def _retry_backoff_seconds(attempt: int) -> float:
     return settings.ROUTING_RETRY_BACKOFF_S * (2 ** attempt)
 
@@ -250,10 +254,18 @@ async def get_matrix_durations(
             await client.aclose()
 
 
-def _backend_attempt_order() -> List[str]:
+def _backend_attempt_order(*, evitar_peajes: bool = False) -> List[str]:
     if settings.ROUTING_BACKEND == "ors":
-        return ["ors", "osrm"] if settings.ROUTING_FAILOVER_TO_OSRM else ["ors"]
-    return ["osrm", "ors"]
+        ordered = ["ors", "osrm"] if settings.ROUTING_FAILOVER_TO_OSRM else ["ors"]
+    else:
+        ordered = ["osrm", "ors"]
+
+    if not evitar_peajes:
+        return ordered
+
+    # Evita degradar silenciosamente a un backend que no soporta peajes.
+    toll_capable = [backend for backend in ordered if _supports_toll_avoidance(backend)]
+    return toll_capable or ["ors"]
 
 
 async def _route_with_backend(
@@ -263,6 +275,8 @@ async def _route_with_backend(
     evitar_peajes: bool,
 ) -> RouteResult:
     if backend == "osrm":
+        if evitar_peajes:
+            raise ValueError("OSRM no soporta evitar peajes")
         return await _route_osrm_coords(coordinates, client)
     if backend == "ors":
         return await _route_ors_coords(coordinates, client, evitar_peajes)
@@ -284,7 +298,7 @@ async def get_route(
     try:
         coordinates = [(lon1, lat1), (lon2, lat2)]
         last_exc: Optional[Exception] = None
-        for backend in _backend_attempt_order():
+        for backend in _backend_attempt_order(evitar_peajes=evitar_peajes):
             try:
                 return await _route_with_backend(backend, coordinates, client, evitar_peajes)
             except Exception as exc:
@@ -318,7 +332,7 @@ async def get_route_via_stop(
     try:
         coordinates = [(origin_lon, origin_lat), (stop_lon, stop_lat), (dest_lon, dest_lat)]
         last_exc: Optional[Exception] = None
-        for backend in _backend_attempt_order():
+        for backend in _backend_attempt_order(evitar_peajes=evitar_peajes):
             try:
                 return await _route_with_backend(backend, coordinates, client, evitar_peajes)
             except Exception as exc:
@@ -354,7 +368,12 @@ async def get_detour_minutes_matrix(
     if not candidates:
         return []
 
-    if settings.ROUTING_BACKEND != "ors":
+    should_try_ors_matrix = (
+        settings.ROUTING_BACKEND == "ors"
+        or settings.ROUTING_FAILOVER_TO_OSRM
+        or evitar_peajes
+    )
+    if not should_try_ors_matrix:
         return [None] * len(candidates)
 
     capped = candidates[: settings.MATRIX_MAX_CANDIDATES]

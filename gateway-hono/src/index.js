@@ -133,12 +133,17 @@ if (IS_PRODUCTION && !HAS_EXPLICIT_VOICE_SERVICE_URL) {
 }
 
 // Configuración de cookies
+// Cuando el gateway esté en api.tankgo.dev y el frontend en tankgo.dev,
+// ambos comparten el mismo eTLD+1 → las cookies son "first-party" para Safari.
+// Configura COOKIE_DOMAIN=.tankgo.dev en las variables de entorno de producción.
+const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
 const COOKIE_CONFIG = {
   httpOnly: true,
   secure: IS_PRODUCTION,
   sameSite: IS_PRODUCTION ? "None" : "Lax",
   path: "/",
-  maxAge: 7 * 24 * 60 * 60 // 7 días en segundos
+  maxAge: 7 * 24 * 60 * 60, // 7 días en segundos
+  ...(COOKIE_DOMAIN ? { domain: COOKIE_DOMAIN } : {}),
 };
 
 function getAuthTokenFromRequest(c) {

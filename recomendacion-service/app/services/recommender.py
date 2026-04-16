@@ -40,6 +40,7 @@ async def _apply_matrix_detour_minutes(
     origin: Coordenada,
     dest: Coordenada,
     enriched: List[CandidateScore],
+    avg_speed_kmh: float,
 ) -> None:
     if not enriched:
         return
@@ -61,7 +62,7 @@ async def _apply_matrix_detour_minutes(
         if detour_min is None:
             continue
         item.desvio_min = round(detour_min, 1)
-        item.desvio_km = round((detour_min / 60.0) * AVG_SPEED_KMH, 2)
+        item.desvio_km = round((detour_min / 60.0) * avg_speed_kmh, 2)
 
 
 async def _refine_exact_detours(
@@ -69,35 +70,42 @@ async def _refine_exact_detours(
     origin: Coordenada,
     dest: Coordenada,
     route_dist_km: float,
+    route_duration_min: float,
     enriched: List[CandidateScore],
 ) -> None:
     if not enriched:
         return
 
-    refine_limit = min(len(enriched), max(settings.MAX_REAL_DETOUR_CHECKS, req.top_n))
+    refine_limit = min(
+        len(enriched),
+        max(1, min(settings.MAX_REAL_DETOUR_CHECKS, req.top_n)),
+    )
     refine_pool = sorted(enriched, key=lambda c: (c.desvio_min, c.precio))[:refine_limit]
     semaphore = asyncio.Semaphore(8)
 
-    async def _refine(item: CandidateScore):
-        async with semaphore:
-            station = item.station
-            try:
-                via_route = await get_route_via_stop(
-                    origin_lat=origin.lat,
-                    origin_lon=origin.lon,
-                    stop_lat=station.lat,
-                    stop_lon=station.lon,
-                    dest_lat=dest.lat,
-                    dest_lon=dest.lon,
-                    evitar_peajes=req.evitar_peajes,
-                )
-                real_detour_km = max(0.0, via_route.distancia_km - route_dist_km)
-                item.desvio_km = round(real_detour_km, 2)
-                item.desvio_min = round((real_detour_km / AVG_SPEED_KMH) * 60, 1)
-            except Exception:
-                return
+    async with httpx.AsyncClient() as client:
+        async def _refine(item: CandidateScore):
+            async with semaphore:
+                station = item.station
+                try:
+                    via_route = await get_route_via_stop(
+                        origin_lat=origin.lat,
+                        origin_lon=origin.lon,
+                        stop_lat=station.lat,
+                        stop_lon=station.lon,
+                        dest_lat=dest.lat,
+                        dest_lon=dest.lon,
+                        evitar_peajes=req.evitar_peajes,
+                        client=client,
+                    )
+                    real_detour_km = max(0.0, via_route.distancia_km - route_dist_km)
+                    real_detour_min = max(0.0, via_route.duracion_min - route_duration_min)
+                    item.desvio_km = round(real_detour_km, 2)
+                    item.desvio_min = round(real_detour_min, 1)
+                except Exception:
+                    return
 
-    await asyncio.gather(*[_refine(item) for item in refine_pool], return_exceptions=True)
+        await asyncio.gather(*[_refine(item) for item in refine_pool], return_exceptions=True)
 
 
 async def _enrich_access_type(candidates: List[CandidateScore]) -> None:
@@ -159,6 +167,11 @@ async def build_recommendations(
     stations,
 ) -> RecomendacionResponse:
     route_dist_km = route.distancia_km
+    route_duration_min = route.duracion_min
+    route_avg_speed_kmh = AVG_SPEED_KMH
+    if route_duration_min > 0.1:
+        route_avg_speed_kmh = max(30.0, min(130.0, route_dist_km / (route_duration_min / 60.0)))
+
     origin = req.origen
     dest = req.destino
 
@@ -172,13 +185,13 @@ async def build_recommendations(
         req=req,
         route=route,
         stations=stations,
-        avg_speed_kmh=AVG_SPEED_KMH,
+        avg_speed_kmh=route_avg_speed_kmh,
         road_factor=ROAD_FACTOR,
         default_detour_minutes=settings.DEFAULT_MAX_DESVIO_MIN,
     )
 
-    await _apply_matrix_detour_minutes(req, origin, dest, enriched)
-    await _refine_exact_detours(req, origin, dest, route_dist_km, enriched)
+    await _apply_matrix_detour_minutes(req, origin, dest, enriched, route_avg_speed_kmh)
+    await _refine_exact_detours(req, origin, dest, route_dist_km, route_duration_min, enriched)
 
     enriched = filter_viable_candidates(
         enriched,
@@ -260,8 +273,14 @@ async def build_recommendations(
         opciones_parada=build_stop_option_candidates(items),
         metadata={
             "detour_strategy": "time_based",
+            "detour_minutes_source": "matrix_plus_exact_duration_delta",
             "max_detour_minutes_effective": detour_limit_min,
             "max_detour_km_effective": round(detour_limit_km, 2),
+            "route_avg_speed_kmh": round(route_avg_speed_kmh, 1),
+            "exact_refine_candidates": min(
+                len(enriched),
+                max(1, min(settings.MAX_REAL_DETOUR_CHECKS, req.top_n)),
+            ),
             "poi_access_provider": settings.POI_ACCESS_PROVIDER,
         },
         geojson={

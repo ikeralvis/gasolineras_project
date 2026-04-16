@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-
-const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+import { apiFetch } from '../api/http';
 
 interface Favorito {
   ideess: string;
@@ -25,9 +24,7 @@ export function useFavorites() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/usuarios/favoritos`, {
-        credentials: 'include',
-      });
+      const response = await apiFetch('/api/usuarios/favoritos');
 
       if (!response.ok) {
         throw new Error('Error al cargar favoritos');
@@ -62,12 +59,8 @@ export function useFavorites() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/usuarios/favoritos`, {
+      const response = await apiFetch('/api/usuarios/favoritos', {
         method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
         body: JSON.stringify({ ideess }),
       });
 
@@ -95,9 +88,8 @@ export function useFavorites() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/usuarios/favoritos/${ideess}`, {
+      const response = await apiFetch(`/api/usuarios/favoritos/${ideess}`, {
         method: 'DELETE',
-        credentials: 'include',
       });
 
       if (!response.ok) {

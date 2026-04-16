@@ -1,3 +1,5 @@
+import { getAuthToken } from './tokenStore';
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").replace(/\/$/, "");
 
 function buildApiUrl(path: string): string {
@@ -10,6 +12,13 @@ function buildApiUrl(path: string): string {
 
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
+
+  // Inyectar Bearer token si existe – evita el problema de ITP de Safari en iOS
+  // (Safari bloquea cookies cross-origin; los headers Authorization no tienen esa restricción)
+  const token = getAuthToken();
+  if (token && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
 
   // Auto-apply JSON header when body is plain text/json payload.
   if (init.body && !headers.has("Content-Type") && !(init.body instanceof FormData)) {

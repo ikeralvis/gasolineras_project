@@ -31,6 +31,7 @@ type RouteLocation = {
 
 type GasStation = {
   id: string;
+  posicion: number;
   nombre: string;
   direccion: string;
   municipio: string;
@@ -181,6 +182,7 @@ export default function Rutas() {
 
   const mapApiItemToStation = (item: RecomendacionResponse["recomendaciones"][number]): GasStation => ({
     id: item.gasolinera.id || `station-${item.posicion}`,
+    posicion: item.posicion,
     nombre: item.gasolinera.nombre || `Gasolinera ${item.posicion}`,
     direccion: item.gasolinera.direccion || "",
     municipio: item.gasolinera.municipio || "",
@@ -744,9 +746,14 @@ export default function Rutas() {
                       <p className="truncate text-sm font-bold text-[#12316a]">{station.nombre}</p>
                       <p className="truncate text-xs text-[#6782b0]">{station.municipio} {station.provincia ? `· ${station.provincia}` : ""}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-[#e7efff] px-2 py-0.5 text-[11px] font-semibold text-[#1f4fa0]">
-                      {Math.round(station.porcentaje_ruta)}%
-                    </span>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className="rounded-full bg-[#f3ecff] px-2 py-0.5 text-[11px] font-semibold text-[#6b21a8]">
+                        #{station.posicion}
+                      </span>
+                      <span className="rounded-full bg-[#e7efff] px-2 py-0.5 text-[11px] font-semibold text-[#1f4fa0]" title={t("routes.progressOnRoute", { defaultValue: "Progreso sobre la ruta" })}>
+                        {Math.round(station.porcentaje_ruta)}% {t("routes.routeShort", { defaultValue: "ruta" })}
+                      </span>
+                    </div>
                   </div>
                   <p className="mt-1 text-xs font-semibold text-[#23467f]">€{station.precio_litro.toFixed(3)} · +{station.desvio_km.toFixed(1)} km · +{Math.round(station.desvio_min_estimado)} min</p>
                 </button>

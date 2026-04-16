@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { FaUser, FaEnvelope, FaShieldAlt, FaHeart, FaTrash, FaSignOutAlt, FaGasPump } from "react-icons/fa";
-
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+import { apiFetch } from "../api/http";
 
 interface Usuario {
   id: number;
@@ -44,12 +43,8 @@ export default function Profile() {
     }
     setLoading(true);
     Promise.all([
-      fetch(`${API_BASE}/api/usuarios/me`, {
-        credentials: 'include',
-      }).then((r) => r.json()),
-      fetch(`${API_BASE}/api/usuarios/favoritos`, {
-        credentials: 'include',
-      }).then((r) => r.json()),
+      apiFetch('/api/usuarios/me').then((r) => r.json()),
+      apiFetch('/api/usuarios/favoritos').then((r) => r.json()),
     ])
       .then(([perfilData, favoritosData]) => {
         if (perfilData.error) setError(perfilData.error);
@@ -76,10 +71,7 @@ export default function Profile() {
     if (!globalThis.confirm(t('profile.deleteConfirm'))) return;
     setLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/api/usuarios/me`, {
-        method: "DELETE",
-        credentials: 'include',
-      });
+      const res = await apiFetch('/api/usuarios/me', { method: "DELETE" });
       if (res.ok) {
         logout();
         navigate("/register");
@@ -125,12 +117,8 @@ export default function Profile() {
     setGuardandoCombustible(true);
     setSaveOkMessage("");
     try {
-      const res = await fetch(`${API_BASE}/api/usuarios/me`, {
+      const res = await apiFetch('/api/usuarios/me', {
         method: "PATCH",
-        credentials: 'include',
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify({
           combustible_favorito: combustibleSeleccionado,
           modelo_coche: modeloCoche.trim(),
@@ -155,9 +143,7 @@ export default function Profile() {
         setCombustibleSeleccionado(patchedPerfil.combustible_favorito || combustibleSeleccionado);
         setModeloCoche(patchedPerfil.modelo_coche || "");
 
-        const refreshed = await fetch(`${API_BASE}/api/usuarios/me`, {
-          credentials: 'include',
-        });
+        const refreshed = await apiFetch('/api/usuarios/me');
         const updatedPerfil = await refreshed.json();
         if (updatedPerfil.error) {
           setError('Se actualizó la sesión, pero no se pudo verificar en base de datos. Revisa usuarios-service/BD en Render.');
