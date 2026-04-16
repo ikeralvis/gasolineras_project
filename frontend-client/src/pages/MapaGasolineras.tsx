@@ -161,16 +161,18 @@ function GasMapController({ onMarkersUpdate, onLoading, onZoomChange, refreshKey
     const ne = bounds.getNorthEast();
     const sw = bounds.getSouthWest();
     const zoom = map.getZoom();
+    const latPad = Math.max(0.01, (ne.lat - sw.lat) * 0.15);
+    const lonPad = Math.max(0.01, (ne.lng - sw.lng) * 0.15);
 
     onZoomChange(zoom);
 
     onLoading(true);
     try {
       const markers = await fetchGasMarkers({
-        lat_ne: ne.lat,
-        lon_ne: ne.lng,
-        lat_sw: sw.lat,
-        lon_sw: sw.lng,
+        lat_ne: Math.min(90, ne.lat + latPad),
+        lon_ne: Math.min(180, ne.lng + lonPad),
+        lat_sw: Math.max(-90, sw.lat - latPad),
+        lon_sw: Math.max(-180, sw.lng - lonPad),
         zoom,
       });
       if (currentSeq === fetchSeqRef.current) {
@@ -262,7 +264,7 @@ function ClusterCircle({ marker }: Readonly<ClusterCircleProps>) {
       position={[marker.latitude, marker.longitude]}
       icon={icon}
       eventHandlers={{
-        click: () => map.flyTo([marker.latitude, marker.longitude], Math.min(map.getZoom() + 3, 18)),
+        click: () => map.flyTo([marker.latitude, marker.longitude], Math.min(map.getZoom() + 2, 17)),
       }}
     />
   );
@@ -273,33 +275,12 @@ interface GasolineraDrawerProps {
   onClose: () => void;
 }
 
-const MOBILE_SNAP_POINTS = [42, 68, 90] as const;
-
 function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [detail, setDetail] = useState<GasolineraDetail | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [snapIndex, setSnapIndex] = useState<number>(1);
-  const dragStartY = useRef<number | null>(null);
-
-  const startHandleDrag = (startY: number) => {
-    dragStartY.current = startY;
-  };
-
-  const endHandleDrag = (endY: number) => {
-    if (dragStartY.current === null) {
-      return;
-    }
-    const delta = endY - dragStartY.current;
-    if (delta < -45) {
-      setSnapIndex((prev) => Math.min(prev + 1, MOBILE_SNAP_POINTS.length - 1));
-    } else if (delta > 45) {
-      setSnapIndex((prev) => Math.max(prev - 1, 0));
-    }
-    dragStartY.current = null;
-  };
 
   useEffect(() => {
     if (!ideess) { setDetail(null); return; }
@@ -314,12 +295,6 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [ideess, t]);
-
-  useEffect(() => {
-    if (ideess) {
-      setSnapIndex(1);
-    }
-  }, [ideess]);
 
   useEffect(() => {
     if (!ideess) {
@@ -337,7 +312,6 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
   const isOpen = !!ideess;
   useBodyScrollLock(isOpen);
   const logo = detail ? getBrandLogo(detail["Rótulo"]) : null;
-  const snapHeight = `${MOBILE_SNAP_POINTS[snapIndex]}vh`;
 
   const combustibles = detail ? [
     { label: "G95", nombre: "Gasolina 95 E5", precio: detail["Precio Gasolina 95 E5"] },
@@ -363,40 +337,16 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
         className={`
           fixed bottom-0 left-0 right-0
           md:bottom-auto md:top-0 md:right-0 md:left-auto
-          md:h-full md:w-96
+          h-[44dvh] md:h-full md:w-90
           bg-white shadow-2xl z-1000
           transition-all duration-300 ease-in-out
           rounded-t-2xl md:rounded-none
           ${isOpen ? "translate-y-0 md:translate-x-0" : "translate-y-full md:translate-x-full"}
-          flex flex-col max-h-(--sheet-h,80vh) md:max-h-full overflow-hidden
+          flex flex-col overflow-hidden
         `}
-        style={{ ...(isOpen ? ({ "--sheet-h": snapHeight } as Record<string, string>) : {}) }}
       >
-        {/* Handle movil */}
-        <div className="md:hidden flex justify-center pt-3 pb-1 shrink-0 touch-none">
-          <button
-            type="button"
-            aria-label="Arrastra para expandir o colapsar"
-            className="h-8 w-24 rounded-full flex items-center justify-center"
-            onClick={() => setSnapIndex((prev) => (prev === MOBILE_SNAP_POINTS.length - 1 ? 0 : prev + 1))}
-            onTouchStart={(event) => startHandleDrag(event.touches[0].clientY)}
-            onTouchEnd={(event) => endHandleDrag(event.changedTouches[0].clientY)}
-            onMouseDown={(event) => {
-              startHandleDrag(event.clientY);
-              const onMouseUp = (upEvent: MouseEvent) => {
-                endHandleDrag(upEvent.clientY);
-                globalThis.removeEventListener("mouseup", onMouseUp);
-              };
-              globalThis.addEventListener("mouseup", onMouseUp);
-            }}
-          >
-            <span className="w-12 h-1.5 rounded-full bg-gray-300" />
-          </button>
-        </div>
-        <p className="md:hidden text-center text-[11px] text-gray-400 pb-2">Toca o arrastra para ajustar</p>
-
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100 shrink-0">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             {logo ? (
               <img src={logo} alt="" className="w-10 h-10 object-contain shrink-0" />
@@ -424,7 +374,7 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {loading && (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-8 w-8 border-4 border-[#000C74] border-t-transparent" />
@@ -485,7 +435,7 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
 
         {/* Footer con acciones */}
         {detail && !loading && (
-          <div className="px-5 py-4 border-t border-gray-100 shrink-0 flex gap-2">
+          <div className="px-4 py-3 border-t border-gray-100 shrink-0 flex gap-2">
             <button
               onClick={() => navigate(`/gasolinera/${detail.IDEESS}`)}
               className="flex-1 min-h-11 flex items-center justify-center gap-2 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#001A8A] transition text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
@@ -520,6 +470,8 @@ export default function MapaGasolineras() {
   const [mapZoom, setMapZoom] = useState(6);
 
   useEffect(() => {
+    let watchId: number | null = null;
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const lat = pos.coords.latitude;
@@ -528,10 +480,29 @@ export default function MapaGasolineras() {
         setLocationGranted(true);
       },
       (error) => {
-        console.warn("No se pudo obtener ubicacion:", error.message);
+        console.warn("No se pudo obtener ubicacion inicial:", error.message);
       },
-      { timeout: 5000 }
+      { enableHighAccuracy: false, timeout: 2500, maximumAge: 120000 }
     );
+
+    watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        setUserLocation([lat, lon]);
+        setLocationGranted(true);
+      },
+      (error) => {
+        console.warn("No se pudo refinar ubicacion:", error.message);
+      },
+      { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
+    );
+
+    return () => {
+      if (watchId !== null) {
+        navigator.geolocation.clearWatch(watchId);
+      }
+    };
   }, []);
 
   const stationMarkers = markers.filter((m): m is { type: "station"; station: Gasolinera } => m.type === "station");
@@ -549,7 +520,7 @@ export default function MapaGasolineras() {
   };
 
   return (
-    <div className="w-full h-[calc(100vh-64px)] flex flex-col relative">
+    <div className="w-full h-[calc(100dvh-60px)] md:h-[calc(100dvh-64px)] flex flex-col relative overflow-hidden">
 
       {/* ENCABEZADO MAPA */}
       <div className="bg-[#000C74] text-white shadow z-10 shrink-0">
@@ -577,11 +548,12 @@ export default function MapaGasolineras() {
       <MapContainer
         center={userLocation}
         zoom={locationGranted ? 13 : 6}
-        scrollWheelZoom
+        scrollWheelZoom={!isTouchDevice}
         wheelPxPerZoomLevel={140}
+        zoomControl={false}
         dragging={!isTouchDevice}
         touchZoom="center"
-        className="flex-1 z-0"
+        className="flex-1 min-h-0 z-0"
         style={{ zIndex: 0 }}
       >
           <TileLayer

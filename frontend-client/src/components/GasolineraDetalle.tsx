@@ -84,6 +84,7 @@ export default function GasolineraDetalle() {
   const [gasolinera, setGasolinera] = useState<Gasolinera | null>(null);
   const [cercanas, setCercanas] = useState<Gasolinera[]>([]);
   const [ordenCercanas, setOrdenCercanas] = useState<"distancia" | "precio">("distancia");
+  const [shareFeedback, setShareFeedback] = useState<string | null>(null);
 
   useEffect(() => {
     globalThis.scrollTo({ top: 0, behavior: "auto" });
@@ -137,6 +138,35 @@ export default function GasolineraDetalle() {
     const precioB = Number.parseFloat(b["Precio Gasolina 95 E5"].replace(",", "."));
     return precioA - precioB;
   });
+
+  const handleShare = async () => {
+    const shareUrl = `${globalThis.location.origin}/gasolinera/${gasolinera.IDEESS}`;
+    const shareTitle = gasolinera["Rótulo"];
+    const shareText = `${shareTitle} · ${gasolinera.Municipio}, ${gasolinera.Provincia}`;
+
+    try {
+      if (globalThis.navigator.share) {
+        await globalThis.navigator.share({
+          title: shareTitle,
+          text: shareText,
+          url: shareUrl,
+        });
+      } else if (globalThis.navigator.clipboard?.writeText) {
+        await globalThis.navigator.clipboard.writeText(shareUrl);
+      } else {
+        throw new Error('Share unavailable');
+      }
+
+      setShareFeedback(t('detail.shareCopied', { defaultValue: 'Enlace copiado' }));
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        return;
+      }
+      setShareFeedback(t('detail.shareError', { defaultValue: 'No se pudo compartir' }));
+    }
+
+    globalThis.setTimeout(() => setShareFeedback(null), 2200);
+  };
 
   const iconUrl = logo || "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png";
   const icon = L.divIcon({
@@ -230,13 +260,21 @@ export default function GasolineraDetalle() {
               {t('detail.howToGet')}
             </a>
 
-            <button className="flex-1 sm:flex-none inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2">
+            <button
+              type="button"
+              onClick={handleShare}
+              className="flex-1 sm:flex-none inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl hover:bg-gray-50 transition text-sm font-medium text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
+            >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
               </svg>
               {t('detail.share')}
             </button>
           </div>
+
+          {shareFeedback && (
+            <p className="mt-2 text-xs font-medium text-gray-600">{shareFeedback}</p>
+          )}
 
           {/* Combustibles secundarios en bloque compacto */}
           {combustiblesSecundarios.length > 0 && (
@@ -293,6 +331,7 @@ export default function GasolineraDetalle() {
           <MapContainer
             center={[gasolinera.Latitud, gasolinera.Longitud]}
             zoom={16}
+            zoomControl={false}
             className="h-56 sm:h-80 w-full z-0"
             style={{ zIndex: 0 }}
           >

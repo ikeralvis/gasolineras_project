@@ -41,7 +41,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
   const navigate = useNavigate();
   const { estadisticas, loading: loadingStats } = useEstadisticas();
 
-  const rowsPerPage = 10;
+  const rowsPerPage = 12;
 
   const totalPages = Math.ceil(gasolineras.length / rowsPerPage);
 
@@ -130,7 +130,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
   };
 
   return (
-    <div className="bg-white shadow-lg border border-gray-100 rounded-2xl p-6 overflow-hidden">
+    <div className="bg-white shadow-lg border border-gray-100 rounded-2xl p-4 overflow-hidden">
 
       {/* ESTADISTICAS DE PRECIOS (modo compacto) */}
       {estadisticas && !loadingStats && (
@@ -271,7 +271,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
       </div>
 
       {/* CARDS (MÓVIL) */}
-      <div className="md:hidden space-y-4">
+      <div className="md:hidden space-y-2.5">
         {paginated.map((g) => {
           const stationName = g["Rótulo"] ?? (g as any).Rotulo ?? "Gasolinera";
           const logo = getBrandLogo(stationName);
@@ -279,26 +279,26 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
           return (
             <div
               key={g.IDEESS}
-              className="border border-gray-200 rounded-xl p-5 shadow-sm bg-white hover:shadow-md transition-all"
+              className="border border-gray-200 rounded-xl p-3.5 shadow-sm bg-white hover:shadow-md transition-all"
             >
-              <div className="mb-3 flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
+              <div className="mb-2.5 flex items-start justify-between gap-2.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   {logo ? (
                     <img
                       src={logo}
                       alt={stationName}
-                      className="w-12 h-12 object-contain rounded-lg bg-white shadow-sm p-1"
+                      className="w-10 h-10 object-contain rounded-lg bg-white shadow-sm p-1"
                     />
                   ) : (
-                    <div className="w-12 h-12 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold">
+                    <div className="w-10 h-10 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold text-sm">
                       {stationName.substring(0, 2).toUpperCase()}
                     </div>
                   )}
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-lg text-[#000C74] truncate">
+                    <h3 className="font-semibold text-base text-[#000C74] truncate">
                       {stationName}
                     </h3>
-                    <p className="text-sm text-gray-600 truncate">{g.Municipio}, {g.Provincia}</p>
+                    <p className="text-xs text-gray-600 truncate">{g.Municipio}, {g.Provincia}</p>
                   </div>
                 </div>
                 <FavoritoButton ideess={g.IDEESS} size="lg" />
@@ -314,10 +314,10 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
 
               {/* PRECIO DEL COMBUSTIBLE SELECCIONADO */}
               <div className="grid grid-cols-1 gap-3">
-                <div className="p-3 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 border border-blue-200">
+                <div className="p-2.5 rounded-lg bg-linear-to-br from-blue-50 to-blue-100/50 border border-blue-200">
                   <span className="block text-xs text-blue-700 font-medium mb-1">{getNombreCombustible(combustibleSeleccionado)}</span>
                   <div className="flex items-baseline gap-1">
-                    <span className="text-xl font-bold text-gray-900">
+                    <span className="text-lg font-bold text-gray-900">
                       {getPriceByType(g, combustibleSeleccionado) || "N/D"}
                     </span>
                     <span className="text-xs text-gray-600">€/L</span>
@@ -328,7 +328,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
 
               {/* HORARIO COMPACTO */}
               {(g.Horario || g.horario_parsed) && (
-                <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-1.5">
+                <div className="mt-2 pt-2 border-t border-gray-100 flex items-center gap-1.5">
                   <HorarioDisplay
                     mode="compact"
                     horario={g.Horario}
@@ -342,7 +342,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
               <button
                 type="button"
                 onClick={() => openStationDetail(g.IDEESS)}
-                className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#000C74] px-4 text-sm font-semibold text-white transition hover:bg-[#0A128C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
+                className="mt-2.5 inline-flex min-h-10 w-full items-center justify-center rounded-xl bg-[#000C74] px-3 text-xs font-semibold text-white transition hover:bg-[#0A128C] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000C74] focus-visible:ring-offset-2"
               >
                 {t('table.viewDetails')}
               </button>

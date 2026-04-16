@@ -7,6 +7,56 @@ interface Favorito {
   created_at: string;
 }
 
+const FAVORITES_CACHE_TTL_MS = 60 * 1000;
+
+let sharedFavoritos: string[] | null = null;
+let sharedUpdatedAt = 0;
+let sharedRequest: Promise<string[]> | null = null;
+const sharedListeners = new Set<(ids: string[]) => void>();
+
+function notifyShared(ids: string[]) {
+  for (const listener of sharedListeners) {
+    listener(ids);
+  }
+}
+
+function setSharedFavoritos(ids: string[]) {
+  const unique = [...new Set(ids)];
+  sharedFavoritos = unique;
+  sharedUpdatedAt = Date.now();
+  notifyShared(unique);
+}
+
+async function fetchSharedFavoritos(forceRefresh = false): Promise<string[]> {
+  if (
+    !forceRefresh &&
+    Array.isArray(sharedFavoritos) &&
+    Date.now() - sharedUpdatedAt < FAVORITES_CACHE_TTL_MS
+  ) {
+    return sharedFavoritos;
+  }
+
+  if (sharedRequest) {
+    return sharedRequest;
+  }
+
+  sharedRequest = (async () => {
+    const response = await apiFetch('/api/usuarios/favoritos');
+    if (!response.ok) {
+      throw new Error('Error al cargar favoritos');
+    }
+
+    const data: Favorito[] = await response.json();
+    const ids = data.map((f) => f.ideess);
+    setSharedFavoritos(ids);
+    return ids;
+  })().finally(() => {
+    sharedRequest = null;
+  });
+
+  return sharedRequest;
+}
+
 export function useFavorites() {
   const { isAuthenticated } = useAuth();
   const [favoritos, setFavoritos] = useState<string[]>([]);
@@ -14,8 +64,10 @@ export function useFavorites() {
   const [error, setError] = useState<string | null>(null);
 
   // Cargar favoritos al montar o cuando cambie el estado de autenticación
-  const cargarFavoritos = useCallback(async () => {
+  const cargarFavoritos = useCallback(async (forceRefresh = false) => {
     if (!isAuthenticated) {
+      sharedFavoritos = [];
+      sharedUpdatedAt = Date.now();
       setFavoritos([]);
       return;
     }
@@ -24,25 +76,35 @@ export function useFavorites() {
     setError(null);
 
     try {
-      const response = await apiFetch('/api/usuarios/favoritos');
-
-      if (!response.ok) {
-        throw new Error('Error al cargar favoritos');
-      }
-
-      const data: Favorito[] = await response.json();
-      setFavoritos(data.map(f => f.ideess));
-    } catch (err: any) {
-      setError(err.message);
+      const ids = await fetchSharedFavoritos(forceRefresh);
+      setFavoritos(ids);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al cargar favoritos';
+      setError(message);
       console.error('Error cargando favoritos:', err);
     } finally {
       setLoading(false);
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    const listener = (ids: string[]) => {
+      setFavoritos(ids);
+    };
+    sharedListeners.add(listener);
+
+    if (Array.isArray(sharedFavoritos)) {
+      setFavoritos(sharedFavoritos);
+    }
+
+    return () => {
+      sharedListeners.delete(listener);
+    };
+  }, []);
+
   // Cargar favoritos al montar
   useEffect(() => {
-    cargarFavoritos();
+    void cargarFavoritos();
   }, [cargarFavoritos]);
 
   // Verificar si una gasolinera es favorita
@@ -69,11 +131,13 @@ export function useFavorites() {
         throw new Error(errorData.error || 'Error al agregar favorito');
       }
 
-      // Actualizar estado local
-      setFavoritos(prev => [...prev, ideess]);
+      const next = new Set(sharedFavoritos ?? favoritos);
+      next.add(ideess);
+      setSharedFavoritos([...next]);
       return true;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al agregar favorito';
+      setError(message);
       console.error('Error agregando favorito:', err);
       throw err;
     }
@@ -97,11 +161,12 @@ export function useFavorites() {
         throw new Error(errorData.error || 'Error al eliminar favorito');
       }
 
-      // Actualizar estado local
-      setFavoritos(prev => prev.filter(id => id !== ideess));
+      const next = (sharedFavoritos ?? favoritos).filter((id) => id !== ideess);
+      setSharedFavoritos(next);
       return true;
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Error al eliminar favorito';
+      setError(message);
       console.error('Error eliminando favorito:', err);
       throw err;
     }
