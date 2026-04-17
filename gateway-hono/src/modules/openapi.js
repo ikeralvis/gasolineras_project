@@ -266,7 +266,6 @@ function buildBaseAggregatedSpec() {
       { name: "Gateway", description: "Endpoints del Gateway" },
       { name: "Auth", description: "Autenticacion y gestion de usuarios (proxeado a usuarios-service)" },
       { name: "Usuarios", description: "Gestion de usuarios y perfil (proxeado a usuarios-service)" },
-      { name: "Favoritos", description: "Gestion de gasolineras favoritas (proxeado a usuarios-service)" },
       { name: "Gasolineras", description: "Informacion de gasolineras (proxeado a gasolineras-service)" },
       {
         name: "Recomendaciones",

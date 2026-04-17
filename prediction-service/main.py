@@ -457,8 +457,10 @@ def download_raw_parquets_from_gcs() -> list[str]:
 
     local_paths = []
     for blob in parquet_blobs:
-        filename = Path(blob.name).name
-        local_path = TMP_RAW / filename
+        # Mantener nombre único por objeto GCS para no sobrescribir archivos
+        # cuando usamos formato particionado snapshot_date=YYYY-MM-DD/gasolineras.parquet.
+        safe_name = blob.name.strip("/").replace("/", "__")
+        local_path = TMP_RAW / safe_name
         blob.download_to_filename(str(local_path))
         local_paths.append(str(local_path))
 
