@@ -9,6 +9,7 @@ from app.config import settings
 from app.models.schemas import (
     Coordenada,
     EstadisticasRuta,
+    GasolineraInternal,
     GasolineraResumen,
     GasolinerasDestacadas,
     RecomendacionItem,
