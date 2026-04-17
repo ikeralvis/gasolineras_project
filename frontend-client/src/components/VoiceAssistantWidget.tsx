@@ -99,7 +99,6 @@ export default function VoiceAssistantWidget() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  const currentAudioObjectUrlRef = useRef<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const liveMimeTypeRef = useRef("audio/webm");
@@ -159,76 +158,6 @@ export default function VoiceAssistantWidget() {
     });
   }
 
-  function base64ToBytes(base64: string): Uint8Array {
-    const normalized = String(base64 || "").replace(/\s+/g, "");
-    const binary = globalThis.atob(normalized);
-    const bytes = new Uint8Array(binary.length);
-
-    for (let i = 0; i < binary.length; i += 1) {
-      bytes[i] = binary.codePointAt(i) ?? 0;
-    }
-
-    return bytes;
-  }
-
-  function pcmL16ToWavObjectUrl(audioBase64: string, mimeType?: string): string | null {
-    try {
-      const rawBytes = base64ToBytes(audioBase64);
-      if (rawBytes.length < 2) {
-        return null;
-      }
-
-      const sampleRateMatch = /rate=(\d+)/i.exec(String(mimeType || ""));
-      const channelsMatch = /channels=(\d+)/i.exec(String(mimeType || ""));
-      const sampleRate = Math.max(8000, Number(sampleRateMatch?.[1] || 24000));
-      const channels = Math.max(1, Number(channelsMatch?.[1] || 1));
-
-      const usableLength = rawBytes.length - (rawBytes.length % 2);
-      const pcmLittleEndian = new Uint8Array(usableLength);
-
-      // audio/L16 usa orden de bytes de red (big-endian). WAV PCM requiere little-endian.
-      for (let i = 0; i < usableLength; i += 2) {
-        pcmLittleEndian[i] = rawBytes[i + 1];
-        pcmLittleEndian[i + 1] = rawBytes[i];
-      }
-
-      const bitsPerSample = 16;
-      const blockAlign = channels * (bitsPerSample / 8);
-      const byteRate = sampleRate * blockAlign;
-      const dataSize = pcmLittleEndian.length;
-      const wavSize = 44 + dataSize;
-      const wavBuffer = new ArrayBuffer(wavSize);
-      const view = new DataView(wavBuffer);
-      const wavBytes = new Uint8Array(wavBuffer);
-
-      const writeAscii = (offset: number, value: string) => {
-        for (let i = 0; i < value.length; i += 1) {
-          wavBytes[offset + i] = value.codePointAt(i) ?? 0;
-        }
-      };
-
-      writeAscii(0, "RIFF");
-      view.setUint32(4, 36 + dataSize, true);
-      writeAscii(8, "WAVE");
-      writeAscii(12, "fmt ");
-      view.setUint32(16, 16, true);
-      view.setUint16(20, 1, true); // PCM
-      view.setUint16(22, channels, true);
-      view.setUint32(24, sampleRate, true);
-      view.setUint32(28, byteRate, true);
-      view.setUint16(32, blockAlign, true);
-      view.setUint16(34, bitsPerSample, true);
-      writeAscii(36, "data");
-      view.setUint32(40, dataSize, true);
-      wavBytes.set(pcmLittleEndian, 44);
-
-      const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
-      return URL.createObjectURL(wavBlob);
-    } catch {
-      return null;
-    }
-  }
-
   function speakWithBrowserTts(text: string): boolean {
     const content = String(text || "").trim();
     if (!content) {
@@ -256,11 +185,6 @@ export default function VoiceAssistantWidget() {
       currentAudioRef.current.pause();
       currentAudioRef.current.src = "";
       currentAudioRef.current = null;
-    }
-
-    if (currentAudioObjectUrlRef.current) {
-      URL.revokeObjectURL(currentAudioObjectUrlRef.current);
-      currentAudioObjectUrlRef.current = null;
     }
 
     if (globalThis.speechSynthesis !== undefined) {
@@ -309,18 +233,8 @@ export default function VoiceAssistantWidget() {
     if (!audioBase64) return false;
     stopCurrentAudio();
 
-    const mime = String(mimeType || "audio/mpeg").trim();
-    let audioSrc = `data:${mime};base64,${audioBase64}`;
-
-    if (/^audio\/l16/i.test(mime)) {
-      const wavObjectUrl = pcmL16ToWavObjectUrl(audioBase64, mime);
-      if (wavObjectUrl) {
-        audioSrc = wavObjectUrl;
-        currentAudioObjectUrlRef.current = wavObjectUrl;
-      }
-    }
-
-    const audio = new Audio(audioSrc);
+    const mime = String(mimeType || "audio/wav").trim();
+    const audio = new Audio(`data:${mime};base64,${audioBase64}`);
     currentAudioRef.current = audio;
 
     try {
@@ -601,13 +515,14 @@ export default function VoiceAssistantWidget() {
     const finalAudioBase64 = await blobToBase64(finalBlob);
     const previewText = liveHeardText.trim() || liveDraftRef.current.trim();
 
+    const userMsgId = `u-live-${Date.now()}`;
     const pendingId = `a-live-pending-${Date.now()}`;
     setMessages((prev) => [
       ...prev,
       {
-        id: `u-live-${Date.now()}`,
+        id: userMsgId,
         role: "user",
-        text: previewText || "[Consulta por voz enviada]",
+        text: previewText || "[procesando voz...]",
       },
       {
         id: pendingId,
@@ -634,8 +549,13 @@ export default function VoiceAssistantWidget() {
         response?.message ||
         (response?.error ? `No pude resolverlo: ${response.error}` : "No tengo respuesta ahora mismo.");
 
+      const sttTranscript = response?.context?.sttTranscript;
+
       setMessages((prev) => {
-        const trimmed = prev.filter((m) => m.id !== pendingId);
+        const withTranscript = sttTranscript
+          ? prev.map((m) => (m.id === userMsgId ? { ...m, text: sttTranscript } : m))
+          : prev;
+        const trimmed = withTranscript.filter((m) => m.id !== pendingId);
         return [
           ...trimmed,
           {

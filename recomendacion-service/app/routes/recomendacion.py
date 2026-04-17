@@ -12,11 +12,10 @@ GET  /recomendacion/combustibles
 """
 import logging
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Annotated
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.models.schemas import (
@@ -46,7 +45,6 @@ router = APIRouter(prefix="/recomendacion", tags=["Recomendación"])
 
 @router.post(
     "/ruta",
-    response_model=RecomendacionResponse,
     summary="Recomendar gasolineras en una ruta",
     description="""
 Dado un punto **origen** y un **destino**, calcula la ruta A→B y devuelve las
@@ -90,7 +88,6 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
                 status_code=503,
                 detail=f"No se pudo calcular la ruta en el proveedor de mapas: {exc}",
             ) from exc
-
 
         if route.distancia_km < 0.1:
             raise HTTPException(
@@ -180,11 +177,11 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
     description="Devuelve las N gasolineras más cercanas a unas coordenadas, con el precio del combustible indicado.",
 )
 async def cercanas(
-    lat: float = Query(..., ge=-90, le=90, description="Latitud WGS84"),
-    lon: float = Query(..., ge=-180, le=180, description="Longitud WGS84"),
-    combustible: CombustibleTipo = Query("gasolina_95", description="Tipo de combustible"),
-    radio_km: float = Query(10.0, gt=0, le=100, description="Radio de búsqueda en km"),
-    top_n: int = Query(10, ge=1, le=50, description="Número máximo de resultados"),
+    lat: Annotated[float, Query(ge=-90, le=90, description="Latitud WGS84")],
+    lon: Annotated[float, Query(ge=-180, le=180, description="Longitud WGS84")],
+    combustible: Annotated[CombustibleTipo, Query(description="Tipo de combustible")] = "gasolina_95",
+    radio_km: Annotated[float, Query(gt=0, le=100, description="Radio de búsqueda en km")] = 10.0,
+    top_n: Annotated[int, Query(ge=1, le=50, description="Número máximo de resultados")] = 10,
 ):
     stations = await fetch_gasolineras(combustible)
     if not stations:

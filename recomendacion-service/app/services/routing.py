@@ -1,7 +1,8 @@
 """Servicios de routing con resiliencia, encapsulados en recomendacion-service."""
 import asyncio
 import logging
-from typing import List, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -10,6 +11,170 @@ from app.models.schemas import RouteResult
 from app.services.geo_math import haversine_km
 
 logger = logging.getLogger(__name__)
+
+# Semáforo global: máx 4 llamadas ORS concurrentes (plan free: ~40 req/min)
+_ors_semaphore = asyncio.Semaphore(4)
+
+# Caché de rutas directas A→B (TTL 1 hora). Evita recalcular rutas frecuentes.
+_route_cache: Dict[str, tuple] = {}
+_ROUTE_CACHE_TTL_S = 3600.0
+_ROUTE_CACHE_MAX_ENTRIES = 500
+
+
+def _route_cache_key(lat1: float, lon1: float, lat2: float, lon2: float, evitar_peajes: bool) -> str:
+    return f"{lat1:.5f},{lon1:.5f},{lat2:.5f},{lon2:.5f},{int(evitar_peajes)}"
+
+
+def _get_cached_route(key: str) -> Optional[RouteResult]:
+    entry = _route_cache.get(key)
+    if entry is None:
+        return None
+    ts, result = entry
+    if time.monotonic() - ts > _ROUTE_CACHE_TTL_S:
+        _route_cache.pop(key, None)
+        return None
+    return result
+
+
+def _cache_route(key: str, result: RouteResult) -> None:
+    _route_cache[key] = (time.monotonic(), result)
+    if len(_route_cache) > _ROUTE_CACHE_MAX_ENTRIES:
+        cutoff = time.monotonic() - _ROUTE_CACHE_TTL_S
+        stale = [k for k, (ts, _) in list(_route_cache.items()) if ts < cutoff]
+        for k in stale:
+            _route_cache.pop(k, None)
+
+
+def _read_polyline_component(polyline: str, index: int) -> tuple[int, int]:
+    result = 0
+    shift = 0
+
+    while index < len(polyline):
+        value = ord(polyline[index]) - 63
+        index += 1
+        result |= (value & 0x1F) << shift
+        shift += 5
+        if value < 0x20:
+            delta = ~(result >> 1) if (result & 1) else (result >> 1)
+            return delta, index
+
+    raise ValueError("polyline-incompleta")
+
+
+def _decode_polyline(polyline: str, precision: int = 5) -> list[list[float]]:
+    """Decodifica polyline encoded (Google/ORS) a coordenadas [lon, lat]."""
+    if not polyline:
+        return []
+
+    coordinates: list[list[float]] = []
+    index = 0
+    lat = 0
+    lon = 0
+    factor = 10 ** precision
+
+    try:
+        while index < len(polyline):
+            delta_lat, index = _read_polyline_component(polyline, index)
+            delta_lon, index = _read_polyline_component(polyline, index)
+            lat += delta_lat
+            lon += delta_lon
+            coordinates.append([lon / factor, lat / factor])
+    except ValueError:
+        # Si la geometría llega truncada devolvemos lo decodificado hasta ahora.
+        return coordinates
+
+    return coordinates
+
+
+def _extract_ors_coordinates(route: dict[str, Any]) -> list[list[float]]:
+    geometry = route.get("geometry")
+
+    if isinstance(geometry, dict):
+        coords = geometry.get("coordinates")
+        if isinstance(coords, list):
+            return coords
+
+    if isinstance(geometry, list):
+        return geometry
+
+    if isinstance(geometry, str):
+        return _decode_polyline(geometry)
+
+    return []
+
+
+def _extract_ors_summary(route: dict[str, Any]) -> tuple[float, float]:
+    summary = route.get("summary") or {}
+    distance = summary.get("distance")
+    duration = summary.get("duration")
+
+    if distance is not None and duration is not None:
+        return float(distance), float(duration)
+
+    # Fallback defensivo por si ORS devuelve segmentos sin summary global.
+    segments = route.get("segments")
+    if isinstance(segments, list) and segments:
+        total_distance = sum(float((segment or {}).get("distance") or 0) for segment in segments)
+        total_duration = sum(float((segment or {}).get("duration") or 0) for segment in segments)
+        if total_distance > 0 and total_duration > 0:
+            return total_distance, total_duration
+
+    raise ValueError("ORS route sin summary de distancia/duracion")
+
+
+def _parse_ors_feature(data: dict[str, Any]) -> Optional[RouteResult]:
+    features = data.get("features")
+    if isinstance(features, list) and features:
+        feature = features[0]
+        summary = ((feature or {}).get("properties") or {}).get("summary") or {}
+        coordinates = ((feature or {}).get("geometry") or {}).get("coordinates") or []
+
+        if coordinates and summary.get("distance") is not None and summary.get("duration") is not None:
+            return RouteResult(
+                distancia_m=float(summary["distance"]),
+                duracion_s=float(summary["duration"]),
+                coordinates=coordinates,
+            )
+
+    return None
+
+
+def _parse_ors_routes(data: dict[str, Any]) -> RouteResult:
+    routes = data.get("routes")
+    if routes is None:
+        raise ValueError(
+            "ORS devolvió routes=null. Puede que las coordenadas sean inalcanzables "
+            f"o el perfil no tenga ruta. Claves: {list(data.keys())}"
+        )
+    if not isinstance(routes, list) or not routes:
+        raise ValueError(f"ORS devolvió routes vacío o con formato inesperado: {routes!r}")
+
+    route = routes[0] or {}
+    distance_m, duration_s = _extract_ors_summary(route)
+    coordinates = _extract_ors_coordinates(route)
+    if not coordinates:
+        raise ValueError("Respuesta ORS sin geometría útil en route[0]")
+
+    return RouteResult(
+        distancia_m=distance_m,
+        duracion_s=duration_s,
+        coordinates=coordinates,
+    )
+
+
+def _parse_ors_route(data: dict[str, Any]) -> RouteResult:
+    # Formato GeoJSON FeatureCollection (endpoint GET)
+    if "features" in data:
+        parsed = _parse_ors_feature(data)
+        if parsed is not None:
+            return parsed
+        raise ValueError("ORS GeoJSON FeatureCollection sin features válidas")
+
+    # Formato routes[] (endpoint POST v2) — incluye {bbox, routes, metadata}
+    if "routes" in data:
+        return _parse_ors_routes(data)
+
+    raise ValueError(f"Formato ORS no reconocido: {list(data.keys())}")
 
 
 def _straight_line_route(lat1: float, lon1: float, lat2: float, lon2: float) -> RouteResult:
@@ -131,37 +296,31 @@ async def _route_ors_coords(
     if not ors_key:
         raise ValueError("ORS_API_KEY no configurada")
 
-    body = {
-        "coordinates": [[lon, lat] for lon, lat in coordinates],
+    body: dict = {
+        "coordinates": [[lon, lat] for lon, lat in coordinates],  # ORS: [lon, lat]
         "preference": "fastest",
         "units": "m",
         "geometry": True,
+        "geometry_format": "geojson",
+        "instructions": True,
+        "attributes": ["avgspeed"],
     }
     if evitar_peajes:
         body["options"] = {"avoid_features": ["tollways"]}
 
-    response = await _request_with_retries(
-        client,
-        "POST",
-        f"{settings.ORS_BASE_URL}/v2/directions/driving-car",
-        json=body,
-        headers={
-            "Authorization": ors_key,
-            "Content-Type": "application/json; charset=utf-8",
-        },
-    )
+    async with _ors_semaphore:
+        response = await _request_with_retries(
+            client,
+            "POST",
+            f"{settings.ORS_BASE_URL}/v2/directions/driving-car",
+            json=body,
+            headers={
+                "Authorization": ors_key,
+                "Content-Type": "application/json; charset=utf-8",
+            },
+        )
     data = response.json()
-
-    if not data.get("features"):
-        raise ValueError(f"Formato ORS no reconocido: {list(data.keys())}")
-
-    feature = data["features"][0]
-    summary = feature["properties"]["summary"]
-    return RouteResult(
-        distancia_m=float(summary["distance"]),
-        duracion_s=float(summary["duration"]),
-        coordinates=feature["geometry"]["coordinates"],
-    )
+    return _parse_ors_route(data)
 
 
 async def _matrix_ors(
@@ -184,16 +343,17 @@ async def _matrix_ors(
     if evitar_peajes:
         body["options"] = {"avoid_features": ["tollways"]}
 
-    response = await _request_with_retries(
-        client,
-        "POST",
-        f"{settings.ORS_BASE_URL}/v2/matrix/driving-car",
-        json=body,
-        headers={
-            "Authorization": ors_key,
-            "Content-Type": "application/json; charset=utf-8",
-        },
-    )
+    async with _ors_semaphore:
+        response = await _request_with_retries(
+            client,
+            "POST",
+            f"{settings.ORS_BASE_URL}/v2/matrix/driving-car",
+            json=body,
+            headers={
+                "Authorization": ors_key,
+                "Content-Type": "application/json; charset=utf-8",
+            },
+        )
     data = response.json()
     durations = data.get("durations")
     if not isinstance(durations, list):
@@ -291,6 +451,12 @@ async def get_route(
     evitar_peajes: bool = False,
     client: Optional[httpx.AsyncClient] = None,
 ) -> RouteResult:
+    cache_key = _route_cache_key(lat1, lon1, lat2, lon2, evitar_peajes)
+    cached = _get_cached_route(cache_key)
+    if cached is not None:
+        logger.debug("Ruta A→B devuelta desde caché: %s", cache_key)
+        return cached
+
     own_client = client is None
     if own_client:
         client = httpx.AsyncClient()
@@ -300,7 +466,9 @@ async def get_route(
         last_exc: Optional[Exception] = None
         for backend in _backend_attempt_order(evitar_peajes=evitar_peajes):
             try:
-                return await _route_with_backend(backend, coordinates, client, evitar_peajes)
+                result = await _route_with_backend(backend, coordinates, client, evitar_peajes)
+                _cache_route(cache_key, result)
+                return result
             except Exception as exc:
                 last_exc = exc
                 logger.warning("Backend routing %s no disponible: %s", backend, exc)

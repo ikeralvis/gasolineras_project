@@ -10,6 +10,7 @@
  *   3. TTS  – Gemini TTS sintetiza la respuesta en voz española
  */
 
+import { Buffer } from "node:buffer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { voiceEnv } from "../config/env.js";
 import { getNearestStationContext, getPricesForVoice, getNearestStations } from "./gatewayTools.js";
@@ -117,18 +118,48 @@ function normalizeToolArgs(args, location) {
   return out;
 }
 
-function buildSystemInstruction(gasContext) {
+function buildSystemInstruction(gasContext, location) {
   const lines = [
     "Eres el Asistente de Viaje de TankGo.",
     "Responde SIEMPRE en español de España con tono natural, cercano y claro.",
     "Para consultas de precio usa get_prices. Para consultas de proximidad usa get_nearest_stations.",
-    "Si no tienes la ubicación del usuario, pídela brevemente antes de llamar a ninguna función.",
     "Al citar precios di el importe en euros por litro. Respuestas de máximo 3-4 frases salvo que pidan más detalle.",
   ];
+
+  if (location?.lat != null && location?.lon != null) {
+    lines.push(`Ubicación del usuario: lat=${location.lat}, lon=${location.lon}. Usa estas coordenadas al llamar a las herramientas.`);
+  } else {
+    lines.push("Si no tienes la ubicación del usuario, pídela brevemente antes de llamar a ninguna función.");
+  }
+
   if (gasContext?.promptContext) {
     lines.push(`Contexto actual: ${gasContext.promptContext}`);
   }
   return lines.join(" ");
+}
+
+function pcmToWavBase64(pcmBase64, mimeType) {
+  const sampleRate = Number(/rate=(\d+)/i.exec(mimeType || "")?.[1] || 24000);
+  const channels = Number(/channels=(\d+)/i.exec(mimeType || "")?.[1] || 1);
+  const bitsPerSample = 16;
+  const pcmData = Buffer.from(pcmBase64, "base64");
+  const dataSize = pcmData.length;
+  const buf = Buffer.allocUnsafe(44 + dataSize);
+  buf.write("RIFF", 0, "ascii");
+  buf.writeUInt32LE(36 + dataSize, 4);
+  buf.write("WAVE", 8, "ascii");
+  buf.write("fmt ", 12, "ascii");
+  buf.writeUInt32LE(16, 16);
+  buf.writeUInt16LE(1, 20);
+  buf.writeUInt16LE(channels, 22);
+  buf.writeUInt32LE(sampleRate, 24);
+  buf.writeUInt32LE(sampleRate * channels * (bitsPerSample / 8), 28);
+  buf.writeUInt16LE(channels * (bitsPerSample / 8), 32);
+  buf.writeUInt16LE(bitsPerSample, 34);
+  buf.write("data", 36, "ascii");
+  buf.writeUInt32LE(dataSize, 40);
+  pcmData.copy(buf, 44);
+  return buf.toString("base64");
 }
 
 // ─── Paso 1: STT ──────────────────────────────────────────────────────────────
@@ -187,7 +218,7 @@ async function executeTool(name, args, location) {
 }
 
 async function runLlmForModel({ ai, model, text, location, gasContext }) {
-  const systemInstruction = buildSystemInstruction(gasContext);
+  const systemInstruction = buildSystemInstruction(gasContext, location);
   const toolOutputs = [];
 
   let contents = [{ role: "user", parts: [{ text }] }];
@@ -310,11 +341,10 @@ async function synthesizeGemini({ ai, text }) {
       const parts = response?.candidates?.[0]?.content?.parts || [];
       for (const part of parts) {
         if (part?.inlineData?.data && String(part.inlineData.mimeType || "").startsWith("audio/")) {
-          return {
-            model,
-            audioBase64: part.inlineData.data,
-            audioMimeType: part.inlineData.mimeType,
-          };
+          const rawBase64 = part.inlineData.data;
+          const rawMime = part.inlineData.mimeType;
+          const wavBase64 = pcmToWavBase64(rawBase64, rawMime);
+          return { model, audioBase64: wavBase64, audioMimeType: "audio/wav" };
         }
       }
 
@@ -357,18 +387,17 @@ export async function runPipelineDialog({
   authToken = null,
 }) {
   const ai = getClient();
+  const userTextRaw = String(text || "").trim();
+  const needsStt = Boolean(!userTextRaw && audioBase64);
 
-  // Contexto de gasolineras (bootstrap opcional)
-  const gasContext = await getNearestStationContext({ location, authToken });
+  // Paso 1: gasContext y STT en paralelo
+  const [gasContext, sttResult] = await Promise.all([
+    getNearestStationContext({ location, authToken }),
+    needsStt ? transcribeAudio({ ai, audioBase64, mimeType }) : Promise.resolve(null),
+  ]);
 
-  // Paso 1: STT – solo si hay audio sin texto
-  let userText = String(text || "").trim();
-  let sttTranscript = null;
-
-  if (!userText && audioBase64) {
-    sttTranscript = await transcribeAudio({ ai, audioBase64, mimeType });
-    userText = sttTranscript;
-  }
+  const sttTranscript = sttResult;
+  const userText = userTextRaw || sttTranscript || "";
 
   if (!userText) {
     throw new Error("audio-or-text-required");

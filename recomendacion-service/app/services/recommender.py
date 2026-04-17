@@ -102,8 +102,14 @@ async def _refine_exact_detours(
                     real_detour_min = max(0.0, via_route.duracion_min - route_duration_min)
                     item.desvio_km = round(real_detour_km, 2)
                     item.desvio_min = round(real_detour_min, 1)
-                except Exception:
-                    return
+                except Exception as exc:
+                    logger.warning(
+                        "No se pudo refinar desvío exacto para '%s' (lat=%.5f, lon=%.5f): %s",
+                        station.nombre or station.id,
+                        station.lat,
+                        station.lon,
+                        exc,
+                    )
 
         await asyncio.gather(*[_refine(item) for item in refine_pool], return_exceptions=True)
 
@@ -164,7 +170,7 @@ def _apply_access_policy(candidates: List[CandidateScore]) -> List[CandidateScor
 async def build_recommendations(
     req: RecomendacionRequest,
     route: RouteResult,
-    stations,
+    stations: List[GasolineraInternal],
 ) -> RecomendacionResponse:
     route_dist_km = route.distancia_km
     route_duration_min = route.duracion_min
