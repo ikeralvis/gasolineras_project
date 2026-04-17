@@ -22,6 +22,8 @@ steps:
       - '${_REGION}'
       - '--platform'
       - 'managed'
+      - '--port'
+      - '8001'
       - '--set-env-vars'
       - 'ROUTING_BACKEND=${_ROUTING_BACKEND},ROUTING_FAILOVER_TO_OSRM=${_ROUTING_FAILOVER_TO_OSRM},ALLOW_STRAIGHT_LINE_FALLBACK=${_ALLOW_STRAIGHT_LINE_FALLBACK},ROUTE_CANDIDATES_SOURCE=${_ROUTE_CANDIDATES_SOURCE},POI_ACCESS_PROVIDER=${_POI_ACCESS_PROVIDER},ACCESS_FILTER_MODE=${_ACCESS_FILTER_MODE},GASOLINERAS_API_URL=${_GASOLINERAS_API_URL}'
       - '--set-secrets'
@@ -41,7 +43,7 @@ substitutions:
   _ROUTE_CANDIDATES_SOURCE: 'auto'
   _POI_ACCESS_PROVIDER: 'osm'
   _ACCESS_FILTER_MODE: 'strict'
-  _GASOLINERAS_API_URL: 'https://gateway-hono-1059394991995.europe-west1.run.app/api/gasolineras/?limit=20000'
+  _GASOLINERAS_API_URL: 'https://api.tankgo.dev/api/gasolineras/?limit=20000'
 
 options:
   logging: CLOUD_LOGGING_ONLY
