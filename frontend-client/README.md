@@ -21,6 +21,14 @@ El widget de voz resuelve la URL del WebSocket en este orden:
 	- En local: `ws://localhost:8080/api/voice/ws`
 	- En no local: `ws(s)://<host-actual>/api/voice/ws`
 
+Control de transporte:
+
+- `VITE_VOICE_WS_ENABLED=true`: intenta WS primero y si falla usa HTTP fallback.
+- `VITE_VOICE_WS_ENABLED=false`: fuerza modo HTTP-only (`/api/voice/dialog`), útil si quieres evitar logs de reconexión WS.
+- Si `VITE_VOICE_WS_ENABLED` no está definido:
+	- En desarrollo: WS habilitado por defecto.
+	- En producción: WS solo se habilita por defecto si `VITE_VOICE_WS_URL` está definido explícitamente.
+
 Recomendación para Cloud Run: usar siempre el gateway como punto de entrada de voz. No apuntar a `wss://.../ws/voice` del servicio de voz privado.
 
 ---

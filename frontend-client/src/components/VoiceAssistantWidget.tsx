@@ -99,6 +99,7 @@ export default function VoiceAssistantWidget() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  const currentAudioObjectUrlRef = useRef<string | null>(null);
   const recognitionRef = useRef<any>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
   const liveMimeTypeRef = useRef("audio/webm");
@@ -158,11 +159,113 @@ export default function VoiceAssistantWidget() {
     });
   }
 
+  function base64ToBytes(base64: string): Uint8Array {
+    const normalized = String(base64 || "").replace(/\s+/g, "");
+    const binary = globalThis.atob(normalized);
+    const bytes = new Uint8Array(binary.length);
+
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.codePointAt(i) ?? 0;
+    }
+
+    return bytes;
+  }
+
+  function pcmL16ToWavObjectUrl(audioBase64: string, mimeType?: string): string | null {
+    try {
+      const rawBytes = base64ToBytes(audioBase64);
+      if (rawBytes.length < 2) {
+        return null;
+      }
+
+      const sampleRateMatch = /rate=(\d+)/i.exec(String(mimeType || ""));
+      const channelsMatch = /channels=(\d+)/i.exec(String(mimeType || ""));
+      const sampleRate = Math.max(8000, Number(sampleRateMatch?.[1] || 24000));
+      const channels = Math.max(1, Number(channelsMatch?.[1] || 1));
+
+      const usableLength = rawBytes.length - (rawBytes.length % 2);
+      const pcmLittleEndian = new Uint8Array(usableLength);
+
+      // audio/L16 usa orden de bytes de red (big-endian). WAV PCM requiere little-endian.
+      for (let i = 0; i < usableLength; i += 2) {
+        pcmLittleEndian[i] = rawBytes[i + 1];
+        pcmLittleEndian[i + 1] = rawBytes[i];
+      }
+
+      const bitsPerSample = 16;
+      const blockAlign = channels * (bitsPerSample / 8);
+      const byteRate = sampleRate * blockAlign;
+      const dataSize = pcmLittleEndian.length;
+      const wavSize = 44 + dataSize;
+      const wavBuffer = new ArrayBuffer(wavSize);
+      const view = new DataView(wavBuffer);
+      const wavBytes = new Uint8Array(wavBuffer);
+
+      const writeAscii = (offset: number, value: string) => {
+        for (let i = 0; i < value.length; i += 1) {
+          wavBytes[offset + i] = value.codePointAt(i) ?? 0;
+        }
+      };
+
+      writeAscii(0, "RIFF");
+      view.setUint32(4, 36 + dataSize, true);
+      writeAscii(8, "WAVE");
+      writeAscii(12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true); // PCM
+      view.setUint16(22, channels, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, byteRate, true);
+      view.setUint16(32, blockAlign, true);
+      view.setUint16(34, bitsPerSample, true);
+      writeAscii(36, "data");
+      view.setUint32(40, dataSize, true);
+      wavBytes.set(pcmLittleEndian, 44);
+
+      const wavBlob = new Blob([wavBuffer], { type: "audio/wav" });
+      return URL.createObjectURL(wavBlob);
+    } catch {
+      return null;
+    }
+  }
+
+  function speakWithBrowserTts(text: string): boolean {
+    const content = String(text || "").trim();
+    if (!content) {
+      return false;
+    }
+
+    if (globalThis.speechSynthesis === undefined || globalThis.SpeechSynthesisUtterance === undefined) {
+      return false;
+    }
+
+    try {
+      globalThis.speechSynthesis.cancel();
+      const utterance = new globalThis.SpeechSynthesisUtterance(content);
+      utterance.lang = "es-ES";
+      utterance.rate = 1;
+      globalThis.speechSynthesis.speak(utterance);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function stopCurrentAudio() {
-    if (!currentAudioRef.current) return;
-    currentAudioRef.current.pause();
-    currentAudioRef.current.src = "";
-    currentAudioRef.current = null;
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.src = "";
+      currentAudioRef.current = null;
+    }
+
+    if (currentAudioObjectUrlRef.current) {
+      URL.revokeObjectURL(currentAudioObjectUrlRef.current);
+      currentAudioObjectUrlRef.current = null;
+    }
+
+    if (globalThis.speechSynthesis !== undefined) {
+      globalThis.speechSynthesis.cancel();
+    }
   }
 
   function clearSilenceTimer() {
@@ -202,19 +305,30 @@ export default function VoiceAssistantWidget() {
     }
   }
 
-  async function playAssistantAudio(audioBase64?: string, mimeType?: string) {
-    if (!audioBase64) return;
+  async function playAssistantAudio(audioBase64?: string, mimeType?: string): Promise<boolean> {
+    if (!audioBase64) return false;
     stopCurrentAudio();
 
-    const mime = mimeType || "audio/mpeg";
-    const audioSrc = `data:${mime};base64,${audioBase64}`;
+    const mime = String(mimeType || "audio/mpeg").trim();
+    let audioSrc = `data:${mime};base64,${audioBase64}`;
+
+    if (/^audio\/l16/i.test(mime)) {
+      const wavObjectUrl = pcmL16ToWavObjectUrl(audioBase64, mime);
+      if (wavObjectUrl) {
+        audioSrc = wavObjectUrl;
+        currentAudioObjectUrlRef.current = wavObjectUrl;
+      }
+    }
+
     const audio = new Audio(audioSrc);
     currentAudioRef.current = audio;
 
     try {
       await audio.play();
+      return true;
     } catch {
-      setLiveStatus("No se pudo reproducir audio automatico");
+      stopCurrentAudio();
+      return false;
     }
   }
 
@@ -534,8 +648,14 @@ export default function VoiceAssistantWidget() {
 
       const hasTtsAudio = Boolean(response?.tts?.audioBase64);
       if (hasTtsAudio) {
-        await playAssistantAudio(response?.tts?.audioBase64, response?.tts?.mimeType);
-        setLiveStatus("Respuesta de voz reproducida");
+        const played = await playAssistantAudio(response?.tts?.audioBase64, response?.tts?.mimeType);
+        if (played) {
+          setLiveStatus("Respuesta de voz reproducida");
+        } else if (speakWithBrowserTts(answerText)) {
+          setLiveStatus("Audio TTS no compatible; usando voz del navegador");
+        } else {
+          setLiveStatus("No se pudo reproducir audio automatico");
+        }
       } else {
         const ttsReason = formatTtsFallbackReason(response?.tts?.note);
         setMessages((prev) => [

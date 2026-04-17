@@ -4,6 +4,33 @@ const VOICE_WS_PROXY_PATH = "/api/voice/ws";
 const DEFAULT_LOCAL_VOICE_WS_URL = "ws://localhost:8080/api/voice/ws";
 const VOICE_HTTP_DIALOG_PATH = "/api/voice/dialog";
 
+function parseBooleanEnv(rawValue: unknown, fallbackValue: boolean): boolean {
+  if (rawValue == null) {
+    return fallbackValue;
+  }
+
+  if (typeof rawValue === "boolean") {
+    return rawValue;
+  }
+
+  if (typeof rawValue !== "string" && typeof rawValue !== "number") {
+    return fallbackValue;
+  }
+
+  const normalized = String(rawValue).trim().toLowerCase();
+  if (!normalized) {
+    return fallbackValue;
+  }
+
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallbackValue;
+}
+
 function isLocalHostname(hostname: string): boolean {
   return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
 }
@@ -100,7 +127,12 @@ function buildVoiceWsUrl(): string {
   return DEFAULT_LOCAL_VOICE_WS_URL;
 }
 
-const VOICE_WS_URL = buildVoiceWsUrl();
+const EXPLICIT_VOICE_WS_URL = normalizeVoiceWsUrl(import.meta.env.VITE_VOICE_WS_URL ?? "");
+const VOICE_WS_ENABLED = parseBooleanEnv(
+  import.meta.env.VITE_VOICE_WS_ENABLED,
+  Boolean(EXPLICIT_VOICE_WS_URL) || !import.meta.env.PROD
+);
+const VOICE_WS_URL = VOICE_WS_ENABLED ? buildVoiceWsUrl() : null;
 const VOICE_WS_KEEPALIVE_MS = 25000;
 const VOICE_WS_FAILURE_THRESHOLD = 2;
 const VOICE_WS_RETRY_COOLDOWN_MS = 20000;
@@ -157,7 +189,7 @@ function hardResetSocket() {
 }
 
 function canUseWsTransport() {
-  return Date.now() >= wsDisabledUntilTs;
+  return VOICE_WS_ENABLED && Boolean(VOICE_WS_URL) && Date.now() >= wsDisabledUntilTs;
 }
 
 function markWsSuccess() {
@@ -275,6 +307,10 @@ function attachSocketHandlers(socket: WebSocket) {
 }
 
 async function getSocket(): Promise<WebSocket> {
+  if (!VOICE_WS_URL) {
+    throw new Error("voice-websocket-disabled");
+  }
+
   if (ws?.readyState === WebSocket.OPEN) {
     return ws;
   }
