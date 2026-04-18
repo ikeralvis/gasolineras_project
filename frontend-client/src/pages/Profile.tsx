@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useTranslation } from 'react-i18next';
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { FaUser, FaEnvelope, FaShieldAlt, FaHeart, FaTrash, FaSignOutAlt, FaGasPump } from "react-icons/fa";
 import { apiFetch } from "../api/http";
 
 interface Usuario {
@@ -15,17 +14,19 @@ interface Usuario {
   tipo_combustible_coche?: 'gasolina' | 'diesel' | 'electrico' | 'hibrido';
 }
 
-interface Favorito {
-  ideess: string;
-  created_at: string;
-}
+const COMBUSTIBLES = [
+  { value: "Precio Gasolina 95 E5", label: "Gasolina 95 E5", color: "#16a34a" },
+  { value: "Precio Gasolina 98 E5", label: "Gasolina 98 E5", color: "#0d9488" },
+  { value: "Precio Gasoleo A",      label: "Gasóleo A",      color: "#2563eb" },
+  { value: "Precio Gasoleo B",      label: "Gasóleo B",      color: "#4f46e5" },
+  { value: "Precio Gasoleo Premium", label: "Gasóleo Premium", color: "#7c3aed" },
+];
 
 export default function Profile() {
   const { t } = useTranslation();
   const [searchParams] = useSearchParams();
   const { isAuthenticated, logout, refreshUser } = useAuth();
   const [perfil, setPerfil] = useState<Usuario | null>(null);
-  const [favoritos, setFavoritos] = useState<Favorito[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
   const [combustibleSeleccionado, setCombustibleSeleccionado] = useState<string>("");
@@ -35,38 +36,31 @@ export default function Profile() {
   const navigate = useNavigate();
   const onboardingMode = searchParams.get('onboarding') === '1';
 
-  // Fetch perfil y favoritos
   useEffect(() => {
     if (!isAuthenticated) {
       navigate("/login");
       return;
     }
     setLoading(true);
-    Promise.all([
-      apiFetch('/api/usuarios/me').then((r) => r.json()),
-      apiFetch('/api/usuarios/favoritos').then((r) => r.json()),
-    ])
-      .then(([perfilData, favoritosData]) => {
+    apiFetch('/api/usuarios/me')
+      .then((r) => r.json())
+      .then((perfilData) => {
         if (perfilData.error) setError(perfilData.error);
         else {
           setPerfil(perfilData);
           setCombustibleSeleccionado(perfilData.combustible_favorito || "Precio Gasolina 95 E5");
           setModeloCoche(perfilData.modelo_coche || "");
         }
-        if (Array.isArray(favoritosData)) setFavoritos(favoritosData);
-        else if (favoritosData.error) setError(favoritosData.error);
       })
-        .catch(() => setError(t('profile.errorLoadingUserData')))
+      .catch(() => setError(t('profile.errorLoadingUserData')))
       .finally(() => setLoading(false));
-      }, [isAuthenticated, navigate, t]);
+  }, [isAuthenticated, navigate, t]);
 
-  // Logout
   const handleLogout = () => {
     logout();
     navigate("/login");
   };
 
-  // Eliminar cuenta
   const handleDelete = async () => {
     if (!globalThis.confirm(t('profile.deleteConfirm'))) return;
     setLoading(true);
@@ -92,30 +86,22 @@ export default function Profile() {
     return 'gasolina';
   };
 
-  // Guardar preferencias de movilidad
   const handleGuardarCombustible = async () => {
-    if (!perfil) {
-      return;
-    }
-
+    if (!perfil) return;
     if (!modeloCoche.trim()) {
       setError(t('profile.vehicleModelRequired'));
       return;
     }
-
     const tipoCombustibleCoche = deriveCarFuelType(combustibleSeleccionado);
-
     const unchanged =
       combustibleSeleccionado === perfil.combustible_favorito &&
       modeloCoche.trim() === (perfil.modelo_coche || "") &&
       tipoCombustibleCoche === (perfil.tipo_combustible_coche || '');
+    if (unchanged) return;
 
-    if (unchanged) {
-      return;
-    }
-    
     setGuardandoCombustible(true);
     setSaveOkMessage("");
+    setError("");
     try {
       const res = await apiFetch('/api/usuarios/me', {
         method: "PATCH",
@@ -125,38 +111,19 @@ export default function Profile() {
           tipo_combustible_coche: tipoCombustibleCoche,
         }),
       });
-      
       if (res.ok) {
         const patchedPerfil = await res.json();
-        if (patchedPerfil?.error) {
-          setError(patchedPerfil.error);
-          return;
-        }
-
-        setPerfil((prev) => {
-          const basePerfil = prev ?? ({} as Usuario);
-          return {
-            ...basePerfil,
-            ...patchedPerfil,
-          };
-        });
-        setCombustibleSeleccionado(patchedPerfil.combustible_favorito || combustibleSeleccionado);
-        setModeloCoche(patchedPerfil.modelo_coche || "");
-
+        if (patchedPerfil?.error) { setError(patchedPerfil.error); return; }
         const refreshed = await apiFetch('/api/usuarios/me');
         const updatedPerfil = await refreshed.json();
-        if (updatedPerfil.error) {
-          setError('Se actualizó la sesión, pero no se pudo verificar en base de datos. Revisa usuarios-service/BD en Render.');
-        } else {
+        if (!updatedPerfil.error) {
           setPerfil(updatedPerfil);
           setCombustibleSeleccionado(updatedPerfil.combustible_favorito || "Precio Gasolina 95 E5");
           setModeloCoche(updatedPerfil.modelo_coche || "");
           await refreshUser();
           setSaveOkMessage(t('profile.updateSuccess'));
         }
-        if (onboardingMode) {
-          navigate('/gasolineras', { replace: true });
-        }
+        if (onboardingMode) navigate('/gasolineras', { replace: true });
       } else {
         const data = await res.json();
         setError(data.error || t('profile.errorSavingPreference'));
@@ -166,18 +133,6 @@ export default function Profile() {
     } finally {
       setGuardandoCombustible(false);
     }
-  };
-
-  // Obtener nombre legible del combustible
-  const getNombreCombustible = (tipo: string): string => {
-    const nombres: Record<string, string> = {
-      "Precio Gasolina 95 E5": "Gasolina 95 E5",
-      "Precio Gasolina 98 E5": "Gasolina 98 E5",
-      "Precio Gasoleo A": "Gasóleo A",
-      "Precio Gasoleo B": "Gasóleo B",
-      "Precio Gasoleo Premium": "Gasóleo Premium"
-    };
-    return nombres[tipo] || tipo;
   };
 
   const getLabelTipoCoche = (tipo?: string) => {
@@ -190,16 +145,21 @@ export default function Profile() {
     return tipo ? labels[tipo] || tipo : t('profile.notDefined');
   };
 
-  // Render
+  const initials = perfil?.nombre
+    ? perfil.nombre.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+    : '?';
+
+  const selectedFuel = COMBUSTIBLES.find(c => c.value === combustibleSeleccionado);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#F4F6FF] flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-[#000C74] border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-12 h-12 border-4 border-[#000C74] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
-  if (error || !perfil) {
+  if (!perfil) {
     return (
       <div className="min-h-screen bg-[#F4F6FF] flex items-center justify-center px-4">
         <div className="bg-red-50 border-l-4 border-red-500 p-6 rounded-r-xl max-w-md">
@@ -210,232 +170,222 @@ export default function Profile() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F4F6FF] py-10 px-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="bg-white shadow-md rounded-3xl overflow-hidden mb-6 border border-[#E1E5FF]">
-          <div className="bg-linear-to-r from-[#000C74] to-[#2A36B8] p-8 text-white">
-            <div className="flex items-center gap-4">
-              <div className="bg-white/20 p-4 rounded-full backdrop-blur-sm">
-                <FaUser className="w-8 h-8" />
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold">{perfil.nombre}</h1>
-                <p className="text-white/80 flex items-center gap-2 mt-1">
-                  <FaEnvelope size={14} />
-                  {perfil.email}
-                </p>
-              </div>
+    <div className="min-h-screen bg-[#F4F6FF]">
+      {/* Gradient header */}
+      <div className="bg-linear-to-br from-[#000C74] to-[#2A36B8] px-4 pt-10 pb-28">
+        <div className="max-w-md mx-auto text-center text-white">
+          <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm border-2 border-white/30 flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
+            {initials}
+          </div>
+          <h1 className="text-2xl font-bold">{perfil.nombre}</h1>
+          <p className="text-white/70 text-sm mt-1 flex items-center justify-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+              <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+            </svg>
+            {perfil.email}
+          </p>
+          {perfil.is_admin && (
+            <span className="inline-flex items-center gap-1 mt-3 px-3 py-1 bg-amber-400/20 text-amber-200 border border-amber-400/30 rounded-full text-xs font-semibold">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M2.166 4.999A11.954 11.954 0 0010 1.944 11.954 11.954 0 0017.834 5c.11.65.166 1.32.166 2.001 0 5.225-3.34 9.67-8 11.317C5.34 16.67 2 12.225 2 7c0-.682.057-1.35.166-2.001zm11.541 3.708a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Admin
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Cards overlapping the gradient */}
+      <div className="max-w-md mx-auto px-4 -mt-20 pb-12 space-y-4">
+
+        {/* Onboarding banner */}
+        {onboardingMode && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 text-sm">
+            {t('profile.onboardingBanner')}
+          </div>
+        )}
+
+        {/* Error toast */}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-red-700 text-sm flex items-start gap-2">
+            <svg className="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            <span>{error}</span>
+            <button onClick={() => setError("")} className="ml-auto shrink-0 text-red-400 hover:text-red-600">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+            </button>
+          </div>
+        )}
+
+        {/* Tu vehículo */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-[#F0F2FF] flex items-center justify-center">
+              <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">{t('profile.favoriteFuel', { defaultValue: 'Tu vehículo' })}</h2>
+              <p className="text-xs text-gray-500">{t('profile.favoriteFuelDescription', { defaultValue: 'Configura tu coche y combustible habitual' })}</p>
             </div>
           </div>
 
-          {onboardingMode && (
-            <div className="mx-8 mt-6 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800">
-              {t('profile.onboardingBanner')}
+          <label htmlFor="modelo-coche" className="block text-sm font-medium text-gray-700 mb-1.5">
+            {t('profile.vehicleModel', { defaultValue: 'Modelo del vehículo' })}
+          </label>
+          <input
+            id="modelo-coche"
+            type="text"
+            value={modeloCoche}
+            onChange={(e) => setModeloCoche(e.target.value)}
+            placeholder={t('profile.vehicleModelPlaceholder', { defaultValue: 'Ej: Toyota Yaris 1.5 HSD' })}
+            className="w-full border border-gray-200 focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/10 rounded-xl px-3.5 py-2.5 outline-none transition text-sm bg-gray-50 focus:bg-white text-gray-900 mb-4"
+          />
+
+          <p className="text-sm font-medium text-gray-700 mb-2">
+            {t('profile.fuelType', { defaultValue: '¿Qué combustible usas habitualmente?' })}
+          </p>
+          <div className="grid grid-cols-2 gap-2 mb-4">
+            {COMBUSTIBLES.map((c) => {
+              const isSelected = combustibleSeleccionado === c.value;
+              return (
+                <button
+                  key={c.value}
+                  type="button"
+                  onClick={() => setCombustibleSeleccionado(c.value)}
+                  className={`relative flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 text-left transition-all ${
+                    isSelected
+                      ? 'border-[#000C74] bg-[#F0F2FF] text-[#000C74]'
+                      : 'border-gray-100 bg-gray-50 text-gray-700 hover:border-gray-300 hover:bg-white'
+                  }`}
+                >
+                  <span
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ backgroundColor: c.color }}
+                  />
+                  <span className="text-xs font-medium leading-tight">{c.label}</span>
+                  {isSelected && (
+                    <span className="absolute top-1.5 right-1.5">
+                      <svg className="w-3 h-3 text-[#000C74]" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {selectedFuel && (
+            <div className="flex items-center gap-2 mb-4 px-3 py-2 rounded-xl bg-gray-50 border border-gray-100">
+              <svg className="w-3.5 h-3.5 text-gray-400 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+              </svg>
+              <p className="text-xs text-gray-500">
+                {t('profile.vehicleFuelType', { defaultValue: 'Tipo detectado' })}:{" "}
+                <span className="font-semibold text-gray-700">
+                  {getLabelTipoCoche(deriveCarFuelType(combustibleSeleccionado))}
+                </span>
+              </p>
             </div>
           )}
 
-          <div className="p-8">
-            {/* Info Card */}
-            <div className="mb-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">{t('profile.accountInfo')}</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
-                    <FaUser size={14} />
-                    <span className="text-sm font-semibold">{t('profile.name')}</span>
-                  </div>
-                  <p className="text-gray-800 font-medium">{perfil.nombre}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
-                    <FaEnvelope size={14} />
-                    <span className="text-sm font-semibold">{t('profile.email')}</span>
-                  </div>
-                  <p className="text-gray-800 font-medium">{perfil.email}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
-                    <FaShieldAlt size={14} />
-                    <span className="text-sm font-semibold">{t('profile.role')}</span>
-                  </div>
-                  <p className="text-gray-800 font-medium">
-                    {perfil.is_admin ? t('profile.admin') : t('profile.user')}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
-                    <FaHeart size={14} />
-                    <span className="text-sm font-semibold">{t('profile.favorites')}</span>
-                  </div>
-                  <p className="text-gray-800 font-medium">{favoritos.length} {t('profile.stations')}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
-                    <FaUser size={14} />
-                    <span className="text-sm font-semibold">{t('profile.vehicle')}</span>
-                  </div>
-                  <p className="text-gray-800 font-medium">{perfil.modelo_coche || t('profile.notDefined')}</p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-xl">
-                  <div className="flex items-center gap-2 text-gray-600 mb-1">
-                    <FaGasPump size={14} />
-                    <span className="text-sm font-semibold">{t('profile.vehicleFuel')}</span>
-                  </div>
-                  <p className="text-gray-800 font-medium">{getLabelTipoCoche(perfil.tipo_combustible_coche)}</p>
-                </div>
-              </div>
+          <button
+            onClick={handleGuardarCombustible}
+            disabled={
+              guardandoCombustible ||
+              (
+                combustibleSeleccionado === perfil.combustible_favorito &&
+                modeloCoche.trim() === (perfil.modelo_coche || '') &&
+                deriveCarFuelType(combustibleSeleccionado) === (perfil.tipo_combustible_coche || '')
+              )
+            }
+            className="w-full py-2.5 bg-[#000C74] text-white rounded-xl font-semibold text-sm hover:bg-[#000C74]/90 transition-all disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {guardandoCombustible ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {t('profile.saving', { defaultValue: 'Guardando…' })}
+              </>
+            ) : (
+              <>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                {t('profile.savePreference', { defaultValue: 'Guardar preferencias' })}
+              </>
+            )}
+          </button>
+
+          {saveOkMessage && (
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-700 flex items-center gap-2">
+              <svg className="w-4 h-4 shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              {saveOkMessage}
             </div>
-
-            {/* Preferencias de Combustible */}
-            <div className="mb-6 p-6 bg-[#F7F8FF] rounded-2xl border border-[#D7DBFF]">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-[#000C74] p-3 rounded-xl">
-                  <FaGasPump className="text-white" size={20} />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-gray-800">{t('profile.favoriteFuel')}</h2>
-                  <p className="text-sm text-gray-600">{t('profile.favoriteFuelDescription')}</p>
-                </div>
-              </div>
-              
-              <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-end">
-                <div className="flex-1">
-                  <label
-                    htmlFor="modelo-coche"
-                    className="block text-sm font-medium text-gray-700 mb-2"
-                  >
-                    {t('profile.vehicleModel')}
-                  </label>
-                  <input
-                    id="modelo-coche"
-                    type="text"
-                    value={modeloCoche}
-                    onChange={(e) => setModeloCoche(e.target.value)}
-                    placeholder={t('profile.vehicleModelPlaceholder')}
-                    className="mb-3 w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
-                  />
-
-                  <label
-                    htmlFor="tipo-combustible"
-                    className="block text-sm font-medium text-gray-700 mb-2"
-                  >
-                    {t('profile.fuelType')}
-                  </label>
-                  <select
-                    id="tipo-combustible"
-                    value={combustibleSeleccionado}
-                    onChange={(e) => setCombustibleSeleccionado(e.target.value)}
-                    className="mb-3 w-full border-2 border-blue-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 rounded-xl px-4 py-3 outline-none transition bg-white font-medium text-gray-900"
-                  >
-                    <option value="Precio Gasolina 95 E5">⛽ {t('fuel.gasoline95')}</option>
-                    <option value="Precio Gasolina 98 E5">⛽ {t('fuel.gasoline98')}</option>
-                    <option value="Precio Gasoleo A">🚗 {t('fuel.dieselA')}</option>
-                    <option value="Precio Gasoleo B">🚜 {t('fuel.dieselB')}</option>
-                    <option value="Precio Gasoleo Premium">💎 {t('fuel.dieselPremium')}</option>
-                  </select>
-
-                  <p className="text-xs text-blue-700 bg-blue-100 rounded-lg px-3 py-2">
-                    {t('profile.vehicleFuelType')}: <span className="font-semibold">{getLabelTipoCoche(deriveCarFuelType(combustibleSeleccionado))}</span>
-                  </p>
-                </div>
-                <button
-                  onClick={handleGuardarCombustible}
-                  disabled={
-                    guardandoCombustible ||
-                    (
-                      combustibleSeleccionado === perfil.combustible_favorito &&
-                      modeloCoche.trim() === (perfil.modelo_coche || '') &&
-                      deriveCarFuelType(combustibleSeleccionado) === (perfil.tipo_combustible_coche || '')
-                    )
-                  }
-                  className="px-6 py-3 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
-                  {guardandoCombustible ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      {t('profile.saving')}
-                    </>
-                  ) : (
-                    <>
-                      <FaGasPump size={16} />
-                      {t('profile.savePreference')}
-                    </>
-                  )}
-                </button>
-              </div>
-              
-              {perfil.combustible_favorito && (
-                <div className="mt-4 p-3 bg-white rounded-lg border border-blue-200">
-                  <p className="text-sm text-gray-600">
-                    <span className="font-semibold text-blue-700">{t('profile.current')}:</span>{" "}
-                    {getNombreCombustible(perfil.combustible_favorito)}
-                  </p>
-                </div>
-              )}
-              {saveOkMessage && (
-                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-                  {saveOkMessage}
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={handleLogout}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-xl font-semibold hover:bg-gray-700 transition-all"
-              >
-                <FaSignOutAlt />
-                {t('profile.logout')}
-              </button>
-              <button
-                onClick={handleDelete}
-                className="flex items-center justify-center gap-2 px-6 py-3 bg-red-600 text-white rounded-xl font-semibold hover:bg-red-700 transition-all"
-              >
-                <FaTrash />
-                {t('profile.deleteAccount')}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Favoritos */}
-        <div className="bg-white shadow-xl rounded-3xl overflow-hidden">
-          <div className="bg-linear-to-r from-[#000C74] to-[#4A52D9] p-6 text-white">
-            <h2 className="text-2xl font-bold flex items-center gap-2">
-              <FaHeart />
-              {t('profile.myFavorites')}
-            </h2>
+        {/* Cuenta */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-9 h-9 rounded-xl bg-[#F0F2FF] flex items-center justify-center">
+              <svg className="w-5 h-5 text-[#000C74]" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <h2 className="text-base font-bold text-gray-900">{t('profile.accountInfo', { defaultValue: 'Mi cuenta' })}</h2>
           </div>
-          <div className="p-8">
-            {favoritos.length === 0 ? (
-              <div className="text-center py-12">
-                <FaHeart className="mx-auto text-gray-300 mb-4" size={48} />
-                <p className="text-gray-500">{t('profile.noFavorites')}</p>
-                <p className="text-sm text-gray-400 mt-2">{t('profile.exploreAndSave')}</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {favoritos.map((fav) => (
-                  <div
-                    key={fav.ideess}
-                    className="bg-gray-50 p-4 rounded-xl hover:bg-gray-100 transition"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-bold text-gray-800">ID: {fav.ideess}</p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          {t('profile.savedOn')}: {new Date(fav.created_at).toLocaleDateString('es-ES')}
-                        </p>
-                      </div>
-                      <FaHeart className="text-red-500" size={20} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+
+          <div className="space-y-2 mb-4">
+            <div className="flex items-center justify-between py-2.5 border-b border-gray-50">
+              <span className="text-sm text-gray-500">{t('profile.name', { defaultValue: 'Nombre' })}</span>
+              <span className="text-sm font-medium text-gray-900">{perfil.nombre}</span>
+            </div>
+            <div className="flex items-center justify-between py-2.5 border-b border-gray-50">
+              <span className="text-sm text-gray-500">{t('profile.email', { defaultValue: 'Email' })}</span>
+              <span className="text-sm font-medium text-gray-900 truncate max-w-45">{perfil.email}</span>
+            </div>
+            <div className="flex items-center justify-between py-2.5">
+              <span className="text-sm text-gray-500">{t('profile.role', { defaultValue: 'Rol' })}</span>
+              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${perfil.is_admin ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-700'}`}>
+                {perfil.is_admin ? t('profile.admin', { defaultValue: 'Admin' }) : t('profile.user', { defaultValue: 'Usuario' })}
+              </span>
+            </div>
           </div>
+
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-semibold text-sm hover:bg-gray-200 transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+            </svg>
+            {t('profile.logout', { defaultValue: 'Cerrar sesión' })}
+          </button>
+        </div>
+
+        {/* Danger zone */}
+        <div className="rounded-2xl border border-red-100 bg-red-50/40 p-5">
+          <p className="text-xs font-semibold text-red-500 uppercase tracking-wide mb-1">
+            {t('profile.dangerZone', { defaultValue: 'Zona peligrosa' })}
+          </p>
+          <p className="text-sm text-gray-600 mb-3">
+            {t('profile.deleteAccountDescription', { defaultValue: 'Esta acción es irreversible. Se borrarán todos tus datos y favoritos.' })}
+          </p>
+          <button
+            onClick={handleDelete}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-red-200 text-red-600 rounded-xl font-semibold text-sm hover:bg-red-50 transition-all"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            {t('profile.deleteAccount', { defaultValue: 'Eliminar cuenta' })}
+          </button>
         </div>
       </div>
     </div>

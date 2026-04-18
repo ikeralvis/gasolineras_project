@@ -94,8 +94,11 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
   if (loading) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          📊 {t('history.title')}
+        <h2 className="text-xl font-bold text-gray-800 mb-5 flex items-center gap-2">
+          <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          {t('history.title')}
         </h2>
         <div className="flex items-center justify-center h-64">
           <div className="text-center">
@@ -110,16 +113,35 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
   if (error) {
     return (
       <div className="bg-white rounded-xl shadow-lg p-6">
-        <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-          📊 {t('history.title')}
+        <h2 className="text-xl font-bold text-gray-800 mb-5 flex items-center gap-2">
+          <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          {t('history.title')}
         </h2>
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-          <p className="text-yellow-800 text-sm">
-            ℹ️ {t('history.noData')}
+        <div className="flex flex-col items-center py-8 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+            <svg className="w-7 h-7 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+          </div>
+          <p className="text-gray-700 font-medium mb-1">{t('history.noData', { defaultValue: 'Sin datos históricos aún' })}</p>
+          <p className="text-gray-500 text-sm max-w-xs">
+            {t('history.noDataDescription', { defaultValue: 'Los precios se van registrando cada día. Vuelve en unos días para ver la evolución del precio.' })}
           </p>
-          <p className="text-yellow-600 text-xs mt-2">
-            {t('history.noDataDescription')}
-          </p>
+          <div className="flex gap-2 mt-5">
+            {[7, 30, 90].map((d) => (
+              <button
+                key={d}
+                onClick={() => { setDias(d); }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                  dias === d ? "bg-[#000C74] text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                {d} {t('history.days')}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -128,8 +150,11 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
   return (
     <div className="bg-white rounded-xl shadow-lg p-6">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2 mb-4 md:mb-0">
-          📊 {t('history.title')}
+        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2 mb-4 md:mb-0">
+          <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+          {t('history.title')}
         </h2>
         
         {/* Selector de período */}

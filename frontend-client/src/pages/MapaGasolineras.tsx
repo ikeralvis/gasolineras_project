@@ -131,13 +131,13 @@ function getBrandLogo(rotulo?: string): string | null {
   return getBrandIcon(rotulo);
 }
 
-// Componente para actualizar el centro del mapa
+// Solo posiciona el mapa una vez cuando la ubicación es concedida
 function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
   const map = useMap();
+  const hasSetRef = useRef(false);
   useEffect(() => {
-    if (!enabled) {
-      return;
-    }
+    if (!enabled || hasSetRef.current) return;
+    hasSetRef.current = true;
     map.setView(center, 13, { animate: false });
   }, [center, enabled, map]);
   return null;
@@ -147,10 +147,9 @@ interface GasMapControllerProps {
   onMarkersUpdate: (markers: GasMarker[]) => void;
   onLoading: (loading: boolean) => void;
   onZoomChange: (zoom: number) => void;
-  refreshKey: string;
 }
 
-function GasMapController({ onMarkersUpdate, onLoading, onZoomChange, refreshKey }: Readonly<GasMapControllerProps>) {
+function GasMapController({ onMarkersUpdate, onLoading, onZoomChange }: Readonly<GasMapControllerProps>) {
   const map = useMap();
   const fetchSeqRef = useRef(0);
 
@@ -200,10 +199,6 @@ function GasMapController({ onMarkersUpdate, onLoading, onZoomChange, refreshKey
   useEffect(() => {
     map.whenReady(runFetchForCurrentViewport);
   }, [map, runFetchForCurrentViewport]);
-
-  useEffect(() => {
-    map.whenReady(runFetchForCurrentViewport);
-  }, [map, refreshKey, runFetchForCurrentViewport]);
 
   useEffect(() => {
     const onResize = () => {
@@ -469,6 +464,8 @@ export default function MapaGasolineras() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapZoom, setMapZoom] = useState(6);
 
+  const prevLocationRef = useRef<[number, number] | null>(null);
+
   useEffect(() => {
     let watchId: number | null = null;
 
@@ -476,6 +473,7 @@ export default function MapaGasolineras() {
       (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
+        prevLocationRef.current = [lat, lon];
         setUserLocation([lat, lon]);
         setLocationGranted(true);
       },
@@ -485,12 +483,19 @@ export default function MapaGasolineras() {
       { enableHighAccuracy: false, timeout: 2500, maximumAge: 120000 }
     );
 
+    // Solo actualiza el marcador si el usuario se movió >100m — evita re-renders innecesarios
     watchId = navigator.geolocation.watchPosition(
       (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
+        const prev = prevLocationRef.current;
+        if (prev) {
+          const dLat = lat - prev[0];
+          const dLon = lon - prev[1];
+          if (Math.hypot(dLat, dLon) < 0.001) return;
+        }
+        prevLocationRef.current = [lat, lon];
         setUserLocation([lat, lon]);
-        setLocationGranted(true);
       },
       (error) => {
         console.warn("No se pudo refinar ubicacion:", error.message);
@@ -508,9 +513,6 @@ export default function MapaGasolineras() {
   const stationMarkers = markers.filter((m): m is { type: "station"; station: Gasolinera } => m.type === "station");
   const clusterMarkers = markers.filter((m): m is GasClusterMarker => m.type === "cluster");
   const showBrandLogos = mapZoom >= 14;
-  const mapRefreshKey = locationGranted
-    ? `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}`
-    : "spain-default";
 
   const getStatusMessage = () => {
     if (loading) return t("map.loadingLocation");
@@ -540,7 +542,6 @@ export default function MapaGasolineras() {
                 <span className="text-xs font-medium text-green-300">{t("map.locationDetected")}</span>
               </div>
             )}
-            {isTouchDevice && <p className="text-[11px] text-white/70">Usa dos dedos para hacer zoom</p>}
           </div>
         </div>
       </div>
@@ -568,7 +569,6 @@ export default function MapaGasolineras() {
             onMarkersUpdate={setMarkers}
             onLoading={setLoading}
             onZoomChange={setMapZoom}
-            refreshKey={mapRefreshKey}
           />
 
           {locationGranted && (
@@ -604,10 +604,10 @@ export default function MapaGasolineras() {
       </MapContainer>
 
       {loading && (
-        <div className="absolute inset-0 z-500 flex items-center justify-center bg-white/55 backdrop-blur-[1px] pointer-events-none">
-          <div className="text-center">
-            <div className="inline-block animate-spin rounded-full h-10 w-10 border-4 border-[#000C74] border-t-transparent mb-3" />
-            <p className="text-gray-600 font-medium">{t("map.loadingMap")}</p>
+        <div className="absolute bottom-24 right-4 z-500 pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-lg flex items-center gap-2 border border-gray-100">
+            <div className="animate-spin h-4 w-4 border-2 border-[#000C74] border-t-transparent rounded-full shrink-0" />
+            <span className="text-xs text-gray-600 font-medium">{t("map.loadingMap")}</span>
           </div>
         </div>
       )}

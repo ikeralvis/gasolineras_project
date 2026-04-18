@@ -330,9 +330,8 @@
   "ev": {
     "title": "Puntos de Recarga Eléctrica",
     "navLabel": "Recarga EV",
-    "zoomIn": "Acércate al mapa para ver puntos de recarga (zoom > 8)",
+    "zoomIn": "Acércate al mapa para ver puntos de recarga",
     "zoomInMore": "Área demasiado grande. Acércate un poco más.",
-    "zoomInHint": "Sube al zoom {{zoom}} para ver las estaciones",
     "zoomInMoreHint": "Sube al zoom {{zoom}} para ver las estaciones",
     "noStations": "No se encontraron puntos de recarga en esta área",
     "showingMarkers": "{{locations}} estaciones · {{clusters}} grupos",

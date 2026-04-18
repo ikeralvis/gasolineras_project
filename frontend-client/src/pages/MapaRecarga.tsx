@@ -8,7 +8,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { LuZap, LuMapPin, LuClock, LuX, LuZoomIn, LuPhone, LuGlobe, LuInfo } from "react-icons/lu";
+import { LuZap, LuMapPin, LuClock, LuX, LuPhone, LuGlobe, LuInfo } from "react-icons/lu";
 import { useTranslation } from "react-i18next";
 import {
   BoundingBoxTooLargeError,
@@ -609,18 +609,6 @@ export default function MapaRecarga() {
           </div>
         </div>
       </div>
-
-      {/* ── Zoom hint banner ── */}
-      {(zoomTooLow || bboxTooLargeZoom !== null) && (
-        <div className="absolute top-18 left-1/2 -translate-x-1/2 z-500 pointer-events-none">
-          <div className="bg-amber-500 text-white text-sm font-medium px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
-            <LuZoomIn className="w-4 h-4" />
-            {bboxTooLargeZoom
-              ? t("ev.zoomInMoreHint", { zoom: bboxTooLargeZoom })
-              : t("ev.zoomInHint")}
-          </div>
-        </div>
-      )}
 
       {/* ── Map ── */}
       <MapContainer

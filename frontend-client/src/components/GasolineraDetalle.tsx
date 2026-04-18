@@ -85,6 +85,7 @@ export default function GasolineraDetalle() {
   const [cercanas, setCercanas] = useState<Gasolinera[]>([]);
   const [ordenCercanas, setOrdenCercanas] = useState<"distancia" | "precio">("distancia");
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
+  const [mostrarCombustiblesExtra, setMostrarCombustiblesExtra] = useState(false);
 
   useEffect(() => {
     globalThis.scrollTo({ top: 0, behavior: "auto" });
@@ -278,22 +279,42 @@ export default function GasolineraDetalle() {
 
           {/* Combustibles secundarios en bloque compacto */}
           {combustiblesSecundarios.length > 0 && (
-            <details className="mt-4 rounded-xl border border-gray-100 bg-gray-50/50 p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-[#000C74]">
-                Ver más combustibles ({combustiblesSecundarios.length})
-              </summary>
-              <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {combustiblesSecundarios.map((combustible) => (
-                  <div key={combustible.nombre} className="rounded-lg border border-gray-100 bg-white p-2.5">
-                    <p className="text-xs text-gray-500">{combustible.nombre}</p>
-                    <p className="text-base font-bold text-gray-900">
-                      {combustible.precio}
-                      <span className="ml-1 text-xs font-normal text-gray-500">€/L</span>
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </details>
+            <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50/50 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setMostrarCombustiblesExtra(prev => !prev)}
+                className="w-full flex items-center justify-between px-3 py-3 text-left"
+                aria-expanded={mostrarCombustiblesExtra}
+              >
+                <span className="flex items-center gap-2 text-sm font-semibold text-[#000C74]">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  </svg>
+                  {t('detail.moreFuels', { defaultValue: `Ver más combustibles (${combustiblesSecundarios.length})` })}
+                </span>
+                <svg
+                  className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${mostrarCombustiblesExtra ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {mostrarCombustiblesExtra && (
+                <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {combustiblesSecundarios.map((combustible) => (
+                    <div key={combustible.nombre} className="rounded-lg border border-gray-100 bg-white p-2.5">
+                      <p className="text-xs text-gray-500">{combustible.nombre}</p>
+                      <p className="text-base font-bold text-gray-900">
+                        {combustible.precio}
+                        <span className="ml-1 text-xs font-normal text-gray-500">€/L</span>
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
 

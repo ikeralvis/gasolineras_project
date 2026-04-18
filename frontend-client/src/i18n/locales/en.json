@@ -332,7 +332,6 @@
     "navLabel": "EV Charging",
     "zoomIn": "Zoom in to see charging stations (zoom > 8)",
     "zoomInMore": "Area too large. Please zoom in further.",
-    "zoomInHint": "Zoom to level {{zoom}} to see stations",
     "zoomInMoreHint": "Zoom to level {{zoom}} to see stations",
     "noStations": "No charging points found in this area",
     "showingMarkers": "{{locations}} stations · {{clusters}} clusters",

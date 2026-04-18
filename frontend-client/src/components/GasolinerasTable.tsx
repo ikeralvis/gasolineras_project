@@ -282,15 +282,19 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
               className="border border-gray-200 rounded-xl p-3.5 shadow-sm bg-white hover:shadow-md transition-all"
             >
               <div className="mb-2.5 flex items-start justify-between gap-2.5">
-                <div className="flex items-center gap-2.5 min-w-0">
+                <button
+                  type="button"
+                  onClick={() => openStationDetail(g.IDEESS)}
+                  className="flex items-center gap-2.5 min-w-0 text-left hover:opacity-80 transition-opacity"
+                >
                   {logo ? (
                     <img
                       src={logo}
                       alt={stationName}
-                      className="w-10 h-10 object-contain rounded-lg bg-white shadow-sm p-1"
+                      className="w-10 h-10 object-contain rounded-lg bg-white shadow-sm p-1 shrink-0"
                     />
                   ) : (
-                    <div className="w-10 h-10 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold text-sm">
+                    <div className="w-10 h-10 rounded-lg bg-linear-to-br from-[#000C74] to-[#4A52D9] flex items-center justify-center text-white font-bold text-sm shrink-0">
                       {stationName.substring(0, 2).toUpperCase()}
                     </div>
                   )}
@@ -300,7 +304,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                     </h3>
                     <p className="text-xs text-gray-600 truncate">{g.Municipio}, {g.Provincia}</p>
                   </div>
-                </div>
+                </button>
                 <FavoritoButton ideess={g.IDEESS} size="lg" />
               </div>
 
