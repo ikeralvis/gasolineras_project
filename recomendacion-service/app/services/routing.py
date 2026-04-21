@@ -213,6 +213,24 @@ def _response_retry_wait_seconds(response: httpx.Response, attempt: int) -> floa
     return _retry_backoff_seconds(attempt)
 
 
+def _provider_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except Exception:
+        payload = None
+
+    if isinstance(payload, dict):
+        detail = payload.get("error") or payload.get("message") or payload.get("details")
+        if detail:
+            return str(detail)
+
+    text = (response.text or "").strip()
+    if text:
+        return text[:400]
+
+    return "sin detalle"
+
+
 async def _request_with_retries(
     client: httpx.AsyncClient,
     method: str,
@@ -243,8 +261,9 @@ async def _request_with_retries(
                 await asyncio.sleep(_response_retry_wait_seconds(response, attempt))
                 continue
 
-            response.raise_for_status()
-            return response
+            detail = _provider_error_detail(response)
+            last_exc = RuntimeError(f"HTTP {response.status_code} en {url}: {detail}")
+            break
         except (httpx.TimeoutException, httpx.TransportError, httpx.HTTPStatusError) as exc:
             last_exc = exc
             if attempt >= retries:
@@ -275,13 +294,7 @@ async def _route_osrm_coords(coordinates: List[Tuple[float, float]], client: htt
 
 
 def _normalized_ors_key(raw_key: str) -> str:
-    key = (raw_key or "").strip().strip('"').strip("'")
-    if not key:
-        return ""
-    remainder = len(key) % 4
-    if remainder:
-        key += "=" * (4 - remainder)
-    return key
+    return (raw_key or "").strip().strip('"').strip("'")
 
 
 async def _route_ors_coords(
@@ -303,7 +316,7 @@ async def _route_ors_coords(
         "geometry": True,
         "geometry_format": "geojson",
         "instructions": True,
-        "attributes": ["avgspeed"],
+        "extra_info": ["avgspeed"],
     }
     if evitar_peajes:
         body["options"] = {"avoid_features": ["tollways"]}

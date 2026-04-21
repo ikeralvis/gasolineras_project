@@ -39,6 +39,32 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/recomendacion", tags=["Recomendación"])
 
 
+def _raise_routing_http_error(exc: Exception, evitar_peajes: bool) -> None:
+    message = str(exc)
+    lowered = message.lower()
+
+    if "http 400" in lowered or "bad request" in lowered:
+        if evitar_peajes:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "No se pudo calcular una ruta válida con evitar peajes para este origen/destino. "
+                    "Prueba a ampliar el desvío o desactivar temporalmente evitar peajes. "
+                    f"Detalle proveedor: {message}"
+                ),
+            ) from exc
+
+        raise HTTPException(
+            status_code=422,
+            detail=f"Solicitud de routing inválida para el proveedor configurado: {message}",
+        ) from exc
+
+    raise HTTPException(
+        status_code=503,
+        detail=f"No se pudo calcular la ruta en el proveedor de mapas: {message}",
+    ) from exc
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /recomendacion/ruta  (endpoint principal)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -84,10 +110,7 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
                 client=client,
             )
         except Exception as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=f"No se pudo calcular la ruta en el proveedor de mapas: {exc}",
-            ) from exc
+            _raise_routing_http_error(exc, evitar_peajes=body.evitar_peajes)
 
         if route.distancia_km < 0.1:
             raise HTTPException(

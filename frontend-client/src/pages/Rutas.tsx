@@ -700,7 +700,7 @@ export default function Rutas() {
                     </label>
                     <input
                       type="number"
-                      min={1}
+                      min={0}
                       max={120}
                       step={1}
                       className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
