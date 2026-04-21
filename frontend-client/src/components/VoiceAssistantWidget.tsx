@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MessageCircle, Mic, MicOff, Send, Sparkles, X } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import { askVoiceAssistant } from "../api/voiceAssistant";
 
 type ChatMessage = {
@@ -69,6 +70,8 @@ function formatTtsFallbackReason(note?: string): string {
 }
 
 export default function VoiceAssistantWidget() {
+  const location = useLocation();
+  const isRoutesPage = location.pathname === "/rutas";
   const isMobileDevice = /android|iphone|ipad|ipod|mobile/i.test(globalThis.navigator?.userAgent ?? "");
   const liveTuning = useMemo(
     () => ({
@@ -678,7 +681,7 @@ export default function VoiceAssistantWidget() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="fixed right-4 z-1200 flex h-12 w-12 items-center justify-center rounded-full bg-[#000C74] text-white shadow-xl transition hover:scale-[1.02] md:bottom-6 md:right-6 md:h-14 md:w-14 bottom-22"
+          className={`fixed right-4 z-[1200] flex h-12 w-12 items-center justify-center rounded-full bg-[#000C74] text-white shadow-xl transition hover:scale-[1.02] md:right-6 md:h-14 md:w-14 md:bottom-6 ${isRoutesPage ? "bottom-[7.25rem]" : "bottom-[5.5rem]"}`}
           aria-label="Abrir asistente TankGo"
         >
           <MessageCircle className="h-5 w-5" />
@@ -686,7 +689,7 @@ export default function VoiceAssistantWidget() {
       )}
 
       {open && (
-        <section className="fixed z-1190 inset-0 md:inset-auto md:right-6 md:bottom-24 md:w-[min(92vw,720px)] md:h-[78vh] w-screen h-screen rounded-none md:rounded-2xl border border-[#DCE0FF] bg-white shadow-2xl overflow-hidden flex flex-col">
+        <section className="fixed inset-0 z-[1190] md:inset-auto md:right-6 md:bottom-24 md:h-[78vh] md:w-[min(92vw,720px)] w-screen h-screen overflow-hidden rounded-none border border-[#DCE0FF] bg-white shadow-2xl md:rounded-2xl flex flex-col">
           <header className="flex items-center justify-between bg-linear-to-r from-[#000C74] to-[#1B2AA6] px-4 py-3 text-white shrink-0">
             <div className="flex items-center gap-2">
               <Sparkles className="h-4 w-4" />

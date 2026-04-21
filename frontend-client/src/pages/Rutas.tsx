@@ -20,7 +20,6 @@ import {
 } from "../api/recomendacion";
 import { reverseGeocode, searchLocations } from "../api/geocoding";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
-import { useIsCoarsePointer } from "../hooks/useIsCoarsePointer";
 
 type RouteLocation = {
   name: string;
@@ -47,6 +46,36 @@ type GasStation = {
 };
 
 type PickMode = "origin" | "destination" | null;
+
+function useIsMobileLayout(): boolean {
+  const [isMobile, setIsMobile] = useState(() => {
+    if (typeof globalThis.matchMedia !== "function") return false;
+    return globalThis.matchMedia("(max-width: 767px)").matches;
+  });
+
+  useEffect(() => {
+    if (typeof globalThis.matchMedia !== "function") return;
+
+    const media = globalThis.matchMedia("(max-width: 767px)");
+    const update = () => setIsMobile(media.matches);
+    update();
+
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return isMobile;
+}
+
+function formatDurationShort(totalMinutes: number): string {
+  const safeMinutes = Math.max(0, Math.round(totalMinutes));
+  if (safeMinutes < 60) return `${safeMinutes} min`;
+
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  if (minutes === 0) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
+}
 
 function pickDefaultStop(stations: GasStation[]): GasStation | null {
   if (!stations.length) return null;
@@ -107,16 +136,41 @@ function createMarkerIcon(kind: "origin" | "destination" | "station" | "selected
   });
 }
 
-function FitRouteBounds({ coordinates }: { coordinates: [number, number][] }) {
+function FitRouteBounds({
+  coordinates,
+  isMobileLayout,
+  showSearchPanel,
+  hasBottomSheet,
+}: {
+  coordinates: [number, number][];
+  isMobileLayout: boolean;
+  showSearchPanel: boolean;
+  hasBottomSheet: boolean;
+}) {
   const map = useMap();
 
   useEffect(() => {
-    if (coordinates.length < 2) return;
-    map.fitBounds(coordinates, {
-      padding: [32, 32],
-      maxZoom: 14,
-    });
-  }, [coordinates, map]);
+    const timer = globalThis.setTimeout(() => {
+      map.invalidateSize();
+
+      if (coordinates.length < 2) return;
+
+      const bounds = L.latLngBounds(coordinates);
+      const topPadding = 24;
+      const leftPadding = !isMobileLayout && showSearchPanel ? 440 : 24;
+      const rightPadding = !isMobileLayout && hasBottomSheet ? 440 : 24;
+      const bottomPadding = isMobileLayout && hasBottomSheet ? 290 : 32;
+
+      map.fitBounds(bounds, {
+        paddingTopLeft: [leftPadding, topPadding],
+        paddingBottomRight: [rightPadding, bottomPadding],
+        maxZoom: 14,
+        animate: true,
+      });
+    }, 120);
+
+    return () => globalThis.clearTimeout(timer);
+  }, [coordinates, hasBottomSheet, isMobileLayout, map, showSearchPanel]);
 
   return null;
 }
@@ -135,7 +189,7 @@ function MapPickMode({ pickMode, onPick }: { pickMode: PickMode; onPick: (lat: n
 export default function Rutas() {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const isTouchDevice = useIsCoarsePointer();
+  const isMobileLayout = useIsMobileLayout();
 
   const [origin, setOrigin] = useState<RouteLocation | null>(null);
   const [destination, setDestination] = useState<RouteLocation | null>(null);
@@ -163,10 +217,11 @@ export default function Rutas() {
   const [routeError, setRouteError] = useState<string | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
+  const [routeQualityNote, setRouteQualityNote] = useState<string | null>(null);
   const [gasStationsNearRoute, setGasStationsNearRoute] = useState<GasStation[]>([]);
   const [selectedStop, setSelectedStop] = useState<GasStation | null>(null);
 
-  useBodyScrollLock(isTouchDevice && showSearchPanel);
+  useBodyScrollLock(isMobileLayout && showSearchPanel);
 
   useEffect(() => {
     setSelectedFuel(mapProfileFuelToCombustible(user?.combustible_favorito, user?.tipo_combustible_coche));
@@ -175,6 +230,7 @@ export default function Rutas() {
   const clearRouteResult = () => {
     setRouteCoordinates([]);
     setRouteInfo(null);
+    setRouteQualityNote(null);
     setGasStationsNearRoute([]);
     setSelectedStop(null);
     setRouteError(null);
@@ -337,6 +393,18 @@ export default function Rutas() {
         distanceKm: data.ruta_base.distancia_km,
         durationMin: data.ruta_base.duracion_min,
       });
+      if (data.metadata?.detour_exact_required_for_top === false) {
+        const exact = Number(data.metadata?.detour_candidates_exact ?? 0);
+        const total = Number(data.metadata?.detour_candidates_total_viable ?? 0);
+        setRouteQualityNote(
+          t("routes.detourEstimateNotice", {
+            defaultValue:
+              "Algunas paradas usan estimación de desvío. Si quieres máxima precisión, vuelve a calcular o abre la ruta en Google Maps para validar.",
+          }) + (total > 0 ? ` (${exact}/${total} exactas)` : "")
+        );
+      } else {
+        setRouteQualityNote(null);
+      }
       setGasStationsNearRoute(fullList);
       setSelectedStop(pickDefaultStop(fullList));
       setShowSearchPanel(false);
@@ -391,15 +459,22 @@ export default function Rutas() {
 
   const candidateStops = useMemo(() => gasStationsNearRoute, [gasStationsNearRoute]);
 
+  const updateMaxDetourMinutes = (value: number) => {
+    const normalized = Math.max(1, Math.min(120, Math.round(value || 1)));
+    setMaxDetourMin(normalized);
+    clearRouteResult();
+  };
+
   return (
     <div className="relative min-h-[calc(100vh-60px)] overflow-hidden bg-[#edf2ff]">
       <MapContainer
         center={mapCenter}
         zoom={12}
         style={{ height: "calc(100vh - 60px)", width: "100%" }}
-        scrollWheelZoom
-        dragging={!isTouchDevice}
-        touchZoom="center"
+        zoomControl={false}
+        scrollWheelZoom={!isMobileLayout}
+        dragging
+        touchZoom
         className="z-0"
       >
         <TileLayer
@@ -408,7 +483,12 @@ export default function Rutas() {
           maxZoom={19}
         />
 
-        <FitRouteBounds coordinates={routeCoordinates} />
+        <FitRouteBounds
+          coordinates={routeCoordinates}
+          isMobileLayout={isMobileLayout}
+          showSearchPanel={showSearchPanel}
+          hasBottomSheet={Boolean(routeInfo)}
+        />
         <MapPickMode pickMode={pickMode} onPick={handlePickFromMap} />
 
         {routeCoordinates.length > 0 && (
@@ -431,14 +511,14 @@ export default function Rutas() {
       </MapContainer>
 
       <section
-        className={isTouchDevice && showSearchPanel
+        className={isMobileLayout && showSearchPanel
           ? "fixed inset-0 z-[1300] bg-white"
           : "pointer-events-none absolute left-0 right-0 top-0 z-40 px-3 pt-3 md:left-4 md:right-auto md:w-[430px] md:px-0 md:pt-4"}
       >
-        <div className={isTouchDevice && showSearchPanel ? "h-full overflow-y-auto p-4" : "pointer-events-auto w-full"}>
+        <div className={isMobileLayout && showSearchPanel ? "h-full overflow-y-auto p-4" : "pointer-events-auto w-full"}>
           {showSearchPanel ? (
-            <div className={`border border-[#d7e2f5] bg-white ${isTouchDevice ? "min-h-full rounded-none p-0 shadow-none" : "rounded-2xl p-3 shadow-xl shadow-[#1e3a8a]/12 backdrop-blur"}`}>
-              {isTouchDevice && (
+            <div className={`border border-[#d7e2f5] bg-white ${isMobileLayout ? "min-h-full rounded-none p-0 shadow-none" : "rounded-2xl p-3 shadow-xl shadow-[#1e3a8a]/12 backdrop-blur"}`}>
+              {isMobileLayout && (
                 <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d9e4f7] bg-white px-3 py-3">
                   <h2 className="text-base font-bold text-[#17386f]">{t("routes.title")}</h2>
                   <button
@@ -451,7 +531,7 @@ export default function Rutas() {
                 </div>
               )}
 
-              <div className={`${isTouchDevice ? "p-3 space-y-3" : "space-y-3"}`}>
+              <div className={`${isMobileLayout ? "p-3 space-y-3" : "space-y-3"}`}>
                 <div className="relative">
                   <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.from")}</label>
                   <div className="relative">
@@ -619,19 +699,19 @@ export default function Rutas() {
                       {t("routes.maxDetourMin", { defaultValue: "Desvío máximo (min)" })}
                     </label>
                     <input
-                      type="range"
+                      type="number"
                       min={1}
-                      max={30}
+                      max={120}
                       step={1}
                       className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
                       value={maxDetourMin}
                       onChange={(e) => {
-                        setMaxDetourMin(Number(e.target.value) || 1);
-                        clearRouteResult();
+                        updateMaxDetourMinutes(Number(e.target.value));
                       }}
+                      onBlur={(e) => updateMaxDetourMinutes(Number(e.target.value))}
                     />
                     <p className="mt-1 text-xs font-semibold text-[#1f3f79]">
-                      {maxDetourMin} {t("routes.minutes")}
+                      {formatDurationShort(maxDetourMin)}
                     </p>
                   </div>
 
@@ -692,37 +772,47 @@ export default function Rutas() {
           ) : (
             <button
               type="button"
-              className={isTouchDevice
-                ? "fixed bottom-[5.75rem] right-5 inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white px-4 py-3 text-sm font-semibold text-[#16356f] shadow-xl"
-                : "inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white/95 px-4 py-2 text-sm font-semibold text-[#16356f] shadow-lg"}
+              className="fixed left-4 z-[1210] inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white px-4 py-2.5 text-sm font-semibold text-[#16356f] shadow-xl md:left-4 md:top-20"
+              style={{ top: isMobileLayout ? "calc(env(safe-area-inset-top, 0px) + 12px)" : undefined }}
               onClick={() => setShowSearchPanel(true)}
             >
               <LuPencil size={15} />
-              {isTouchDevice ? t("routes.editSearch", { defaultValue: "Filtros y ruta" }) : t("routes.editSearch", { defaultValue: "Editar búsqueda" })}
+              {isMobileLayout
+                ? t("routes.editSearch", { defaultValue: "Filtros y ruta" })
+                : t("routes.editSearch", { defaultValue: "Editar búsqueda" })}
             </button>
           )}
         </div>
       </section>
 
       {routeError && (
-        <div className="absolute left-3 right-3 top-24 z-[1200] rounded-xl border border-[#ffd1d8] bg-[#fff0f0] px-3 py-2 text-sm text-[#b42234] md:left-auto md:right-5 md:top-20 md:w-[420px]" role="alert">
+        <div className="absolute left-3 right-3 top-20 z-[1200] rounded-xl border border-[#ffd1d8] bg-[#fff0f0] px-3 py-2 text-sm text-[#b42234] md:left-auto md:right-5 md:top-20 md:w-[420px]" role="alert">
           {routeError}
         </div>
       )}
 
       {routeInfo && (
-        <section className="pointer-events-none absolute bottom-[5.5rem] left-0 right-0 z-40 p-2 md:left-auto md:right-5 md:top-24 md:w-[430px] md:bottom-auto md:p-0">
-          <div className="pointer-events-auto rounded-t-3xl border border-[#cad8ef] bg-white/97 p-3 shadow-[0_-14px_40px_rgba(30,58,138,.16)] md:rounded-2xl">
-            <div className="mb-3 grid grid-cols-2 gap-2">
+        <section className="pointer-events-none fixed inset-x-0 bottom-[4.75rem] z-[1180] px-2 pb-[max(env(safe-area-inset-bottom),0px)] md:inset-auto md:right-5 md:top-24 md:bottom-auto md:w-[430px] md:px-0 md:pb-0">
+          <div className="pointer-events-auto overflow-hidden rounded-t-3xl border border-[#cad8ef] bg-white/97 shadow-[0_-14px_40px_rgba(30,58,138,.16)] md:rounded-2xl md:border-[#cfdcf3]">
+            <div className="mx-auto mt-2 h-1.5 w-11 rounded-full bg-[#ccd8ee] md:hidden" />
+
+            <div className="max-h-[60vh] overflow-y-auto p-3 md:max-h-none">
+              <div className="mb-3 grid grid-cols-2 gap-2">
               <div className="rounded-xl bg-[#edf4ff] px-3 py-2">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-[#5573a7]">{t("routes.distance")}</p>
                 <p className="text-lg font-extrabold text-[#17396f]">{routeInfo.distanceKm.toFixed(1)} km</p>
               </div>
               <div className="rounded-xl bg-[#edf4ff] px-3 py-2">
                 <p className="text-[11px] font-bold uppercase tracking-wider text-[#5573a7]">{t("routes.duration")}</p>
-                <p className="text-lg font-extrabold text-[#17396f]">{Math.round(routeInfo.durationMin)} {t("routes.minutes")}</p>
+                <p className="text-lg font-extrabold text-[#17396f]">{formatDurationShort(routeInfo.durationMin)}</p>
               </div>
             </div>
+
+            {routeQualityNote && (
+              <p className="mb-3 rounded-xl border border-[#ffe2b4] bg-[#fff8ec] px-3 py-2 text-xs text-[#7a4b00]">
+                {routeQualityNote}
+              </p>
+            )}
 
             <div className="mb-2 flex items-center justify-between gap-2">
               <h3 className="text-xs font-bold uppercase tracking-widest text-[#4d638e]">{t("routes.stopOptions")}</h3>
@@ -755,7 +845,7 @@ export default function Rutas() {
                       </span>
                     </div>
                   </div>
-                  <p className="mt-1 text-xs font-semibold text-[#23467f]">€{station.precio_litro.toFixed(3)} · +{station.desvio_km.toFixed(1)} km · +{Math.round(station.desvio_min_estimado)} min</p>
+                  <p className="mt-1 text-xs font-semibold text-[#23467f]">€{station.precio_litro.toFixed(3)} · +{station.desvio_km.toFixed(1)} km · +{formatDurationShort(station.desvio_min_estimado)}</p>
                 </button>
               ))}
             </div>
@@ -789,11 +879,12 @@ export default function Rutas() {
                   </div>
                   <div className="rounded-lg bg-white px-2 py-1.5">
                     <p className="text-[11px] text-[#6a84b1]">{t("routes.extraMinutes")}</p>
-                    <p className="text-sm font-bold text-[#17386f]">{selectedStop.desvio_min_estimado.toFixed(0)}</p>
+                    <p className="text-sm font-bold text-[#17386f]">{formatDurationShort(selectedStop.desvio_min_estimado)}</p>
                   </div>
                 </div>
               </article>
             )}
+            </div>
           </div>
         </section>
       )}

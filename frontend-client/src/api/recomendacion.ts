@@ -93,6 +93,18 @@ export interface RecomendacionResponse {
       properties: Record<string, unknown>;
     }>;
   };
+  metadata?: {
+    detour_strategy?: string;
+    detour_minutes_source?: string;
+    max_detour_minutes_effective?: number;
+    exact_refine_candidates?: number;
+    detour_candidates_exact?: number;
+    detour_candidates_total_viable?: number;
+    detour_exact_required_for_top?: boolean;
+    routing_backend?: string;
+    avoid_tolls?: boolean;
+    [key: string]: unknown;
+  };
 }
 
 export async function requestRouteRecommendations(
