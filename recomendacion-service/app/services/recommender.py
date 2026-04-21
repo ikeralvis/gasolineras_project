@@ -64,6 +64,7 @@ async def _apply_matrix_detour_minutes(
             continue
         item.desvio_min = round(detour_min, 1)
         item.desvio_km = round((detour_min / 60.0) * avg_speed_kmh, 2)
+        item.detour_source = "matrix"
 
 
 async def _refine_exact_detours(
@@ -73,14 +74,12 @@ async def _refine_exact_detours(
     route_dist_km: float,
     route_duration_min: float,
     enriched: List[CandidateScore],
+    limit: int,
 ) -> None:
     if not enriched:
         return
 
-    refine_limit = min(
-        len(enriched),
-        max(1, min(settings.MAX_REAL_DETOUR_CHECKS, req.top_n)),
-    )
+    refine_limit = min(len(enriched), max(1, limit))
     refine_pool = sorted(enriched, key=lambda c: (c.desvio_min, c.precio))[:refine_limit]
     semaphore = asyncio.Semaphore(8)
 
@@ -103,6 +102,7 @@ async def _refine_exact_detours(
                     real_detour_min = max(0.0, via_route.duracion_min - route_duration_min)
                     item.desvio_km = round(real_detour_km, 2)
                     item.desvio_min = round(real_detour_min, 1)
+                    item.detour_source = "exact"
                 except Exception as exc:
                     logger.warning(
                         "No se pudo refinar desvío exacto para '%s' (lat=%.5f, lon=%.5f): %s",
@@ -198,7 +198,21 @@ async def build_recommendations(
     )
 
     await _apply_matrix_detour_minutes(req, origin, dest, enriched, route_avg_speed_kmh)
-    await _refine_exact_detours(req, origin, dest, route_dist_km, route_duration_min, enriched)
+
+    # Asegura que el ranking final use desvíos en tiempo obtenidos de ruta real A->S->B.
+    exact_refine_limit = min(
+        len(enriched),
+        max(req.top_n, settings.MAX_REAL_DETOUR_CHECKS),
+    )
+    await _refine_exact_detours(
+        req,
+        origin,
+        dest,
+        route_dist_km,
+        route_duration_min,
+        enriched,
+        limit=exact_refine_limit,
+    )
 
     enriched = filter_viable_candidates(
         enriched,
@@ -207,7 +221,10 @@ async def build_recommendations(
         detour_limit_km=detour_limit_km,
     )
 
-    scored = score_candidates(enriched, req.peso_precio, req.peso_desvio)
+    exact_candidates = [item for item in enriched if item.detour_source == "exact"]
+    ranking_pool = exact_candidates if len(exact_candidates) >= req.top_n else enriched
+
+    scored = score_candidates(ranking_pool, req.peso_precio, req.peso_desvio)
     await _enrich_access_type(scored)
     scored = _apply_access_policy(scored)
     scored = sorted(scored, key=lambda c: c.score, reverse=True)
@@ -284,10 +301,10 @@ async def build_recommendations(
             "max_detour_minutes_effective": detour_limit_min,
             "max_detour_km_effective": round(detour_limit_km, 2),
             "route_avg_speed_kmh": round(route_avg_speed_kmh, 1),
-            "exact_refine_candidates": min(
-                len(enriched),
-                max(1, min(settings.MAX_REAL_DETOUR_CHECKS, req.top_n)),
-            ),
+            "exact_refine_candidates": exact_refine_limit,
+            "detour_candidates_exact": len(exact_candidates),
+            "detour_candidates_total_viable": len(enriched),
+            "detour_exact_required_for_top": len(exact_candidates) >= req.top_n,
             "poi_access_provider": settings.POI_ACCESS_PROVIDER,
         },
         geojson={

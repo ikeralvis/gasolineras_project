@@ -21,13 +21,19 @@ Dado un punto **A** (origen) y un punto **B** (destino), calcula la ruta y recom
 
 ### Lógica A→B y A→parada→B
 
-El desvío se calcula así:
+El desvío final se calcula así:
 
 ```
 desvío_km = dist(A → gasolinera) + dist(gasolinera → B) − dist(A → B)
 ```
 
-Se usa la **fórmula de haversine** (distancia geodésica) escalada por un factor de carretera (~1.3×) como aproximación rápida. Esto evita lanzar una llamada al motor de routing por cada candidato (pueden ser cientos).
+Pipeline actual en producción:
+- Pre-filtro geométrico rápido (Shapely) para reducir candidatas.
+- Estimación inicial (haversine + factor vial) para ordenar.
+- Refinado de tiempo con **ORS Matrix** para candidatas prometedoras.
+- Refinado exacto con ruta real **A→S→B** para el pool final (delta de duración real).
+
+Así, el valor de `desvio_min_estimado` en el top final no depende de velocidad fija, sino de duración real de ORS.
 
 Para el usuario final, el resultado práctico es:
 - **desvío_km = 0** → la gasolinera está casi en la ruta, no desvías nada.
@@ -36,12 +42,13 @@ Para el usuario final, el resultado práctico es:
 
 ---
 
-### ¿Por qué haversine en lugar de una llamada OSRM por candidato?
+### ¿Por qué no se hace routing exacto para miles de estaciones?
 
-- España tiene ~11 000 gasolineras. Lanzar 11 000 peticiones de routing es inviable.
-- El pre-filtrado geométrico (Shapely) reduce los candidatos a ~50–200.
-- Para esos candidatos, haversine × 1.3 tiene un error < 15 % respecto al desvío real por carretera, suficiente para clasificar.
-- Si necesitas precisión absoluta, puedes llamar OSRM con waypoints para el top-5 final.
+- España tiene ~11 000 gasolineras. Lanzar una ruta exacta por cada una es inviable por latencia y cuota.
+- Se usa una estrategia por fases: aproximación barata -> matrix -> exacto A→S→B en candidatas finalistas.
+- Esto mantiene costes/control de cuota sin renunciar a precisión en el resultado mostrado al usuario.
+
+Nota: ORS no usa tráfico en tiempo real como Google Maps, por lo que puede haber diferencias en minutos en horas punta.
 
 ---
 

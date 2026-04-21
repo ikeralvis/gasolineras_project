@@ -24,6 +24,7 @@ class CandidateScore:
     precio: float
     desvio_km: float
     desvio_min: float
+    detour_source: str
     service_area_bonus: float
     fraction: float
     pct: float
@@ -122,6 +123,7 @@ def build_initial_candidates(
                 precio=station.precio,
                 desvio_km=round(detour_km, 2),
                 desvio_min=round(detour_min, 1),
+                detour_source="approx",
                 service_area_bonus=infer_service_area_bonus(station),
                 fraction=fraction,
                 pct=pct,
