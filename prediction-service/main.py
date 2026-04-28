@@ -77,6 +77,7 @@ USE_CLOUD_RUN_IAM = os.environ.get("USE_CLOUD_RUN_IAM", "true").lower() == "true
 # Data freshness validation (recommended for scheduled batch runs)
 REQUIRE_FRESH_RAW_DATA = os.environ.get("REQUIRE_FRESH_RAW_DATA", "true").lower() == "true"
 RAW_MAX_AGE_HOURS = int(os.environ.get("RAW_MAX_AGE_HOURS", "36"))
+RAW_LOOKBACK_DAYS = int(os.environ.get("RAW_LOOKBACK_DAYS", "180"))
 
 # Forecast/train config
 FUELS = [f.strip() for f in os.environ.get("FUELS", "Precio Gasolina 95 E5|Precio Gasoleo A").split("|") if f.strip()]
@@ -453,6 +454,24 @@ def download_raw_parquets_from_gcs() -> list[str]:
     blobs = list(bucket.list_blobs(prefix=GCS_RAW_PREFIX))
     parquet_blobs = [b for b in blobs if b.name.endswith(".parquet")]
 
+    if RAW_LOOKBACK_DAYS > 0:
+        cutoff = datetime.now(timezone.utc).date() - pd.Timedelta(days=RAW_LOOKBACK_DAYS)
+        filtered = []
+        for blob in parquet_blobs:
+            name = blob.name
+            # soporta prefijos particionados snapshot_date=YYYY-MM-DD/archivo.parquet
+            if "snapshot_date=" in name:
+                try:
+                    part = name.split("snapshot_date=")[-1].split("/")[0]
+                    snap_date = datetime.strptime(part, "%Y-%m-%d").date()
+                    if snap_date >= cutoff:
+                        filtered.append(blob)
+                    continue
+                except Exception:
+                    pass
+            filtered.append(blob)
+        parquet_blobs = filtered
+
     print(f"📥 Descargando {len(parquet_blobs)} parquets desde gs://{GCS_BUCKET}/{GCS_RAW_PREFIX}")
 
     local_paths = []
@@ -475,6 +494,10 @@ def resolve_raw_files() -> list[str]:
 
     if not files:
         files = glob.glob(LOCAL_RAW_GLOB)
+
+    if RAW_LOOKBACK_DAYS > 0 and files:
+        cutoff_ts = (datetime.now(timezone.utc) - pd.Timedelta(days=RAW_LOOKBACK_DAYS)).timestamp()
+        files = [f for f in files if os.path.getmtime(f) >= cutoff_ts]
 
     files = sorted(set(files))
     print(f"📂 Archivos raw detectados: {len(files)}")
@@ -546,17 +569,27 @@ def load_model(station, fuel):
 # DATOS + FEATURES + TRAIN
 # ─────────────────────────────────────────────────────────────────
 
-def load_raw_data(file_paths: list[str]) -> pd.DataFrame:
+def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = None) -> pd.DataFrame:
     if not file_paths:
         raise RuntimeError(
             "No hay parquet de entrada. Configura GCS_BUCKET/GCS_RAW_PREFIX o LOCAL_RAW_GLOB con archivos válidos."
         )
 
+    needed_cols = ["IDEESS", "fecha_registro"] + [c for c in FUELS]
+    min_ts = None
+    if RAW_LOOKBACK_DAYS > 0:
+        min_date = datetime.now(timezone.utc).date() - pd.Timedelta(days=RAW_LOOKBACK_DAYS)
+        min_ts = int(pd.Timestamp(min_date).timestamp() * 1000)
+
     dfs = []
     for path in file_paths:
         try:
-            d = pd.read_parquet(path)
+            d = pd.read_parquet(path, columns=needed_cols)
             if "IDEESS" in d.columns:
+                if station_filter:
+                    d = d[d["IDEESS"].astype(str).isin(station_filter)]
+                if min_ts is not None and "fecha_registro" in d.columns:
+                    d = d[d["fecha_registro"] >= min_ts]
                 dfs.append(d)
         except Exception as e:
             print(f"⚠️ Error leyendo {path}: {e}")
@@ -804,11 +837,12 @@ def run_batch():
     validate_runtime_config()
     validate_raw_freshness()
 
-    raw_paths = resolve_raw_files()
-    df = load_raw_data(raw_paths)
-    brent_df = load_brent()
-
     station_targets = resolve_station_targets()
+    station_filter = {sid for sid, _ in station_targets}
+
+    raw_paths = resolve_raw_files()
+    df = load_raw_data(raw_paths, station_filter=station_filter)
+    brent_df = load_brent()
     print(f"🎯 Estaciones objetivo: {len(station_targets)}")
 
     run_date = datetime.today().strftime("%Y-%m-%d")
