@@ -93,21 +93,21 @@ export default function Favoritos() {
   }
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-[#E8EAFE] via-[#F1F2FF] to-[#E3E6FF] py-8">
+    <div className="min-h-screen bg-linear-to-br from-[#F5F6FF] via-[#EEF0FF] to-[#E9ECFF] py-8">
       <div className="max-w-7xl mx-auto px-4">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="bg-red-500 p-3 rounded-xl shadow-lg">
-                <FaHeart className="text-white w-8 h-8" />
+          <div className="flex flex-col gap-4 rounded-2xl border border-[#D9DBF2] bg-white/80 p-5 shadow-sm md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-2xl bg-[#000C74] text-white flex items-center justify-center shadow">
+                <FaHeart className="w-6 h-6" />
               </div>
               <div>
-                <h1 className="text-4xl font-bold text-[#000C74]">
+                <h1 className="text-3xl font-semibold text-[#0f172a]">
                   {t('favorites.title')}
                 </h1>
-                <p className="text-gray-600 mt-1">
-                  {gasolineras.length === 0 
+                <p className="text-sm text-gray-600 mt-1">
+                  {gasolineras.length === 0
                     ? t('favorites.noFavorites')
                     : t('favorites.stationSaved', { count: gasolineras.length })
                   }
@@ -117,7 +117,7 @@ export default function Favoritos() {
 
             <button
               onClick={() => navigate('/gasolineras')}
-              className="px-6 py-3 bg-[#000C74] text-white rounded-xl hover:bg-[#001A8A] transition font-medium flex items-center gap-2 shadow-lg"
+              className="w-full md:w-auto px-5 py-2.5 bg-[#000C74] text-white rounded-xl hover:bg-[#001A8A] transition font-medium flex items-center justify-center gap-2 shadow"
             >
               <FaRoute />
               {t('favorites.exploreStations')}
@@ -127,42 +127,66 @@ export default function Favoritos() {
 
         {/* Contenido */}
         {gasolineras.length === 0 ? (
-          <div className="bg-white rounded-3xl shadow-xl p-12 text-center">
-            <div className="max-w-md mx-auto">
-              <div className="bg-gray-100 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-                <FaHeart className="text-gray-400 w-12 h-12" />
+          <div className="bg-white rounded-3xl shadow-xl p-8 md:p-12">
+            <div className="grid gap-8 md:grid-cols-[1.2fr_1fr] items-center">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full bg-[#EEF0FF] px-3 py-1 text-xs font-semibold text-[#000C74]">
+                  <FaHeart />
+                  {t('favorites.noFavorites')}
+                </div>
+                <h2 className="text-2xl md:text-3xl font-semibold text-[#0f172a] mt-4 mb-3">
+                  {t('favorites.noFavoritesDescription')}
+                </h2>
+                <p className="text-gray-600 max-w-md">
+                  {t('favorites.searchStations')}
+                </p>
+                <button
+                  onClick={() => navigate('/gasolineras')}
+                  className="mt-6 px-6 py-3 bg-[#000C74] text-white rounded-xl font-semibold hover:bg-[#001A8A] transition inline-flex items-center gap-2"
+                >
+                  <FaMapMarkerAlt />
+                  {t('favorites.searchStations')}
+                </button>
               </div>
-              <h2 className="text-2xl font-bold text-gray-800 mb-3">
-                {t('favorites.noFavorites')}
-              </h2>
-              <p className="text-gray-600 mb-6">
-                {t('favorites.noFavoritesDescription')}
-              </p>
-              <button
-                onClick={() => navigate('/gasolineras')}
-                className="px-8 py-4 bg-linear-to-r from-[#000C74] to-[#4A52D9] text-white rounded-xl font-bold hover:shadow-lg hover:scale-105 transition-all inline-flex items-center gap-2"
-              >
-                <FaMapMarkerAlt />
-                {t('favorites.searchStations')}
-              </button>
+              <div className="relative">
+                <div className="absolute -top-6 -left-6 h-20 w-20 rounded-2xl bg-[#EEF0FF]" />
+                <div className="absolute -bottom-4 -right-4 h-16 w-16 rounded-2xl bg-[#DCE0FF]" />
+                <div className="relative rounded-3xl border border-[#E6E9FF] bg-linear-to-br from-[#F7F8FF] to-white p-6 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="h-12 w-12 rounded-2xl bg-white shadow flex items-center justify-center text-[#000C74]">
+                      <FaHeart className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">{t('favorites.totalFavorites')}</p>
+                      <p className="text-2xl font-bold text-[#0f172a]">0</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 h-2 rounded-full bg-[#EEF0FF]">
+                    <div className="h-2 rounded-full bg-[#000C74]" style={{ width: "18%" }} />
+                  </div>
+                  <p className="text-xs text-gray-500 mt-3">
+                    {t('favorites.exploreStations')}
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         ) : (
           <>
             {/* Estadísticas rápidas */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">{t('favorites.averagePrice95')}</p>
-                    <p className="text-2xl font-bold text-[#000C74] mt-1">
+                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('favorites.averagePrice95')}</p>
+                    <p className="text-2xl font-bold text-[#000C74] mt-2">
                       {(gasolineras.reduce((acc, g) => {
                         const precio = Number.parseFloat(g['Precio Gasolina 95 E5'].replace(',', '.'));
                         return acc + (Number.isNaN(precio) ? 0 : precio);
                       }, 0) / gasolineras.length).toFixed(3)}€
                     </p>
                   </div>
-                  <div className="bg-blue-100 p-3 rounded-lg">
+                  <div className="bg-blue-100 p-3 rounded-xl">
                     <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
                     </svg>
@@ -170,18 +194,18 @@ export default function Favoritos() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">{t('favorites.averagePriceDiesel')}</p>
-                    <p className="text-2xl font-bold text-[#000C74] mt-1">
+                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('favorites.averagePriceDiesel')}</p>
+                    <p className="text-2xl font-bold text-[#000C74] mt-2">
                       {(gasolineras.reduce((acc, g) => {
                         const precio = Number.parseFloat(g['Precio Gasoleo A'].replace(',', '.'));
                         return acc + (Number.isNaN(precio) ? 0 : precio);
                       }, 0) / gasolineras.length).toFixed(3)}€
                     </p>
                   </div>
-                  <div className="bg-green-100 p-3 rounded-lg">
+                  <div className="bg-green-100 p-3 rounded-xl">
                     <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
                     </svg>
@@ -189,15 +213,15 @@ export default function Favoritos() {
                 </div>
               </div>
 
-              <div className="bg-white rounded-xl p-6 shadow-lg">
+              <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 font-medium">{t('favorites.totalFavorites')}</p>
-                    <p className="text-2xl font-bold text-[#000C74] mt-1">
+                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('favorites.totalFavorites')}</p>
+                    <p className="text-2xl font-bold text-[#000C74] mt-2">
                       {gasolineras.length}
                     </p>
                   </div>
-                  <div className="bg-red-100 p-3 rounded-lg">
+                  <div className="bg-red-100 p-3 rounded-xl">
                     <FaHeart className="w-6 h-6 text-red-600" />
                   </div>
                 </div>

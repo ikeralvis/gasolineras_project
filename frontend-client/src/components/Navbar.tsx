@@ -31,7 +31,6 @@ const NAV_ITEMS: DesktopItem[] = [
   { to: '/mapa', label: 'Mapa', icon: Map },
   { to: '/recarga', label: 'Recarga', icon: Zap },
   { to: '/rutas', label: 'Rutas', icon: Route, private: true },
-  { to: '/favoritos', label: 'Favoritos', icon: Heart, private: true },
 ];
 
 type MobileItem = {

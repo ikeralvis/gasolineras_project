@@ -13,7 +13,12 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Profile from "./pages/Profile";
 import Favoritos from "./pages/Favoritos";
+import Legal from "./pages/Legal";
+import Privacy from "./pages/Privacy";
+import Accessibility from "./pages/Accessibility";
+import Faq from "./pages/Faq";
 import VoiceAssistantWidget from "./components/VoiceAssistantWidget";
+import Footer from "./components/Footer";
 
 function RequireAuth({ children }: Readonly<{ children: ReactElement }>) {
   const { isAuthenticated, loading } = useAuth();
@@ -51,9 +56,15 @@ function AppContent() {
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
           <Route path="/favoritos" element={<RequireAuth><Favoritos /></RequireAuth>} />
 
+          <Route path="/legal" element={<Legal />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/accessibility" element={<Accessibility />} />
+          <Route path="/faq" element={<Faq />} />
+
           <Route path="*" element={<Navigate to={isAuthenticated ? "/gasolineras" : "/"} replace />} />
         </Routes>
       </main>
+      {!isAuthPage && <Footer />}
       {isAuthenticated && !isAuthPage && <VoiceAssistantWidget />}
     </>
   );

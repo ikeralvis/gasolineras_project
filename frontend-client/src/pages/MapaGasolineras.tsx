@@ -480,7 +480,7 @@ export default function MapaGasolineras() {
       (error) => {
         console.warn("No se pudo obtener ubicacion inicial:", error.message);
       },
-      { enableHighAccuracy: false, timeout: 2500, maximumAge: 120000 }
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
     );
 
     // Solo actualiza el marcador si el usuario se movió >100m — evita re-renders innecesarios
@@ -496,6 +496,7 @@ export default function MapaGasolineras() {
         }
         prevLocationRef.current = [lat, lon];
         setUserLocation([lat, lon]);
+        setLocationGranted(true);
       },
       (error) => {
         console.warn("No se pudo refinar ubicacion:", error.message);
