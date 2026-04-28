@@ -66,8 +66,8 @@ export function useFavorites() {
   // Cargar favoritos al montar o cuando cambie el estado de autenticación
   const cargarFavoritos = useCallback(async (forceRefresh = false) => {
     if (!isAuthenticated) {
-      sharedFavoritos = [];
-      sharedUpdatedAt = Date.now();
+      sharedFavoritos = null;
+      sharedUpdatedAt = 0;
       setFavoritos([]);
       return;
     }
@@ -104,8 +104,12 @@ export function useFavorites() {
 
   // Cargar favoritos al montar
   useEffect(() => {
-    void cargarFavoritos();
-  }, [cargarFavoritos]);
+    if (isAuthenticated) {
+      void cargarFavoritos(true);
+      return;
+    }
+    setFavoritos([]);
+  }, [cargarFavoritos, isAuthenticated]);
 
   // Verificar si una gasolinera es favorita
   const esFavorito = useCallback((ideess: string): boolean => {
@@ -116,6 +120,10 @@ export function useFavorites() {
   const agregarFavorito = async (ideess: string) => {
     if (!isAuthenticated) {
       throw new Error('Debes iniciar sesión para agregar favoritos');
+    }
+
+    if (esFavorito(ideess)) {
+      return true;
     }
 
     setError(null);
