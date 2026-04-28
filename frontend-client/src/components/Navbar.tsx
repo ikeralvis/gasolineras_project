@@ -2,7 +2,6 @@ import type { ComponentType } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
-  Heart,
   Home,
   LogIn,
   LogOut,

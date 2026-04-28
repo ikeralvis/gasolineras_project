@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FaHeart, FaMapMarkerAlt, FaRoute } from 'react-icons/fa';
@@ -28,6 +28,8 @@ export default function Favoritos() {
   const [gasolineras, setGasolineras] = useState<Gasolinera[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const inflightRef = useRef<Promise<void> | null>(null);
+  const lastKeyRef = useRef<string>('');
   const combustibleSeleccionado = user?.combustible_favorito || "Precio Gasolina 95 E5";
   const navigate = useNavigate();
 
@@ -43,17 +45,23 @@ export default function Favoritos() {
     }
 
     if (favoritos.length > 0) {
-      cargarGasolinerasFavoritas();
+      void cargarGasolinerasFavoritas(favoritos);
     }
   }, [favoritos, favLoading, isAuthenticated, navigate]);
 
-  const cargarGasolinerasFavoritas = async () => {
+  const cargarGasolinerasFavoritas = async (ids: string[]) => {
+    const uniqueIds = [...new Set(ids)];
+    const key = uniqueIds.sort().join('|');
+    if (inflightRef.current && lastKeyRef.current === key) {
+      return;
+    }
+
+    lastKeyRef.current = key;
     setLoading(true);
     setError(null);
 
-    try {
-      // Obtener detalles de cada gasolinera favorita
-      const promesas = favoritos.map(ideess =>
+    const request = (async () => {
+      const promesas = uniqueIds.map(ideess =>
         fetch(`${API_URL}/api/gasolineras/${ideess}`)
           .then(res => res.ok ? res.json() : null)
           .catch(() => null)
@@ -63,10 +71,19 @@ export default function Favoritos() {
       const gasolinerasValidas = resultados.filter(g => g !== null) as Gasolinera[];
 
       setGasolineras(gasolinerasValidas);
+    })();
+
+    inflightRef.current = request;
+
+    try {
+      await request;
     } catch (err: any) {
       setError(err.message || 'Error al cargar gasolineras favoritas');
       console.error('Error:', err);
     } finally {
+      if (inflightRef.current === request) {
+        inflightRef.current = null;
+      }
       setLoading(false);
     }
   };
