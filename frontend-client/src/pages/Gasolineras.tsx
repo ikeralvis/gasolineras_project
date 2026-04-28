@@ -20,6 +20,23 @@ const GASOLINERAS_CACHE_KEY = "gasolineras:list:v1";
 const CACHE_MAX_AGE_MS = 8 * 60 * 1000;
 
 const asText = (value: unknown): string => (typeof value === "string" ? value : "");
+const asNumber = (value: unknown): number | null => {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+    if (typeof value === "string") {
+        const parsed = Number.parseFloat(value.replace(",", "."));
+        return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+};
+
+const toRadians = (value: number) => (value * Math.PI) / 180;
+const calcDistanceKm = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const r = 6371;
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) * Math.sin(dLon / 2) ** 2;
+    return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
 
 const normalizeGasolinera = (g: any) => {
     const rotulo = g?.["Rótulo"] ?? g?.Rotulo ?? "";
@@ -41,6 +58,10 @@ export default function Gasolineras() {
     const [gasolineras, setGasolineras] = useState<any[]>([]);
     const [filtered, setFiltered] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [userLocation, setUserLocation] = useState<{ lat: number; lon: number } | null>(null);
+    const [radioKm, setRadioKm] = useState(50);
+    const [usarCercania, setUsarCercania] = useState(false);
+    const [baseRadioKm, setBaseRadioKm] = useState<number | null>(null);
 
     const [provincia, setProvincia] = useState("");
     const [municipio, setMunicipio] = useState("");
@@ -56,7 +77,7 @@ export default function Gasolineras() {
         user?.combustible_favorito || "Precio Gasolina 95 E5"
     );
     const [ordenAsc, setOrdenAsc] = useState(true);
-    const [ordenadoPorCercania, setOrdenadoPorCercania] = useState(false);
+    const [modoOrden, setModoOrden] = useState<"price" | "proximity">("price");
 
     useEffect(() => {
         if (user?.combustible_favorito) setCombustibleSeleccionado(user.combustible_favorito);
@@ -73,6 +94,60 @@ export default function Gasolineras() {
             .filter(Boolean)
     )].sort((a, b) => a.localeCompare(b));
 
+    const getDistanceKm = (g: any): number | null => {
+        const direct = asNumber(g?.distancia_km);
+        if (direct !== null) return direct;
+        if (!userLocation) return null;
+        const lat = asNumber(g?.Latitud ?? g?.latitud);
+        const lon = asNumber(g?.Longitud ?? g?.longitud);
+        if (lat === null || lon === null) return null;
+        return calcDistanceKm(userLocation.lat, userLocation.lon, lat, lon);
+    };
+
+    const cargarTodasLasGasolineras = async () => {
+        const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+        const res = await fetch(`${apiBase}/api/gasolineras`);
+        const data = await res.json();
+        const gasolinerasData = Array.isArray(data.gasolineras)
+            ? data.gasolineras.map((g: any) => normalizeGasolinera(g))
+            : [];
+        setGasolineras(gasolinerasData);
+        setFiltered(gasolinerasData);
+        setBaseRadioKm(null);
+        setModoOrden("price");
+        setLoading(false);
+        sessionStorage.setItem(GASOLINERAS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: gasolinerasData, sortMode: "price" }));
+    };
+
+    const cargarGasolinerasCerca = async (lat: number, lon: number, km: number) => {
+        const cerca = await getGasolinerasCerca(lat, lon, km);
+        const cercaNormalizadas = cerca.map((g) => normalizeGasolinera(g));
+        setGasolineras(cercaNormalizadas);
+        setFiltered(cercaNormalizadas);
+        setBaseRadioKm(km);
+        setModoOrden("proximity");
+        setLoading(false);
+        sessionStorage.setItem(GASOLINERAS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: cercaNormalizadas, sortMode: "proximity" }));
+    };
+
+    const solicitarUbicacion = (onSuccess?: (lat: number, lon: number) => void) => {
+        if (!navigator.geolocation) {
+            return;
+        }
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                const lat = pos.coords.latitude;
+                const lon = pos.coords.longitude;
+                setUserLocation({ lat, lon });
+                onSuccess?.(lat, lon);
+            },
+            () => {
+                setUsarCercania(false);
+            },
+            { timeout: 5000 }
+        );
+    };
+
     useEffect(() => {
         async function cargarDatos() {
             try {
@@ -80,12 +155,13 @@ export default function Gasolineras() {
                 try {
                     const cachedRaw = sessionStorage.getItem(GASOLINERAS_CACHE_KEY);
                     if (cachedRaw) {
-                        const cached = JSON.parse(cachedRaw) as { ts: number; data: any[]; ordenadoPorCercania: boolean };
+                        const cached = JSON.parse(cachedRaw) as { ts: number; data: any[]; sortMode?: "price" | "proximity"; ordenadoPorCercania?: boolean };
                         if (Date.now() - cached.ts < CACHE_MAX_AGE_MS && Array.isArray(cached.data) && cached.data.length > 0) {
                             hasCache = true;
                             setGasolineras(cached.data);
                             setFiltered(cached.data);
-                            setOrdenadoPorCercania(!!cached.ordenadoPorCercania);
+                            const cachedMode = cached.sortMode ?? (cached.ordenadoPorCercania ? "proximity" : "price");
+                            setModoOrden(cachedMode);
                             setLoading(false);
                         }
                     }
@@ -93,32 +169,16 @@ export default function Gasolineras() {
 
                 if (!hasCache) setLoading(true);
 
-                const cargarTodasLasGasolineras = async () => {
-                    const apiBase = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
-                    const res = await fetch(`${apiBase}/api/gasolineras`);
-                    const data = await res.json();
-                    const gasolinerasData = Array.isArray(data.gasolineras)
-                        ? data.gasolineras.map((g: any) => normalizeGasolinera(g))
-                        : [];
-                    setGasolineras(gasolinerasData);
-                    setFiltered(gasolinerasData);
-                    setOrdenadoPorCercania(false);
-                    setLoading(false);
-                    sessionStorage.setItem(GASOLINERAS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: gasolinerasData, ordenadoPorCercania: false }));
-                };
-
                 const geoTimeout = setTimeout(cargarTodasLasGasolineras, 5000);
 
                 navigator.geolocation.getCurrentPosition(
                     async (pos) => {
                         clearTimeout(geoTimeout);
-                        const cerca = await getGasolinerasCerca(pos.coords.latitude, pos.coords.longitude, 50);
-                        const cercaNormalizadas = cerca.map((g) => normalizeGasolinera(g));
-                        setGasolineras(cercaNormalizadas);
-                        setFiltered(cercaNormalizadas);
-                        setOrdenadoPorCercania(true);
-                        setLoading(false);
-                        sessionStorage.setItem(GASOLINERAS_CACHE_KEY, JSON.stringify({ ts: Date.now(), data: cercaNormalizadas, ordenadoPorCercania: true }));
+                        const lat = pos.coords.latitude;
+                        const lon = pos.coords.longitude;
+                        setUserLocation({ lat, lon });
+                        setUsarCercania(true);
+                        await cargarGasolinerasCerca(lat, lon, radioKm);
                     },
                     async () => { clearTimeout(geoTimeout); cargarTodasLasGasolineras(); },
                     { timeout: 5000 }
@@ -150,30 +210,74 @@ export default function Gasolineras() {
             if (!Number.isNaN(maxP)) resultado = resultado.filter(g => { const p = Number.parseFloat(g[combustibleSeleccionado]?.replace(",", ".") || "999"); return !Number.isNaN(p) && p <= maxP; });
         }
         if (soloConPrecio) resultado = resultado.filter(g => { const p = g[combustibleSeleccionado]; if (!p) return false; const n = Number.parseFloat(p.replace(",", ".")); return !Number.isNaN(n) && n > 0; });
+        if (usarCercania && userLocation) {
+            resultado = resultado.filter((g) => {
+                const dist = getDistanceKm(g);
+                return dist !== null && dist <= radioKm;
+            });
+        }
+
+        if (modoOrden === "price") {
+            resultado = [...resultado].sort((a, b) => {
+                const pA = Number.parseFloat(a[combustibleSeleccionado]?.replace(",", ".") || "999");
+                const pB = Number.parseFloat(b[combustibleSeleccionado]?.replace(",", ".") || "999");
+                return ordenAsc ? pA - pB : pB - pA;
+            });
+        } else if (modoOrden === "proximity") {
+            resultado = [...resultado].sort((a, b) => {
+                const dA = getDistanceKm(a);
+                const dB = getDistanceKm(b);
+                if (dA === null && dB === null) return 0;
+                if (dA === null) return 1;
+                if (dB === null) return -1;
+                return dA - dB;
+            });
+        }
+
         setFiltered(resultado);
-    }, [provincia, municipio, nombre, precioMax, combustibleSeleccionado, gasolineras, marcasSeleccionadas, soloConPrecio]);
+    }, [provincia, municipio, nombre, precioMax, combustibleSeleccionado, gasolineras, marcasSeleccionadas, soloConPrecio, usarCercania, userLocation, radioKm, modoOrden, ordenAsc]);
+
+    useEffect(() => {
+        if (!usarCercania || !userLocation) return;
+        if (baseRadioKm !== null && radioKm > baseRadioKm) {
+            setLoading(true);
+            cargarGasolinerasCerca(userLocation.lat, userLocation.lon, radioKm);
+        }
+    }, [usarCercania, userLocation, radioKm, baseRadioKm]);
 
     const ordenarPorPrecio = () => {
-        const resultado = [...filtered].sort((a, b) => {
-            const pA = Number.parseFloat(a[combustibleSeleccionado]?.replace(",", ".") || "999");
-            const pB = Number.parseFloat(b[combustibleSeleccionado]?.replace(",", ".") || "999");
-            return ordenAsc ? pA - pB : pB - pA;
-        });
-        setFiltered(resultado);
-        setOrdenAsc(!ordenAsc);
-        setOrdenadoPorCercania(false);
+        setModoOrden("price");
+        setOrdenAsc((prev) => !prev);
+    };
+
+    const ordenarPorCercania = () => {
+        if (!userLocation) {
+            solicitarUbicacion((lat, lon) => {
+                setUsarCercania(true);
+                cargarGasolinerasCerca(lat, lon, radioKm);
+            });
+            return;
+        }
+        setUsarCercania(true);
+        setModoOrden("proximity");
     };
 
     const limpiarFiltros = () => {
         setProvincia(""); setMunicipio(""); setNombre(""); setPrecioMax("");
         setMarcasSeleccionadas([]); setSoloConPrecio(true);
+        setUsarCercania(false);
+        setRadioKm(50);
+        if (baseRadioKm !== null) {
+            setLoading(true);
+            cargarTodasLasGasolineras();
+        }
     };
 
     const toggleMarca = (marca: string) => {
         setMarcasSeleccionadas(prev => prev.includes(marca) ? prev.filter(m => m !== marca) : [...prev, marca]);
     };
 
-    const activeFiltersCount = [provincia, municipio, nombre, precioMax].filter(Boolean).length + marcasSeleccionadas.length;
+    const activeFiltersCount = [provincia, municipio, nombre, precioMax].filter(Boolean).length + marcasSeleccionadas.length + (usarCercania ? 1 : 0);
 
     const renderTableContent = () => {
         if (loading) {
@@ -227,39 +331,21 @@ export default function Gasolineras() {
 
             {/* BARRA DE CONTROL */}
             <div className="bg-white shadow-sm border border-gray-200 rounded-xl p-3 mb-5">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                     <div className="flex flex-wrap items-center gap-2">
-                        {/* Chip de combustible – clicable para abrir filtros */}
-                        <button
-                            type="button"
-                            onClick={() => setFiltrosAbiertos(true)}
-                            title={t('filter.fuelType')}
-                            className="text-sm font-semibold text-gray-900 bg-gray-100 hover:bg-gray-200 px-3 py-2 rounded-lg transition flex items-center gap-1.5"
-                        >
-                            <svg className="w-3.5 h-3.5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                            </svg>
-                            {combustibleSeleccionado.replace("Precio ", "")}
-                        </button>
-
-                        <span className="text-sm text-gray-600 font-medium">
+                        <span className="text-sm font-semibold text-gray-900">
                             {filtered.length} {t('gasStations.foundStations')}
                         </span>
+                        <span className="text-xs font-semibold text-[#000C74] bg-[#EEF0FF] px-2.5 py-1 rounded-full">
+                            {combustibleSeleccionado.replace("Precio ", "")}
+                        </span>
+                    </div>
 
-                        {ordenadoPorCercania && (
-                            <span className="text-xs text-green-700 bg-green-100 px-2.5 py-1.5 rounded-full flex items-center gap-1.5 font-medium">
-                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
-                                </svg>
-                                {t('gasStations.orderedByProximity')}
-                            </span>
-                        )}
-
-                        {/* Botón filtros */}
+                    <div className="flex flex-wrap items-center gap-2">
                         <button
                             type="button"
                             onClick={() => setFiltrosAbiertos(true)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 transition"
                         >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -271,18 +357,40 @@ export default function Gasolineras() {
                                 </span>
                             )}
                         </button>
-                    </div>
 
-                    <button
-                        type="button"
-                        className="w-full sm:w-auto px-3 py-2 bg-gray-900 text-white rounded-lg hover:bg-black transition shadow-sm font-medium flex items-center justify-center gap-1.5 text-xs"
-                        onClick={ordenarPorPrecio}
-                    >
-                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
-                        </svg>
-                        {t('gasStations.sortByPrice')} {ordenAsc ? "↑" : "↓"}
-                    </button>
+                        <div className="flex items-center gap-2">
+                            <button
+                                type="button"
+                                onClick={ordenarPorPrecio}
+                                className={`px-3 py-2 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                                    modoOrden === "price"
+                                        ? "bg-gray-900 text-white shadow-sm"
+                                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                }`}
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                                </svg>
+                                {t('gasStations.sortByPrice')} {modoOrden === "price" ? (ordenAsc ? "↑" : "↓") : ""}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={ordenarPorCercania}
+                                className={`px-3 py-2 rounded-lg text-xs font-medium transition flex items-center gap-1.5 ${
+                                    modoOrden === "proximity"
+                                        ? "bg-[#000C74] text-white shadow-sm"
+                                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                                }`}
+                                title={userLocation ? t('gasStations.sortByProximity') : t('gasStations.sortByProximityDisabled')}
+                            >
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                                </svg>
+                                {t('gasStations.sortByProximity')}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -360,6 +468,91 @@ export default function Gasolineras() {
                                     <option value="Precio Gasoleo B">{t('fuel.dieselB')}</option>
                                     <option value="Precio Gasoleo Premium">{t('fuel.dieselPremium')}</option>
                                 </select>
+                            </div>
+
+                            {/* CERCANIA */}
+                            <div className="rounded-xl border border-[#E5E7F9] bg-[#FCFCFF] p-4">
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                    <p className="text-sm font-semibold text-gray-700">{t('gasStations.nearbyFilter')}</p>
+                                    <label className="flex items-center gap-2 text-sm text-gray-600 font-medium">
+                                        <input
+                                            type="checkbox"
+                                            checked={usarCercania}
+                                            onChange={(e) => {
+                                                const next = e.target.checked;
+                                                setUsarCercania(next);
+                                                if (next) {
+                                                    if (userLocation) {
+                                                        setModoOrden("proximity");
+                                                    } else {
+                                                        solicitarUbicacion((lat, lon) => {
+                                                            setUsarCercania(true);
+                                                            setModoOrden("proximity");
+                                                            cargarGasolinerasCerca(lat, lon, radioKm);
+                                                        });
+                                                    }
+                                                } else if (baseRadioKm !== null) {
+                                                    setLoading(true);
+                                                    cargarTodasLasGasolineras();
+                                                }
+                                            }}
+                                            className="w-4 h-4 text-[#000C74] rounded border-gray-300 focus:ring-[#000C74]"
+                                        />
+                                        {t('gasStations.useNearby')}
+                                    </label>
+                                </div>
+
+                                <div className={`grid grid-cols-1 sm:grid-cols-[1fr_120px] gap-3 ${!usarCercania ? "opacity-50" : ""}`}>
+                                    <div>
+                                        <label htmlFor="radio-range" className="block text-xs font-semibold text-gray-500 mb-1">
+                                            {t('gasStations.radiusKm')}
+                                        </label>
+                                        <input
+                                            id="radio-range"
+                                            type="range"
+                                            min={5}
+                                            max={200}
+                                            step={5}
+                                            value={radioKm}
+                                            onChange={(e) => setRadioKm(Number(e.target.value))}
+                                            disabled={!usarCercania}
+                                            className="w-full"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label htmlFor="radio-input" className="block text-xs font-semibold text-gray-500 mb-1">
+                                            km
+                                        </label>
+                                        <input
+                                            id="radio-input"
+                                            type="number"
+                                            min={1}
+                                            max={200}
+                                            step={1}
+                                            value={radioKm}
+                                            onChange={(e) => setRadioKm(Number(e.target.value))}
+                                            disabled={!usarCercania}
+                                            className="w-full border border-[#C8CAEE] focus:border-[#000C74] focus:ring-2 focus:ring-[#000C74]/20 rounded-xl px-3 py-2 outline-none transition"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
+                                    <button
+                                        type="button"
+                                        onClick={() => solicitarUbicacion((lat, lon) => {
+                                            setUsarCercania(true);
+                                            setModoOrden("proximity");
+                                            cargarGasolinerasCerca(lat, lon, radioKm);
+                                        })}
+                                        className="text-xs font-semibold text-[#000C74] border border-[#D7DBFF] px-3 py-1.5 rounded-lg hover:bg-[#EEF0FF] transition"
+                                    >
+                                        {t('gasStations.useLocation')}
+                                    </button>
+                                    <span className="text-xs text-gray-500">
+                                        {userLocation ? t('gasStations.locationReady') : t('gasStations.locationMissing')}
+                                    </span>
+                                </div>
                             </div>
 
                             {/* PROVINCIA + MUNICIPIO */}

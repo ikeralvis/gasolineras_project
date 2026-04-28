@@ -1,4 +1,5 @@
 """Servicio de sincronizacion de snapshots (Ministerio -> BD/memoria)."""
+import json
 import logging
 import threading
 from datetime import date, datetime, timedelta, timezone
@@ -26,6 +27,11 @@ from app.services.constants import (
 from app.services.memory_store import MemoryStore
 
 logger = logging.getLogger(__name__)
+
+try:
+    from psycopg2.extras import Json as PgJson
+except Exception:  # pragma: no cover - psycopg2 puede no estar disponible
+    PgJson = None
 
 
 class SyncService:
@@ -105,6 +111,13 @@ class SyncService:
         if not datos_validos:
             raise HTTPException(status_code=500, detail="No se encontraron gasolineras con coordenadas válidas")
 
+        def _as_jsonb(value):
+            if value is None:
+                return None
+            if PgJson is not None:
+                return PgJson(value)
+            return json.dumps(value)
+
         rows = [
             (
                 g.get("IDEESS"),
@@ -123,7 +136,7 @@ class SyncService:
                 g.get("Longitud"),
                 f"POINT({g['Longitud']} {g['Latitud']})",
                 g.get("Horario"),
-                g.get("Horario_parsed"),
+                _as_jsonb(g.get("Horario_parsed")),
                 fecha_sync,
             )
             for g in datos_validos
