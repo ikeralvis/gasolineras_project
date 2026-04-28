@@ -9,13 +9,15 @@ interface HistorialPreciosProps {
 
 interface RegistroHistorico {
   fecha: string;
-  precios: {
-    "Gasolina 95 E5"?: string;
-    "Gasolina 98 E5"?: string;
-    "Gasóleo A"?: string;
-    "Gasóleo B"?: string;
-    "Gasóleo Premium"?: string;
-  };
+  precios?: Record<string, string | number | null | undefined>;
+  p95?: number | string | null;
+  p98?: number | string | null;
+  pa?: number | string | null;
+  pb?: number | string | null;
+  pp?: number | string | null;
+  p95p?: number | string | null;
+  pdr?: number | string | null;
+  [key: string]: unknown;
 }
 
 interface DatosGrafico {
@@ -28,10 +30,29 @@ interface DatosGrafico {
   gasoleoPremium?: number;
 }
 
-const parsePrecio = (precio?: string): number | undefined => {
-  if (!precio) return undefined;
-  const num = Number.parseFloat(precio.replace(",", "."));
+const parsePrecio = (precio?: string | number | null): number | undefined => {
+  if (precio === null || precio === undefined || precio === "") return undefined;
+  const raw = typeof precio === "number" ? String(precio) : String(precio);
+  const num = Number.parseFloat(raw.replace(",", "."));
   return Number.isNaN(num) || num === 0 ? undefined : num;
+};
+
+const getPrecio = (registro: RegistroHistorico, keys: string[], fallbackFields: string[] = []): number | undefined => {
+  const precios = registro.precios ?? {};
+  for (const key of keys) {
+    if (precios[key] !== undefined && precios[key] !== null && precios[key] !== "") {
+      return parsePrecio(precios[key] as string | number);
+    }
+  }
+
+  for (const field of fallbackFields) {
+    const value = registro[field] as string | number | null | undefined;
+    if (value !== undefined && value !== null && value !== "") {
+      return parsePrecio(value);
+    }
+  }
+
+  return undefined;
 };
 
 const formatearFecha = (isoString: string): string => {
@@ -67,21 +88,23 @@ export default function HistorialPrecios({ ideess }: Readonly<HistorialPreciosPr
       
       const resultado = await getHistorialPrecios(ideess, dias);
       
-      if (!resultado || resultado.registros === 0) {
+      const historial = Array.isArray(resultado?.historial) ? resultado.historial : [];
+      const registros = Number(resultado?.registros ?? historial.length ?? 0);
+      if (!resultado || registros === 0) {
         setError(true);
         setLoading(false);
         return;
       }
 
       // Transformar datos para el gráfico
-      const datosTransformados: DatosGrafico[] = resultado.historial.map((registro: RegistroHistorico) => ({
+      const datosTransformados: DatosGrafico[] = historial.map((registro: RegistroHistorico) => ({
         fecha: registro.fecha,
         fechaFormateada: formatearFecha(registro.fecha),
-        gasolina95: parsePrecio(registro.precios["Gasolina 95 E5"]),
-        gasolina98: parsePrecio(registro.precios["Gasolina 98 E5"]),
-        gasoleoA: parsePrecio(registro.precios["Gasóleo A"]),
-        gasoleoB: parsePrecio(registro.precios["Gasóleo B"]),
-        gasoleoPremium: parsePrecio(registro.precios["Gasóleo Premium"]),
+        gasolina95: getPrecio(registro, ["Gasolina 95 E5", "Gasoleo 95 E5"], ["p95"]),
+        gasolina98: getPrecio(registro, ["Gasolina 98 E5", "Gasoleo 98 E5"], ["p98"]),
+        gasoleoA: getPrecio(registro, ["Gasóleo A", "Gasoleo A"], ["pa"]),
+        gasoleoB: getPrecio(registro, ["Gasóleo B", "Gasoleo B"], ["pb"]),
+        gasoleoPremium: getPrecio(registro, ["Gasóleo Premium", "Gasoleo Premium"], ["pp"]),
       }));
 
       setDatos(datosTransformados);
