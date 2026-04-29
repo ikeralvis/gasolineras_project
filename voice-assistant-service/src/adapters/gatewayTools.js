@@ -11,18 +11,27 @@ function sanitizePrice(value) {
   return parsed;
 }
 
-async function fetchJson(path) {
+async function fetchJson(path, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), voiceEnv.gateway.timeoutMs);
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (options.authToken) {
+    headers.Authorization = `Bearer ${options.authToken}`;
+  }
+
+  if (options.internalSecret) {
+    headers["X-Internal-Secret"] = options.internalSecret;
+  }
 
   let response;
   try {
     response = await fetch(`${voiceEnv.gateway.baseUrl}${path}`, {
       method: "GET",
       signal: controller.signal,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers,
     });
   } finally {
     clearTimeout(timeout);
@@ -34,6 +43,20 @@ async function fetchJson(path) {
   }
 
   return data;
+}
+
+export async function getUserProfile({ authToken }) {
+  if (!authToken) {
+    return null;
+  }
+
+  try {
+    const data = await fetchJson("/api/usuarios/me", { authToken });
+    return data && typeof data === "object" ? data : null;
+  } catch (error) {
+    console.warn("[voice][gateway] user profile fetch failed", error?.message || error);
+    return null;
+  }
 }
 
 function buildContextFromStation(station) {

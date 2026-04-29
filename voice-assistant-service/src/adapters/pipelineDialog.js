@@ -13,7 +13,7 @@
 import { Buffer } from "node:buffer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { voiceEnv } from "../config/env.js";
-import { getNearestStationContext, getPricesForVoice, getNearestStations } from "./gatewayTools.js";
+import { getNearestStationContext, getPricesForVoice, getNearestStations, getUserProfile } from "./gatewayTools.js";
 
 // ─── Cliente Gemini ───────────────────────────────────────────────────────────
 
@@ -136,6 +136,123 @@ function buildSystemInstruction(gasContext, location) {
     lines.push(`Contexto actual: ${gasContext.promptContext}`);
   }
   return lines.join(" ");
+}
+
+function normalizeText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function hasLocation(location) {
+  return Number.isFinite(Number(location?.lat)) && Number.isFinite(Number(location?.lon));
+}
+
+function detectFuelFromText(text) {
+  const normalized = normalizeText(text);
+
+  if (normalized.includes("98")) return "gasolina98";
+  if (normalized.includes("95") || normalized.includes("sin plomo")) return "gasolina95";
+  if (normalized.includes("premium") && normalized.includes("gasoleo")) return "gasoleoPremium";
+  if (normalized.includes("diesel") || normalized.includes("gasoleo")) return "gasoleoA";
+
+  return null;
+}
+
+function mapPreferredFuelToKey(value) {
+  const normalized = normalizeText(value);
+  if (normalized.includes("gasolina 98")) return "gasolina98";
+  if (normalized.includes("gasolina 95")) return "gasolina95";
+  if (normalized.includes("gasoleo premium")) return "gasoleoPremium";
+  if (normalized.includes("gasoleo a")) return "gasoleoA";
+  if (normalized.includes("gasoleo b")) return "gasoleoA";
+  return null;
+}
+
+function extractBrand(text) {
+  const normalized = normalizeText(text);
+  const knownBrands = ["repsol", "cepsa", "bp", "shell", "galp", "carrefour", "alcampo", "eroski", "avia"];
+
+  const hit = knownBrands.find((brand) => normalized.includes(brand));
+  if (hit) return hit;
+
+  const match = /(?:marca|de)\s+([a-z0-9-]{2,})/i.exec(text || "");
+  return match ? match[1].toLowerCase() : null;
+}
+
+function formatBrand(brand) {
+  if (!brand) return "";
+  if (brand.length <= 3) return brand.toUpperCase();
+  return `${brand.charAt(0).toUpperCase()}${brand.slice(1)}`;
+}
+
+function classifyIntent(text) {
+  const normalized = normalizeText(text);
+  const wantsNearest = /(mas cercana|mas cerca|cerca|proxima|cercana)/.test(normalized);
+  const wantsCheapest = /(mas barata|mas barato|barata|barato|precio|cuesta|economica|economico)/.test(normalized);
+  const wantsBrand = /(marca|repsol|cepsa|bp|shell|galp|carrefour|alcampo|eroski|avia)/.test(normalized);
+
+  if (wantsCheapest) return { type: "prices", wantsBrand };
+  if (wantsNearest) return { type: "nearest", wantsBrand };
+  if (wantsBrand) return { type: "nearest", wantsBrand };
+  return { type: "unknown", wantsBrand: false };
+}
+
+function filterStationsByBrand(stations, brand) {
+  if (!brand) return stations;
+  const normalizedBrand = normalizeText(brand);
+  return stations.filter((station) => normalizeText(station?.name).includes(normalizedBrand));
+}
+
+function formatStationAddress(station) {
+  const parts = [station.address, station.municipality, station.province].filter(Boolean);
+  return parts.join(", ").trim();
+}
+
+function formatDistance(distanceKm) {
+  if (!Number.isFinite(Number(distanceKm))) return "";
+  return `A unos ${Number(distanceKm).toFixed(1)} km.`;
+}
+
+function fuelLabel(fuelKey) {
+  switch (fuelKey) {
+    case "gasolina98":
+      return "gasolina 98";
+    case "gasoleoA":
+      return "gasoleo A";
+    case "gasoleoPremium":
+      return "gasoleo premium";
+    default:
+      return "gasolina 95";
+  }
+}
+
+function buildCheapestAnswer({ station, fuelKey, km, brand }) {
+  if (!station) {
+    const brandLabel = formatBrand(brand);
+    return `No encuentro una gasolinera${brandLabel ? ` de ${brandLabel}` : ""} a menos de ${km} km con precio disponible. ¿Amplio el radio?`;
+  }
+
+  const price = station?.prices?.[fuelKey];
+  const priceText = price ? `a ${price.toFixed(3)} EUR/l` : "sin precio disponible";
+  const address = formatStationAddress(station);
+  const distance = formatDistance(station.distanceKm);
+  const brandLabel = formatBrand(brand);
+
+  return `La mas barata${brandLabel ? ` de ${brandLabel}` : ""} para ${fuelLabel(fuelKey)} es ${station.name || "esa gasolinera"} en ${address}, ${priceText}. ${distance}`.trim();
+}
+
+function buildNearestAnswer({ station, km, brand }) {
+  if (!station) {
+    const brandLabel = formatBrand(brand);
+    return `No encuentro una gasolinera${brandLabel ? ` de ${brandLabel}` : ""} a menos de ${km} km. ¿Quieres ampliar el radio?`;
+  }
+
+  const address = formatStationAddress(station);
+  const distance = formatDistance(station.distanceKm);
+  const brandLabel = formatBrand(brand);
+  return `La mas cercana${brandLabel ? ` de ${brandLabel}` : ""} es ${station.name || "esa gasolinera"} en ${address}. ${distance}`.trim();
 }
 
 function pcmToWavBase64(pcmBase64, mimeType) {
@@ -403,8 +520,67 @@ export async function runPipelineDialog({
     throw new Error("audio-or-text-required");
   }
 
-  // Paso 2: LLM con function calling
-  const { responseText, toolOutputs } = await runLlm({ ai, text: userText, location, gasContext });
+  const intent = classifyIntent(userText);
+  const locationKnown = hasLocation(location);
+  const toolOutputs = [];
+  let responseText = "";
+
+  if (intent.type !== "unknown") {
+    if (!locationKnown) {
+      responseText = "Necesito tu ubicacion para buscar gasolineras cercanas. ¿Puedes compartirla?";
+    } else {
+      const userProfile = await getUserProfile({ authToken });
+      const fuelFromText = detectFuelFromText(userText);
+      const fuelFromProfile = mapPreferredFuelToKey(userProfile?.combustible_favorito);
+      const fuelKey = fuelFromText || fuelFromProfile || "gasolina95";
+      const brand = extractBrand(userText);
+
+      if (intent.type === "prices") {
+        const km = Math.min(Number(location?.km || 10), 10);
+        const limit = brand ? 10 : 5;
+        const pricesResult = await getPricesForVoice({
+          lat: location.lat,
+          lon: location.lon,
+          km,
+          limit,
+          fuel: fuelKey,
+        });
+        toolOutputs.push({ name: "get_prices", output: pricesResult });
+
+        if (!pricesResult?.ok) {
+          responseText = pricesResult?.message || "No pude consultar precios ahora mismo.";
+        } else {
+          const filtered = filterStationsByBrand(pricesResult.stations || [], brand);
+          const station = filtered[0] || null;
+          responseText = buildCheapestAnswer({ station, fuelKey, km, brand });
+        }
+      } else if (intent.type === "nearest") {
+        const km = Number(location?.km || 5);
+        const limit = brand ? 10 : 5;
+        const nearestResult = await getNearestStations({
+          lat: location.lat,
+          lon: location.lon,
+          km,
+          limit,
+        });
+        toolOutputs.push({ name: "get_nearest_stations", output: nearestResult });
+
+        if (!nearestResult?.ok) {
+          responseText = nearestResult?.message || "No pude consultar gasolineras cercanas ahora mismo.";
+        } else {
+          const filtered = filterStationsByBrand(nearestResult.stations || [], brand);
+          const station = filtered[0] || null;
+          responseText = buildNearestAnswer({ station, km, brand });
+        }
+      }
+    }
+  }
+
+  if (!responseText) {
+    const llmResult = await runLlm({ ai, text: userText, location, gasContext });
+    responseText = llmResult.responseText;
+    toolOutputs.push(...llmResult.toolOutputs);
+  }
 
   // Paso 3: TTS
   const tts = await maybeSynthesizeSpeech({ ai, text: responseText, includeAudio });
@@ -418,6 +594,7 @@ export async function runPipelineDialog({
     },
     context: {
       bootstrap: gasContext?.data || null,
+      intent: intent.type,
       toolOutputs,
       ...(sttTranscript !== null && { sttTranscript }),
     },
