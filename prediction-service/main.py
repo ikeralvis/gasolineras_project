@@ -576,6 +576,7 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
         )
 
     needed_cols = ["IDEESS", "fecha_registro"] + [c for c in FUELS]
+    min_date = None
     min_ts = None
     if RAW_LOOKBACK_DAYS > 0:
         min_date = datetime.now(timezone.utc).date() - pd.Timedelta(days=RAW_LOOKBACK_DAYS)
@@ -585,9 +586,6 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
     read_filters = []
     if station_filter:
         read_filters.append(("IDEESS", "in", list(station_filter)))
-    if min_ts is not None:
-        read_filters.append(("fecha_registro", ">=", min_ts))
-
     read_parquet_kwargs = {"columns": needed_cols, "engine": "pyarrow"}
     if read_filters:
         read_parquet_kwargs["filters"] = read_filters
@@ -597,8 +595,11 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
             if "IDEESS" in d.columns:
                 if station_filter:
                     d = d[d["IDEESS"].astype(str).isin(station_filter)]
-                if min_ts is not None and "fecha_registro" in d.columns:
-                    d = d[d["fecha_registro"] >= min_ts]
+                if min_date is not None and "fecha_registro" in d.columns:
+                    if pd.api.types.is_datetime64_any_dtype(d["fecha_registro"]):
+                        d = d[d["fecha_registro"] >= pd.Timestamp(min_date)]
+                    elif pd.api.types.is_numeric_dtype(d["fecha_registro"]):
+                        d = d[d["fecha_registro"] >= min_ts]
                 dfs.append(d)
         except Exception as e:
             print(f"⚠️ Error leyendo {path}: {e}")
