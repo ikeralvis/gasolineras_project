@@ -160,6 +160,22 @@ function detectFuelFromText(text) {
   return null;
 }
 
+function extractKmFromText(text) {
+  const match = /(\d+(?:[\.,]\d+)?)\s*(?:km|kilometros|kilometro)/i.exec(text || "");
+  if (!match) return null;
+  const raw = String(match[1]).replace(",", ".");
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function clampKm(value, fallback) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const minKm = 1;
+  const maxKm = voiceEnv.gateway.maxKm;
+  return Math.min(Math.max(parsed, minKm), maxKm);
+}
+
 function mapPreferredFuelToKey(value) {
   const normalized = normalizeText(value);
   if (normalized.includes("gasolina 98")) return "gasolina98";
@@ -534,9 +550,10 @@ export async function runPipelineDialog({
       const fuelFromProfile = mapPreferredFuelToKey(userProfile?.combustible_favorito);
       const fuelKey = fuelFromText || fuelFromProfile || "gasolina95";
       const brand = extractBrand(userText);
+      const kmFromText = extractKmFromText(userText);
 
       if (intent.type === "prices") {
-        const km = Math.min(Number(location?.km || 10), 10);
+        const km = clampKm(kmFromText ?? location?.km ?? 8, 8);
         const limit = brand ? 10 : 5;
         const pricesResult = await getPricesForVoice({
           lat: location.lat,
@@ -555,7 +572,7 @@ export async function runPipelineDialog({
           responseText = buildCheapestAnswer({ station, fuelKey, km, brand });
         }
       } else if (intent.type === "nearest") {
-        const km = Number(location?.km || 5);
+        const km = clampKm(kmFromText ?? location?.km ?? 5, 5);
         const limit = brand ? 10 : 5;
         const nearestResult = await getNearestStations({
           lat: location.lat,

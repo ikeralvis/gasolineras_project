@@ -639,7 +639,7 @@ export default function VoiceAssistantWidget() {
       const response = await askVoiceAssistant({
         text: prompt,
         location: location ? { ...location, km: 8 } : undefined,
-        includeAudio: false,
+        includeAudio: true,
       });
 
       const answerText =
@@ -658,6 +658,16 @@ export default function VoiceAssistantWidget() {
           },
         ];
       });
+
+      const hasTtsAudio = Boolean(response?.tts?.audioBase64);
+      if (hasTtsAudio) {
+        const played = await playAssistantAudio(response?.tts?.audioBase64, response?.tts?.mimeType);
+        if (!played) {
+          speakWithBrowserTts(answerText);
+        }
+      } else {
+        speakWithBrowserTts(answerText);
+      }
     } catch {
       setMessages((prev) => {
         const trimmed = prev.filter((m) => !m.pending);

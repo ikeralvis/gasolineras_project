@@ -582,9 +582,18 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
         min_ts = int(pd.Timestamp(min_date).timestamp() * 1000)
 
     dfs = []
+    read_filters = []
+    if station_filter:
+        read_filters.append(("IDEESS", "in", list(station_filter)))
+    if min_ts is not None:
+        read_filters.append(("fecha_registro", ">=", min_ts))
+
+    read_parquet_kwargs = {"columns": needed_cols, "engine": "pyarrow"}
+    if read_filters:
+        read_parquet_kwargs["filters"] = read_filters
     for path in file_paths:
         try:
-            d = pd.read_parquet(path, columns=needed_cols)
+            d = pd.read_parquet(path, **read_parquet_kwargs)
             if "IDEESS" in d.columns:
                 if station_filter:
                     d = d[d["IDEESS"].astype(str).isin(station_filter)]
