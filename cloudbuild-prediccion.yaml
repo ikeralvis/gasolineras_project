@@ -18,7 +18,7 @@ steps:
       - 'europe-west1'
 
 substitutions:
-  _PREDICTION_JOB_NAME: 'prediction-service'
+  _PREDICTION_JOB_NAME: 'prediccion-semanal-job'
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/prediccion-img'
