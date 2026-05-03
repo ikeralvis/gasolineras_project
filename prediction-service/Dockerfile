@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Script principal
 COPY main.py .
+COPY migrate_snapshot.py .
 
 # Cloud Run ejecuta como non-root
 RUN useradd -m appuser && chown -R appuser /app
