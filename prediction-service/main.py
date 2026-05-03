@@ -592,17 +592,31 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
     for path in file_paths:
         try:
             d = pd.read_parquet(path, **read_parquet_kwargs)
-            if "IDEESS" in d.columns:
-                if station_filter:
-                    d = d[d["IDEESS"].astype(str).isin(station_filter)]
-                if min_date is not None and "fecha_registro" in d.columns:
-                    if pd.api.types.is_datetime64_any_dtype(d["fecha_registro"]):
-                        d = d[d["fecha_registro"] >= pd.Timestamp(min_date)]
-                    elif pd.api.types.is_numeric_dtype(d["fecha_registro"]):
-                        d = d[d["fecha_registro"] >= min_ts]
-                dfs.append(d)
         except Exception as e:
-            print(f"⚠️ Error leyendo {path}: {e}")
+            # Algunos parquets no tienen todas las columnas; reintentar sin filtros.
+            try:
+                d = pd.read_parquet(path, columns=needed_cols, engine="pyarrow")
+            except Exception as e2:
+                print(f"⚠️ Error leyendo {path}: {e2}")
+                continue
+
+        if "IDEESS" not in d.columns or "fecha_registro" not in d.columns:
+            print(f"⚠️ Archivo sin columnas requeridas (IDEESS/fecha_registro): {path}")
+            continue
+
+        if station_filter:
+            d = d[d["IDEESS"].astype(str).isin(station_filter)]
+
+        if min_date is not None and "fecha_registro" in d.columns:
+            if pd.api.types.is_datetime64_any_dtype(d["fecha_registro"]):
+                d = d[d["fecha_registro"] >= pd.Timestamp(min_date)]
+            elif pd.api.types.is_numeric_dtype(d["fecha_registro"]):
+                d = d[d["fecha_registro"] >= min_ts]
+            else:
+                parsed = pd.to_datetime(d["fecha_registro"], errors="coerce")
+                d = d[parsed >= pd.Timestamp(min_date)]
+
+        dfs.append(d)
 
     if not dfs:
         raise RuntimeError("No se pudieron cargar datos válidos de entrada")
@@ -622,7 +636,12 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
         if c in df.columns:
             df[c] = parse_price(c)
 
-    df["fecha"] = pd.to_datetime(df["fecha_registro"], unit="ms").dt.normalize()
+    if pd.api.types.is_datetime64_any_dtype(df["fecha_registro"]):
+        df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
+    elif pd.api.types.is_numeric_dtype(df["fecha_registro"]):
+        df["fecha"] = pd.to_datetime(df["fecha_registro"], unit="ms", errors="coerce").dt.normalize()
+    else:
+        df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
     df["IDEESS"] = df["IDEESS"].astype(str).str.strip()
 
     print(f"✅ Dataset cargado: {df.shape}")
