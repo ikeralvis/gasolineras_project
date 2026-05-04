@@ -310,7 +310,6 @@ async def _route_ors_coords(
         "preference": "fastest",
         "units": "m",
         "geometry": True,
-        "geometry_format": "geojson",
         "instructions": True,
         "extra_info": ["avgspeed"],
     }
@@ -321,10 +320,11 @@ async def _route_ors_coords(
         response = await _request_with_retries(
             client,
             "POST",
-            f"{settings.ORS_BASE_URL}/v2/directions/driving-car",
+            f"{settings.ORS_BASE_URL}/v2/directions/driving-car/geojson",
             json=body,
             headers={
                 "Authorization": ors_key,
+                "Accept": "application/json, application/geo+json",
                 "Content-Type": "application/json; charset=utf-8",
             },
         )
