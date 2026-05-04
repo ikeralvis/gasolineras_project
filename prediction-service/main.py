@@ -18,6 +18,7 @@ import io
 import json
 import os
 import pickle
+import re
 import tempfile
 import urllib.parse
 import urllib.request
@@ -606,7 +607,8 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
 
         if "snapshot_date=" in path:
             try:
-                snap_part = path.split("snapshot_date=")[-1].split(os.sep)[0].split("/")[0]
+                match = re.search(r"snapshot_date=(\d{4}-\d{2}-\d{2})", path)
+                snap_part = match.group(1) if match else None
                 d["snapshot_date"] = pd.to_datetime(snap_part, errors="coerce").dt.normalize()
             except Exception:
                 d["snapshot_date"] = pd.NaT
