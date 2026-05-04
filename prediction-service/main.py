@@ -604,6 +604,13 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
             print(f"⚠️ Archivo sin columnas requeridas (IDEESS/fecha_registro): {path}")
             continue
 
+        if "snapshot_date=" in path:
+            try:
+                snap_part = path.split("snapshot_date=")[-1].split(os.sep)[0].split("/")[0]
+                d["snapshot_date"] = pd.to_datetime(snap_part, errors="coerce").dt.normalize()
+            except Exception:
+                d["snapshot_date"] = pd.NaT
+
         if station_filter:
             d = d[d["IDEESS"].astype(str).isin(station_filter)]
 
@@ -636,12 +643,20 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
         if c in df.columns:
             df[c] = parse_price(c)
 
-    if pd.api.types.is_datetime64_any_dtype(df["fecha_registro"]):
-        df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
-    elif pd.api.types.is_numeric_dtype(df["fecha_registro"]):
-        df["fecha"] = pd.to_datetime(df["fecha_registro"], unit="ms", errors="coerce").dt.normalize()
+    if "snapshot_date" in df.columns and df["snapshot_date"].notna().any():
+        df["fecha"] = df["snapshot_date"]
+        missing_mask = df["fecha"].isna()
+        if missing_mask.any():
+            df.loc[missing_mask, "fecha"] = pd.to_datetime(
+                df.loc[missing_mask, "fecha_registro"], errors="coerce"
+            ).dt.normalize()
     else:
-        df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
+        if pd.api.types.is_datetime64_any_dtype(df["fecha_registro"]):
+            df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
+        elif pd.api.types.is_numeric_dtype(df["fecha_registro"]):
+            df["fecha"] = pd.to_datetime(df["fecha_registro"], unit="ms", errors="coerce").dt.normalize()
+        else:
+            df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
     df["IDEESS"] = df["IDEESS"].astype(str).str.strip()
 
     print(f"✅ Dataset cargado: {df.shape}")
