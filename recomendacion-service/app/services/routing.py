@@ -311,7 +311,6 @@ async def _route_ors_coords(
         "units": "m",
         "geometry": True,
         "instructions": True,
-        "extra_info": ["avgspeed"],
     }
     if evitar_peajes:
         body["options"] = {"avoid_features": ["tollways"]}

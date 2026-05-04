@@ -613,6 +613,8 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
             except Exception:
                 d["snapshot_date"] = pd.NaT
 
+        d["_source_path"] = path
+
         if station_filter:
             d = d[d["IDEESS"].astype(str).isin(station_filter)]
 
@@ -644,6 +646,15 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
     for c in ["Precio Gasolina 95 E5", "Precio Gasoleo A"]:
         if c in df.columns:
             df[c] = parse_price(c)
+
+    if "snapshot_date" not in df.columns or df["snapshot_date"].isna().all():
+        if "_source_path" in df.columns:
+            extracted = df["_source_path"].str.extract(r"snapshot_date=(\d{4}-\d{2}-\d{2})")[0]
+            df["snapshot_date"] = pd.to_datetime(extracted, errors="coerce").dt.normalize()
+            print(
+                "ℹ️ Snapshot_date derivado desde path: "
+                f"rows={len(df)} | snapshot_notna={df['snapshot_date'].notna().sum()}"
+            )
 
     if "snapshot_date" in df.columns and df["snapshot_date"].notna().any():
         df["fecha"] = df["snapshot_date"]
