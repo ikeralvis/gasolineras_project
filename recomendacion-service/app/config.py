@@ -41,11 +41,11 @@ class Settings(BaseSettings):
     # "api"     -> descarga lista y filtra en memoria (fallback universal)
     # "postgis" -> consulta directa a PostgreSQL/PostGIS (rápido y preciso)
     # "auto"    -> usa PostGIS si DATABASE_URL está disponible; si no, API.
-    ROUTE_CANDIDATES_SOURCE: Literal["api", "postgis", "auto"] = "auto"
+    ROUTE_CANDIDATES_SOURCE: Literal["api", "postgis", "auto"] = "postgis"
     DATABASE_URL: str = ""
-    POSTGIS_ROUTE_MAX_CANDIDATES: int = 1500
-    MAX_REAL_DETOUR_CHECKS: int = 30
-    MATRIX_MAX_CANDIDATES: int = 60
+    POSTGIS_ROUTE_MAX_CANDIDATES: int = 20
+    MAX_REAL_DETOUR_CHECKS: int = 5
+    MATRIX_MAX_CANDIDATES: int = 20
 
 
     # ── Parámetros por defecto del algoritmo ──────────────────────────────────
@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     # ── Clasificación POI de acceso vial ─────────────────────────────────────
     POI_ACCESS_PROVIDER: Literal["osm", "mapbox", "google", "auto"] = "auto"
     ACCESS_FILTER_MODE: Literal["off", "prefer", "strict"] = "prefer"
-    ACCESS_ENRICHMENT_TOP_N: int = 10
+    ACCESS_ENRICHMENT_TOP_N: int = 0
     ACCESS_ENRICHMENT_TIMEOUT_S: float = 6.0
     MAPBOX_SEARCH_BASE_URL: str = "https://api.mapbox.com/geocoding/v5/mapbox.places"
     MAPBOX_ACCESS_TOKEN: str = ""

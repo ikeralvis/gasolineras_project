@@ -68,6 +68,7 @@ def build_initial_candidates(
     avg_speed_kmh: float,
     road_factor: float,
     default_detour_minutes: float,
+    prefiltered: bool = False,
 ) -> tuple[list[CandidateScore], LineString, float, float, float]:
     """Genera candidatas iniciales con desvío aproximado y filtros básicos."""
     route_dist_km = route.distancia_km
@@ -81,8 +82,11 @@ def build_initial_candidates(
         avg_speed_kmh=avg_speed_kmh,
     )
 
-    corridor = build_route_corridor(route.coordinates, prefilter_km)
-    pre_candidates = [s for s in stations if corridor.contains(Point(s.lon, s.lat))]
+    if prefiltered:
+        pre_candidates = stations
+    else:
+        corridor = build_route_corridor(route.coordinates, prefilter_km)
+        pre_candidates = [s for s in stations if corridor.contains(Point(s.lon, s.lat))]
 
     route_line = LineString(route.coordinates)
     current_progress = route_line.project(Point(current_position.lon, current_position.lat), normalized=True)

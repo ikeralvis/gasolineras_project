@@ -25,7 +25,6 @@ from app.models.schemas import (
     COMBUSTIBLE_FIELD_MAP,
     CombustibleTipo,
 )
-from app.services.gasolineras_client import fetch_gasolineras
 from app.services.postgis_candidates import (
     fetch_route_candidates_postgis,
     postgis_candidate_source_enabled,
@@ -142,27 +141,26 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
                 detail="ROUTE_CANDIDATES_SOURCE=postgis pero DATABASE_URL/asyncpg no están disponibles.",
             )
 
-        if source_mode in ("postgis", "auto") and postgis_ready:
-            try:
-                stations = await fetch_route_candidates_postgis(
-                    route_coordinates=route.coordinates,
-                    combustible=body.combustible,
-                    current_lat=current_position.lat,
-                    current_lon=current_position.lon,
-                    buffer_km=route_buffer_km,
-                )
-                station_source = "postgis"
-            except Exception as exc:
-                if source_mode == "postgis":
-                    raise HTTPException(
-                        status_code=503,
-                        detail=f"Error en búsqueda PostGIS de candidatas: {exc}",
-                    ) from exc
-                logger.warning("Búsqueda PostGIS no disponible, fallback a API: %s", exc)
+        if not postgis_ready:
+            raise HTTPException(
+                status_code=503,
+                detail="PostGIS no disponible. Se requiere para recomendaciones rapidas.",
+            )
 
-        if not stations:
-            stations = await fetch_gasolineras(body.combustible, client=client)
-            station_source = "api"
+        try:
+            stations = await fetch_route_candidates_postgis(
+                route_coordinates=route.coordinates,
+                combustible=body.combustible,
+                current_lat=current_position.lat,
+                current_lon=current_position.lon,
+                buffer_km=route_buffer_km,
+            )
+            station_source = "postgis"
+        except Exception as exc:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Error en búsqueda PostGIS de candidatas: {exc}",
+            ) from exc
 
     if not stations:
         raise HTTPException(
@@ -171,7 +169,7 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
         )
 
     # 3. Recomendar
-    result = await build_recommendations(body, route, stations)
+    result = await build_recommendations(body, route, stations, prefiltered=True)
 
     # 4. Añadir metadatos
     ts_end = datetime.now(timezone.utc)

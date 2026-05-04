@@ -18,7 +18,7 @@ from app.models.schemas import (
     RouteResult,
     RutaBase,
 )
-from app.services.poi_access import classify_station_access
+from app.services.poi_access import infer_access_from_osm
 from app.services.recommendation_core import (
     CandidateScore,
     build_initial_candidates,
@@ -41,16 +41,15 @@ async def _apply_matrix_detour_minutes(
     origin: Coordenada,
     dest: Coordenada,
     enriched: List[CandidateScore],
-    avg_speed_kmh: float,
-) -> None:
+) -> tuple[bool, bool]:
     if not enriched:
-        return
+        return False, False
 
     sorted_by_approx = sorted(enriched, key=lambda c: (c.desvio_min, c.precio))
     matrix_pool = sorted_by_approx[: settings.MATRIX_MAX_CANDIDATES]
     matrix_coords = [(item.station.lon, item.station.lat) for item in matrix_pool]
 
-    matrix_detours = await get_detour_minutes_matrix(
+    detour_minutes, detour_km, matrix_failed, had_nulls = await get_detour_minutes_matrix(
         origin_lat=origin.lat,
         origin_lon=origin.lon,
         dest_lat=dest.lat,
@@ -59,12 +58,17 @@ async def _apply_matrix_detour_minutes(
         evitar_peajes=req.evitar_peajes,
     )
 
-    for item, detour_min in zip(matrix_pool, matrix_detours):
-        if detour_min is None:
+    if req.evitar_peajes and (matrix_failed or had_nulls):
+        return matrix_failed, had_nulls
+
+    for item, detour_min, detour_km_value in zip(matrix_pool, detour_minutes, detour_km):
+        if detour_min is None or detour_km_value is None:
             continue
         item.desvio_min = round(detour_min, 1)
-        item.desvio_km = round((detour_min / 60.0) * avg_speed_kmh, 2)
+        item.desvio_km = round(detour_km_value, 2)
         item.detour_source = "matrix"
+
+    return matrix_failed, had_nulls
 
 
 async def _refine_exact_detours(
@@ -75,12 +79,16 @@ async def _refine_exact_detours(
     route_duration_min: float,
     enriched: List[CandidateScore],
     limit: int,
+    refine_by_price: bool = False,
 ) -> None:
     if not enriched:
         return
 
     refine_limit = min(len(enriched), max(1, limit))
-    refine_pool = sorted(enriched, key=lambda c: (c.desvio_min, c.precio))[:refine_limit]
+    if refine_by_price:
+        refine_pool = sorted(enriched, key=lambda c: (c.precio, c.desvio_min))[:refine_limit]
+    else:
+        refine_pool = sorted(enriched, key=lambda c: (c.desvio_min, c.precio))[:refine_limit]
     semaphore = asyncio.Semaphore(8)
 
     async with httpx.AsyncClient() as client:
@@ -115,33 +123,14 @@ async def _refine_exact_detours(
         await asyncio.gather(*[_refine(item) for item in refine_pool], return_exceptions=True)
 
 
-async def _enrich_access_type(candidates: List[CandidateScore]) -> None:
-    if not candidates:
-        return
-
-    classify_count = min(
-        len(candidates),
-        max(0, settings.ACCESS_ENRICHMENT_TOP_N),
-    )
-    if classify_count <= 0:
-        return
-
-    targets = candidates[:classify_count]
-    semaphore = asyncio.Semaphore(5)
-
-    async with httpx.AsyncClient() as client:
-        async def _classify(item: CandidateScore):
-            async with semaphore:
-                classification = await classify_station_access(item.station, client=client)
-                item.station.access_category = classification["category"]
-                item.station.access_source = classification["source"]
-                item.station.access_confidence = round(classification["confidence"], 2)
-
-                # Bonus ligero cuando un proveedor confirma área de servicio en carretera.
-                if classification["category"] == "service_area" and item.score > 0:
-                    item.score = round(min(1.0, item.score + 0.03), 4)
-
-        await asyncio.gather(*[_classify(item) for item in targets], return_exceptions=True)
+def _apply_osm_access_inference(candidates: List[CandidateScore]) -> None:
+    for item in candidates:
+        if item.station.access_category:
+            continue
+        classification = infer_access_from_osm(item.station)
+        item.station.access_category = classification["category"]
+        item.station.access_source = classification["source"]
+        item.station.access_confidence = round(classification["confidence"], 2)
 
 
 def _apply_access_policy(candidates: List[CandidateScore]) -> List[CandidateScore]:
@@ -172,6 +161,8 @@ async def build_recommendations(
     req: RecomendacionRequest,
     route: RouteResult,
     stations: List[GasolineraInternal],
+    *,
+    prefiltered: bool = False,
 ) -> RecomendacionResponse:
     route_dist_km = route.distancia_km
     route_duration_min = route.duracion_min
@@ -195,15 +186,20 @@ async def build_recommendations(
         avg_speed_kmh=route_avg_speed_kmh,
         road_factor=ROAD_FACTOR,
         default_detour_minutes=settings.DEFAULT_MAX_DESVIO_MIN,
+        prefiltered=prefiltered,
     )
 
-    await _apply_matrix_detour_minutes(req, origin, dest, enriched, route_avg_speed_kmh)
+    matrix_failed, matrix_nulls = await _apply_matrix_detour_minutes(req, origin, dest, enriched)
+    skip_matrix_for_tolls = req.evitar_peajes and (matrix_failed or matrix_nulls)
 
     # Asegura que el ranking final use desvíos en tiempo obtenidos de ruta real A->S->B.
-    exact_refine_limit = min(
-        len(enriched),
-        max(req.top_n, settings.MAX_REAL_DETOUR_CHECKS),
-    )
+    if skip_matrix_for_tolls:
+        exact_refine_limit = min(len(enriched), 5)
+    else:
+        exact_refine_limit = min(
+            len(enriched),
+            max(req.top_n, settings.MAX_REAL_DETOUR_CHECKS),
+        )
     await _refine_exact_detours(
         req,
         origin,
@@ -212,6 +208,7 @@ async def build_recommendations(
         route_duration_min,
         enriched,
         limit=exact_refine_limit,
+        refine_by_price=skip_matrix_for_tolls,
     )
 
     enriched = filter_viable_candidates(
@@ -225,7 +222,7 @@ async def build_recommendations(
     ranking_pool = exact_candidates if len(exact_candidates) >= req.top_n else enriched
 
     scored = score_candidates(ranking_pool, req.peso_precio, req.peso_desvio)
-    await _enrich_access_type(scored)
+    _apply_osm_access_inference(scored)
     scored = _apply_access_policy(scored)
     scored = sorted(scored, key=lambda c: c.score, reverse=True)
     top = scored[: req.top_n]

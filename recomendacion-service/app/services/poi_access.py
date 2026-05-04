@@ -37,6 +37,10 @@ def _infer_from_osm(station: GasolineraInternal) -> AccessClassification:
     return {"category": "unknown", "confidence": 0.35, "source": OSM}
 
 
+def infer_access_from_osm(station: GasolineraInternal) -> AccessClassification:
+    return _infer_from_osm(station)
+
+
 def _provider_order(selected: Optional[str]) -> list[str]:
     provider = selected or settings.POI_ACCESS_PROVIDER
     if provider == "auto":

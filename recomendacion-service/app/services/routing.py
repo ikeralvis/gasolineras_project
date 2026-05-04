@@ -193,13 +193,9 @@ def _is_retryable_status(status_code: int) -> bool:
 
 def _normalize_backend(backend: Optional[str]) -> str:
     selected = (backend or settings.ROUTING_BACKEND).strip().lower()
-    if selected not in {"ors", "osrm"}:
-        raise ValueError(f"Backend de routing desconocido: {selected}")
+    if selected != "ors":
+        raise ValueError("Solo se permite backend ORS en este servicio")
     return selected
-
-
-def _supports_toll_avoidance(backend: str) -> bool:
-    return backend == "ors"
 
 
 def _retry_backoff_seconds(attempt: int) -> float:
@@ -342,7 +338,7 @@ async def _matrix_ors(
     destinations: List[int],
     client: httpx.AsyncClient,
     evitar_peajes: bool = False,
-) -> List[List[Optional[float]]]:
+) -> tuple[List[List[Optional[float]]], List[List[Optional[float]]]]:
     ors_key = _normalized_ors_key(settings.ORS_API_KEY)
     if not ors_key:
         raise ValueError("ORS_API_KEY no configurada")
@@ -351,7 +347,7 @@ async def _matrix_ors(
         "locations": [[lon, lat] for lon, lat in coordinates],
         "sources": sources,
         "destinations": destinations,
-        "metrics": ["duration"],
+        "metrics": ["duration", "distance"],
     }
     if evitar_peajes:
         body["options"] = {"avoid_features": ["tollways"]}
@@ -369,9 +365,10 @@ async def _matrix_ors(
         )
     data = response.json()
     durations = data.get("durations")
-    if not isinstance(durations, list):
+    distances = data.get("distances")
+    if not isinstance(durations, list) or not isinstance(distances, list):
         raise ValueError("Respuesta ORS matrix no valida")
-    return durations
+    return durations, distances
 
 
 async def get_route_by_coordinates(
@@ -388,8 +385,6 @@ async def get_route_by_coordinates(
         client = httpx.AsyncClient()
 
     try:
-        if selected_backend == "osrm":
-            return "osrm", await _route_osrm_coords(coordinates, client)
         return "ors", await _route_ors_coords(coordinates, client, evitar_peajes)
     finally:
         if own_client and client is not None:
@@ -414,7 +409,7 @@ async def get_matrix_durations(
         client = httpx.AsyncClient()
 
     try:
-        durations = await _matrix_ors(
+        durations, _ = await _matrix_ors(
             coordinates=coordinates,
             sources=sources,
             destinations=destinations,
@@ -428,17 +423,7 @@ async def get_matrix_durations(
 
 
 def _backend_attempt_order(*, evitar_peajes: bool = False) -> List[str]:
-    if settings.ROUTING_BACKEND == "ors":
-        ordered = ["ors", "osrm"] if settings.ROUTING_FAILOVER_TO_OSRM else ["ors"]
-    else:
-        ordered = ["osrm", "ors"]
-
-    if not evitar_peajes:
-        return ordered
-
-    # Evita degradar silenciosamente a un backend que no soporta peajes.
-    toll_capable = [backend for backend in ordered if _supports_toll_avoidance(backend)]
-    return toll_capable or ["ors"]
+    return ["ors"]
 
 
 async def _route_with_backend(
@@ -447,13 +432,9 @@ async def _route_with_backend(
     client: httpx.AsyncClient,
     evitar_peajes: bool,
 ) -> RouteResult:
-    if backend == "osrm":
-        if evitar_peajes:
-            raise ValueError("OSRM no soporta evitar peajes")
-        return await _route_osrm_coords(coordinates, client)
-    if backend == "ors":
-        return await _route_ors_coords(coordinates, client, evitar_peajes)
-    raise ValueError(f"Backend de routing desconocido: {backend}")
+    if backend != "ors":
+        raise ValueError("Solo se permite backend ORS en este servicio")
+    return await _route_ors_coords(coordinates, client, evitar_peajes)
 
 
 async def get_route(
@@ -544,18 +525,13 @@ async def get_detour_minutes_matrix(
     candidates: List[Tuple[float, float]],
     evitar_peajes: bool = False,
     client: Optional[httpx.AsyncClient] = None,
-) -> List[Optional[float]]:
-    """Calcula desvio en minutos con Matrix API en una sola llamada."""
+) -> tuple[List[Optional[float]], List[Optional[float]], bool, bool]:
+    """Calcula desvio en minutos y km con Matrix API en una sola llamada."""
     if not candidates:
-        return []
+        return [], [], False, False
 
-    should_try_ors_matrix = (
-        settings.ROUTING_BACKEND == "ors"
-        or settings.ROUTING_FAILOVER_TO_OSRM
-        or evitar_peajes
-    )
-    if not should_try_ors_matrix:
-        return [None] * len(candidates)
+    if settings.ROUTING_BACKEND != "ors":
+        return [None] * len(candidates), [None] * len(candidates), True, False
 
     capped = candidates[: settings.MATRIX_MAX_CANDIDATES]
     own_client = client is None
@@ -571,24 +547,25 @@ async def get_detour_minutes_matrix(
             capped=capped,
         )
 
-        _, matrix = await get_matrix_durations(
+        durations, distances = await _matrix_ors(
             coordinates=coordinates,
             sources=sources,
             destinations=destinations,
-            backend="ors",
             client=client,
             evitar_peajes=evitar_peajes,
         )
 
-        return _compute_detours_from_matrix(
-            matrix=matrix,
+        detour_minutes, detour_km, had_nulls = _compute_detours_from_matrix(
+            durations=durations,
+            distances=distances,
             candidate_indices=candidate_indices,
             total_candidates=len(candidates),
             capped_count=len(capped),
         )
+        return detour_minutes, detour_km, False, had_nulls
     except Exception as exc:
         logger.warning("Matrix API no disponible, fallback a calculo individual: %s", exc)
-        return [None] * len(candidates)
+        return [None] * len(candidates), [None] * len(candidates), True, False
     finally:
         if own_client and client is not None:
             await client.aclose()
@@ -613,27 +590,37 @@ def _build_matrix_inputs(
 
 
 def _compute_detours_from_matrix(
-    matrix: List[List[Optional[float]]],
+    durations: List[List[Optional[float]]],
+    distances: List[List[Optional[float]]],
     candidate_indices: List[int],
     total_candidates: int,
     capped_count: int,
-) -> List[Optional[float]]:
-    if not matrix:
-        return [None] * total_candidates
+) -> tuple[List[Optional[float]], List[Optional[float]], bool]:
+    if not durations or not distances:
+        return [None] * total_candidates, [None] * total_candidates, True
 
-    ab_duration = matrix[0][-1]
-    if ab_duration is None:
-        return [None] * total_candidates
+    ab_duration = durations[0][-1]
+    ab_distance = distances[0][-1]
+    if ab_duration is None or ab_distance is None:
+        return [None] * total_candidates, [None] * total_candidates, True
 
-    detours: List[Optional[float]] = []
+    detour_minutes: List[Optional[float]] = []
+    detour_km: List[Optional[float]] = []
+    had_nulls = False
     for i, _candidate_index in enumerate(candidate_indices):
-        a_to_s = matrix[0][i] if i < len(matrix[0]) else None
-        s_to_b = matrix[i + 1][-1] if i + 1 < len(matrix) else None
-        if a_to_s is None or s_to_b is None:
-            detours.append(None)
+        a_to_s = durations[0][i] if i < len(durations[0]) else None
+        s_to_b = durations[i + 1][-1] if i + 1 < len(durations) else None
+        a_to_s_dist = distances[0][i] if i < len(distances[0]) else None
+        s_to_b_dist = distances[i + 1][-1] if i + 1 < len(distances) else None
+        if a_to_s is None or s_to_b is None or a_to_s_dist is None or s_to_b_dist is None:
+            detour_minutes.append(None)
+            detour_km.append(None)
+            had_nulls = True
             continue
-        detours.append(max(0.0, (a_to_s + s_to_b - ab_duration) / 60.0))
+        detour_minutes.append(max(0.0, (a_to_s + s_to_b - ab_duration) / 60.0))
+        detour_km.append(max(0.0, (a_to_s_dist + s_to_b_dist - ab_distance) / 1000.0))
 
     if total_candidates > capped_count:
-        detours.extend([None] * (total_candidates - capped_count))
-    return detours
+        detour_minutes.extend([None] * (total_candidates - capped_count))
+        detour_km.extend([None] * (total_candidates - capped_count))
+    return detour_minutes, detour_km, had_nulls

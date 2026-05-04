@@ -193,7 +193,7 @@ async def fetch_route_candidates_postgis(
         FROM candidates c
         CROSS JOIN current_pos cp
         WHERE c.route_progress >= cp.progress
-        ORDER BY c.route_progress ASC, c.offset_km ASC, c.precio ASC
+        ORDER BY c.precio ASC, c.offset_km ASC, c.route_progress ASC
         LIMIT $5
     """
 
