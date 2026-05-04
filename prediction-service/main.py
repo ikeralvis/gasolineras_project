@@ -652,6 +652,10 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
             df.loc[missing_mask, "fecha"] = pd.to_datetime(
                 df.loc[missing_mask, "fecha_registro"], errors="coerce"
             ).dt.normalize()
+        print(
+            "ℹ️ Snapshot_date aplicado: "
+            f"rows={len(df)} | snapshot_notna={df['snapshot_date'].notna().sum()}"
+        )
     else:
         if pd.api.types.is_datetime64_any_dtype(df["fecha_registro"]):
             df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
@@ -659,6 +663,12 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
             df["fecha"] = pd.to_datetime(df["fecha_registro"], unit="ms", errors="coerce").dt.normalize()
         else:
             df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
+
+    if "fecha" in df.columns:
+        fecha_min = df["fecha"].min()
+        fecha_max = df["fecha"].max()
+        fecha_unique = df["fecha"].nunique(dropna=True)
+        print(f"ℹ️ Rango fechas raw: min={fecha_min} | max={fecha_max} | unique_days={fecha_unique}")
     df["IDEESS"] = df["IDEESS"].astype(str).str.strip()
 
     print(f"✅ Dataset cargado: {df.shape}")
