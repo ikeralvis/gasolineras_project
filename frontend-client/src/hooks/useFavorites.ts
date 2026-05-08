@@ -105,7 +105,7 @@ export function useFavorites() {
   // Cargar favoritos al montar
   useEffect(() => {
     if (isAuthenticated) {
-      void cargarFavoritos(true);
+      void cargarFavoritos(false);
       return;
     }
     setFavoritos([]);

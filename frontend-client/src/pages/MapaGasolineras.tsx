@@ -232,6 +232,7 @@ function createClusterDivIcon(count: number): L.DivIcon {
 }
 
 const SPAIN_BOUNDS: [[number, number], [number, number]] = [[35.7, -9.7], [43.9, 3.4]];
+const DEFAULT_CENTER: [number, number] = [40.2, -3.5];
 
 function DefaultSpainViewController({ enabled }: Readonly<{ enabled: boolean }>) {
   const map = useMap();
@@ -458,7 +459,7 @@ export default function MapaGasolineras() {
   const { t } = useTranslation();
   const isTouchDevice = useIsCoarsePointer();
   const [markers, setMarkers] = useState<GasMarker[]>([]);
-  const [userLocation, setUserLocation] = useState<[number, number]>([40.2, -3.5]);
+  const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_CENTER);
   const [loading, setLoading] = useState(false);
   const [locationGranted, setLocationGranted] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -548,7 +549,7 @@ export default function MapaGasolineras() {
       </div>
 
       <MapContainer
-        center={userLocation}
+        center={DEFAULT_CENTER}
         zoom={locationGranted ? 13 : 6}
         scrollWheelZoom={!isTouchDevice}
         wheelPxPerZoomLevel={140}
