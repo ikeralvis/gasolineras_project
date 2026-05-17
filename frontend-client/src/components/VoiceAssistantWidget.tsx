@@ -87,6 +87,8 @@ export default function VoiceAssistantWidget() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [liveMode, setLiveMode] = useState(false);
+  const [liveUiHidden, setLiveUiHidden] = useState(false);
+  const [liveProcessing, setLiveProcessing] = useState(false);
   const [liveListening, setLiveListening] = useState(false);
   const [liveStatus, setLiveStatus] = useState("Pulsa Live para hablar");
   const [liveHeardText, setLiveHeardText] = useState("");
@@ -275,6 +277,8 @@ export default function VoiceAssistantWidget() {
 
     setLiveListening(false);
     setLiveMode(false);
+    setLiveUiHidden(false);
+    setLiveProcessing(false);
     liveListeningRef.current = false;
     liveModeRef.current = false;
     setLiveStatus("Pulsa Live para hablar");
@@ -398,6 +402,8 @@ export default function VoiceAssistantWidget() {
 
       liveDraftRef.current = "";
       setLiveHeardText("");
+      setLiveUiHidden(false);
+      setLiveProcessing(false);
       recordedChunksRef.current = [];
       calibrationRemainingRef.current = 8;
       noiseFloorSamplesRef.current = [];
@@ -461,6 +467,8 @@ export default function VoiceAssistantWidget() {
       setLiveMode(false);
       liveModeRef.current = false;
       setLiveStatus("Pulsa Live para hablar");
+      setLiveUiHidden(false);
+      setLiveProcessing(false);
     }, delayMs);
   }
 
@@ -469,6 +477,8 @@ export default function VoiceAssistantWidget() {
 
     liveSendingRef.current = true;
     clearSilenceTimer();
+    setLiveProcessing(true);
+    setLiveUiHidden(true);
 
     setLiveListening(false);
     liveListeningRef.current = false;
@@ -512,6 +522,8 @@ export default function VoiceAssistantWidget() {
       setLiveStatus("No se detecto texto");
       scheduleLiveModeReset(1000);
       liveSendingRef.current = false;
+      setLiveProcessing(false);
+      setLiveUiHidden(false);
       return;
     }
 
@@ -609,6 +621,7 @@ export default function VoiceAssistantWidget() {
       liveDraftRef.current = "";
       setLiveHeardText("");
       setLiveMicLevel(0);
+      setLiveProcessing(false);
       scheduleLiveModeReset();
       liveSendingRef.current = false;
     }
@@ -723,7 +736,7 @@ export default function VoiceAssistantWidget() {
             </div>
           </header>
 
-          {liveMode ? (
+          {liveMode && !liveUiHidden ? (
             <div className="flex-1 flex flex-col items-center justify-between bg-radial-[at_50%_20%] from-[#E9EEFF] via-[#F8FAFF] to-[#F2F6FF] px-5 py-6">
               <div className="w-full flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#31447D] uppercase tracking-wide">Live Voice</span>
@@ -789,6 +802,16 @@ export default function VoiceAssistantWidget() {
             </div>
           ) : (
             <>
+              {liveProcessing && (
+                <div className="mx-3 mt-3 rounded-2xl border border-[#D7DBFF] bg-linear-to-r from-[#EEF1FF] via-white to-[#EEF1FF] px-4 py-3 text-xs text-[#1B2A6B] flex items-center justify-between">
+                  <span className="font-semibold">Procesando tu audio...</span>
+                  <span className="inline-flex gap-1">
+                    <span className="h-2 w-2 rounded-full bg-[#2336C7] animate-pulse" />
+                    <span className="h-2 w-2 rounded-full bg-[#2336C7] animate-pulse [animation-delay:120ms]" />
+                    <span className="h-2 w-2 rounded-full bg-[#2336C7] animate-pulse [animation-delay:240ms]" />
+                  </span>
+                </div>
+              )}
               <div id="voice-chat-scroll" className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#F7F8FF] min-h-0">
                 {messages.map((m) => (
                   <div

@@ -76,6 +76,11 @@ export const voiceEnv = Object.freeze({
     language: process.env.GEMINI_LANGUAGE || "es-ES",
   },
 
+  guardrails: {
+    enabled: asBoolean(process.env.VOICE_GUARDRAILS_ENABLED, true),
+    mode: asEnum(process.env.VOICE_GUARDRAILS_MODE, ["soft", "strict"], "soft"),
+  },
+
   gateway: {
     enableGasContext: asBoolean(process.env.VOICE_ENABLE_GAS_CONTEXT, false),
     baseUrl: (process.env.GATEWAY_BASE_URL || "http://gateway:8080").replace(/\/$/, ""),
@@ -92,6 +97,7 @@ export function getPublicVoiceConfig() {
     dialogModel: voiceEnv.gemini.dialogModel,
     ttsModel: voiceEnv.gemini.ttsModel,
     language: voiceEnv.gemini.language,
+    guardrails: voiceEnv.guardrails,
     includeLatencyMeta: voiceEnv.includeLatencyMeta,
     includeAudioByDefault: voiceEnv.includeAudioByDefault,
     wsHeartbeatIntervalMs: voiceEnv.wsHeartbeatIntervalMs,

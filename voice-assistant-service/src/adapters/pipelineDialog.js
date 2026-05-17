@@ -118,10 +118,34 @@ function normalizeToolArgs(args, location) {
   return out;
 }
 
-function buildSystemInstruction(gasContext, location) {
+const LANGUAGE_CATALOG = {
+  es: { code: "es-ES", label: "espanol de Espana" },
+  en: { code: "en-US", label: "ingles" },
+  eu: { code: "eu-ES", label: "euskera" },
+};
+
+function detectLanguageFromText(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return "es";
+
+  const euHints = ["kaixo", "eskerrik", "mesedez", "non", "zer", "gasolindegi", "erregai", "prezio", "hurbil", "ibilbide"];
+  if (euHints.some((hint) => normalized.includes(hint))) return "eu";
+
+  const enHints = ["hello", "please", "where", "near", "nearest", "gas station", "petrol", "gasoline", "diesel", "price", "cheapest", "route", "map"];
+  if (enHints.some((hint) => normalized.includes(hint))) return "en";
+
+  return "es";
+}
+
+function resolveLanguage(text) {
+  const key = detectLanguageFromText(text);
+  return LANGUAGE_CATALOG[key] || LANGUAGE_CATALOG.es;
+}
+
+function buildSystemInstruction(gasContext, location, language) {
   const lines = [
     "Eres el Asistente de Viaje de TankGo.",
-    "Responde SIEMPRE en español de España con tono natural, cercano y claro.",
+    `Responde SIEMPRE en ${language.label} con tono natural, cercano y claro.`,
     "Para consultas de precio usa get_prices. Para consultas de proximidad usa get_nearest_stations.",
     "Al citar precios di el importe en euros por litro. Respuestas de máximo 3-4 frases salvo que pidan más detalle.",
   ];
@@ -136,6 +160,46 @@ function buildSystemInstruction(gasContext, location) {
     lines.push(`Contexto actual: ${gasContext.promptContext}`);
   }
   return lines.join(" ");
+}
+
+function isInScope(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return true;
+
+  const smallTalk = ["hola", "buenas", "gracias", "adios", "ok", "vale", "hey", "hello", "thanks", "bye", "kaixo", "eskerrik", "agur"];
+  if (smallTalk.some((hint) => normalized.includes(hint))) return true;
+
+  const scopeKeywords = [
+    "gasolinera",
+    "gasolineras",
+    "gas station",
+    "gasolindegi",
+    "gasolina",
+    "gasoline",
+    "petrol",
+    "diesel",
+    "gasoleo",
+    "erregai",
+    "precio",
+    "precios",
+    "price",
+    "cheapest",
+    "barata",
+    "cerca",
+    "near",
+    "nearest",
+    "hurbil",
+    "rutas",
+    "route",
+    "ibilbide",
+    "recarga",
+    "charging",
+    "mapa",
+    "map",
+    "tankgo",
+  ];
+
+  return scopeKeywords.some((keyword) => normalized.includes(keyword));
 }
 
 function normalizeText(value) {
@@ -310,7 +374,7 @@ async function transcribeAudio({ ai, audioBase64, mimeType }) {
             role: "user",
             parts: [
               {
-                text: "Transcribe exactamente lo que se dice en este audio en español. Responde ÚNICAMENTE con el texto transcrito, sin introducción ni puntuación añadida.",
+                text: "Transcribe exactamente lo que se dice en este audio y respeta el idioma original. Responde SOLO con la transcripcion, sin introduccion ni puntuacion añadida.",
               },
               { inlineData: { mimeType: mimeType || "audio/webm", data: audioBase64 } },
             ],
@@ -350,8 +414,8 @@ async function executeTool(name, args, location) {
   return { error: "función no soportada", name };
 }
 
-async function runLlmForModel({ ai, model, text, location, gasContext }) {
-  const systemInstruction = buildSystemInstruction(gasContext, location);
+async function runLlmForModel({ ai, model, text, location, gasContext, language }) {
+  const systemInstruction = buildSystemInstruction(gasContext, location, language);
   const toolOutputs = [];
 
   let contents = [{ role: "user", parts: [{ text }] }];
@@ -423,13 +487,13 @@ async function runLlmForModel({ ai, model, text, location, gasContext }) {
   };
 }
 
-async function runLlm({ ai, text, location, gasContext }) {
+async function runLlm({ ai, text, location, gasContext, language }) {
   const models = buildModelCandidates(voiceEnv.gemini.dialogModel, DIALOG_FALLBACKS);
   let lastError;
 
   for (const model of models) {
     try {
-      return await runLlmForModel({ ai, model, text, location, gasContext });
+      return await runLlmForModel({ ai, model, text, location, gasContext, language });
     } catch (error) {
       lastError = error;
       if (isModelNotFoundError(error)) continue;
@@ -442,7 +506,7 @@ async function runLlm({ ai, text, location, gasContext }) {
 
 // ─── Paso 3: TTS (Gemini) ─────────────────────────────────────────────────────
 
-async function synthesizeGemini({ ai, text }) {
+async function synthesizeGemini({ ai, text, languageCode }) {
   const models = buildModelCandidates(voiceEnv.gemini.ttsModel, TTS_FALLBACKS);
   let lastError;
 
@@ -460,7 +524,7 @@ async function synthesizeGemini({ ai, text }) {
           config: {
             responseModalities: ["AUDIO"],
             speechConfig: {
-              languageCode: voiceEnv.gemini.language,
+              languageCode: languageCode || voiceEnv.gemini.language,
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: voiceEnv.gemini.voiceName },
               },
@@ -492,7 +556,7 @@ async function synthesizeGemini({ ai, text }) {
   throw lastError || new Error("TTS falló con todos los modelos");
 }
 
-async function maybeSynthesizeSpeech({ ai, text, includeAudio }) {
+async function maybeSynthesizeSpeech({ ai, text, includeAudio, languageCode }) {
   if (!includeAudio) {
     return { provider: null, model: null, note: "audio-disabled", audioBase64: null, mimeType: null };
   }
@@ -501,7 +565,7 @@ async function maybeSynthesizeSpeech({ ai, text, includeAudio }) {
   }
 
   try {
-    const result = await synthesizeGemini({ ai, text });
+    const result = await synthesizeGemini({ ai, text, languageCode });
     return { provider: "gemini", model: result.model, note: "ok", audioBase64: result.audioBase64, mimeType: result.audioMimeType };
   } catch (error) {
     console.warn("[voice][tts] Gemini TTS falló:", error?.message || error);
@@ -536,6 +600,7 @@ export async function runPipelineDialog({
     throw new Error("audio-or-text-required");
   }
 
+  const language = resolveLanguage(userText);
   const intent = classifyIntent(userText);
   const locationKnown = hasLocation(location);
   const toolOutputs = [];
@@ -594,13 +659,19 @@ export async function runPipelineDialog({
   }
 
   if (!responseText) {
-    const llmResult = await runLlm({ ai, text: userText, location, gasContext });
-    responseText = llmResult.responseText;
-    toolOutputs.push(...llmResult.toolOutputs);
+    if (voiceEnv.guardrails.enabled && !isInScope(userText)) {
+      responseText = voiceEnv.guardrails.mode === "strict"
+        ? "Lo siento, solo puedo ayudar con consultas de TankGo sobre gasolineras, precios y rutas."
+        : "Puedo ayudarte con precios de combustible, gasolineras cercanas y rutas en TankGo. Si quieres, dime tu consulta sobre gasolineras o precios.";
+    } else {
+      const llmResult = await runLlm({ ai, text: userText, location, gasContext, language });
+      responseText = llmResult.responseText;
+      toolOutputs.push(...llmResult.toolOutputs);
+    }
   }
 
   // Paso 3: TTS
-  const tts = await maybeSynthesizeSpeech({ ai, text: responseText, includeAudio });
+  const tts = await maybeSynthesizeSpeech({ ai, text: responseText, includeAudio, languageCode: language.code });
 
   return {
     provider: "pipeline",
@@ -612,6 +683,7 @@ export async function runPipelineDialog({
     context: {
       bootstrap: gasContext?.data || null,
       intent: intent.type,
+      language: language.code,
       toolOutputs,
       ...(sttTranscript !== null && { sttTranscript }),
     },

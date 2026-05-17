@@ -30,6 +30,7 @@ export default function Favoritos() {
   const [error, setError] = useState<string | null>(null);
   const inflightRef = useRef<Promise<void> | null>(null);
   const lastKeyRef = useRef<string>('');
+  const lastFetchRef = useRef<{ key: string; at: number } | null>(null);
   const combustibleSeleccionado = user?.combustible_favorito || "Precio Gasolina 95 E5";
   const navigate = useNavigate();
 
@@ -52,11 +53,16 @@ export default function Favoritos() {
   const cargarGasolinerasFavoritas = async (ids: string[]) => {
     const uniqueIds = [...new Set(ids)];
     const key = uniqueIds.sort().join('|');
+    const lastFetch = lastFetchRef.current;
+    if (lastFetch && lastFetch.key === key && Date.now() - lastFetch.at < 30_000) {
+      return;
+    }
     if (inflightRef.current && lastKeyRef.current === key) {
       return;
     }
 
     lastKeyRef.current = key;
+    lastFetchRef.current = { key, at: Date.now() };
     setLoading(true);
     setError(null);
 

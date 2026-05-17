@@ -14,6 +14,15 @@ let sharedUpdatedAt = 0;
 let sharedRequest: Promise<string[]> | null = null;
 const sharedListeners = new Set<(ids: string[]) => void>();
 
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
 function notifyShared(ids: string[]) {
   for (const listener of sharedListeners) {
     listener(ids);
@@ -77,7 +86,7 @@ export function useFavorites() {
 
     try {
       const ids = await fetchSharedFavoritos(forceRefresh);
-      setFavoritos(ids);
+      setFavoritos((prev) => (arraysEqual(prev, ids) ? prev : ids));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Error al cargar favoritos';
       setError(message);
@@ -89,7 +98,7 @@ export function useFavorites() {
 
   useEffect(() => {
     const listener = (ids: string[]) => {
-      setFavoritos(ids);
+      setFavoritos((prev) => (arraysEqual(prev, ids) ? prev : ids));
     };
     sharedListeners.add(listener);
 
