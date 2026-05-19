@@ -348,5 +348,15 @@
     "lastUpdated": "Actualizad.",
     "viewDetails": "Ver detalles",
     "detailError": "No se pudieron cargar los detalles"
+  },
+  "prediction": {
+    "title": "Predicción de precios",
+    "subtitle": "Próximos 7 días para tus gasolineras favoritas",
+    "fuel95": "Gasolina 95",
+    "fuelDiesel": "Gasóleo A",
+    "bestOption": "Mejor opción para repostar",
+    "perLiter": "€/L",
+    "runDate": "Predicción generada el",
+    "noData": "No hay predicciones disponibles aún. El servicio genera predicciones diariamente."
   }
 }

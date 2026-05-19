@@ -347,5 +347,15 @@
     "lastUpdated": "Eguneratua",
     "viewDetails": "Xehetasunak ikusi",
     "detailError": "Ezin izan dira xehetasunak kargatu"
+  },
+  "prediction": {
+    "title": "Prezioen Iragarpena",
+    "subtitle": "Hurrengo 7 egunak zure gogoko gasolindegietarako",
+    "fuel95": "Gasolina 95",
+    "fuelDiesel": "Gasolioa A",
+    "bestOption": "Errepostatzeko aukera onena",
+    "perLiter": "€/L",
+    "runDate": "Iragarpena sortua",
+    "noData": "Ez dago iragarpen eskuragarririk oraindik. Zerbitzuak egunero iragarpenak sortzen ditu."
   }
 }

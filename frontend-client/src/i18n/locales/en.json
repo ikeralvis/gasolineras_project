@@ -348,5 +348,15 @@
     "lastUpdated": "Updated",
     "viewDetails": "View details",
     "detailError": "Could not load station details"
+  },
+  "prediction": {
+    "title": "Price Forecast",
+    "subtitle": "Next 7 days for your favorite stations",
+    "fuel95": "Gasoline 95",
+    "fuelDiesel": "Diesel A",
+    "bestOption": "Best refueling option",
+    "perLiter": "€/L",
+    "runDate": "Forecast generated on",
+    "noData": "No predictions available yet. The service generates forecasts daily."
   }
 }

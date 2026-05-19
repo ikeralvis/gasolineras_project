@@ -5,6 +5,7 @@ import { FaHeart, FaMapMarkerAlt, FaRoute } from 'react-icons/fa';
 import { useFavorites } from '../hooks/useFavorites';
 import { useAuth } from '../contexts/AuthContext';
 import GasolinerasTable from '../components/GasolinerasTable';
+import PrediccionRepostaje from '../components/PrediccionRepostaje';
 
 const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
@@ -249,10 +250,13 @@ export default function Favoritos() {
             </div>
 
             {/* Tabla de gasolineras */}
-            <GasolinerasTable 
-              gasolineras={gasolineras} 
+            <GasolinerasTable
+              gasolineras={gasolineras}
               combustibleSeleccionado={combustibleSeleccionado}
             />
+
+            {/* Predicción de precios próximos 7 días */}
+            <PrediccionRepostaje gasolineras={gasolineras} />
           </>
         )}
       </div>
