@@ -19,6 +19,7 @@ ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
 # Nota: pnpm-lock.yaml debe estar en el repo para builds reproducibles
 COPY package.json ./
 COPY pnpm-lock.yaml* ./
+COPY .npmrc ./
 
 # Instalar dependencias
 # Si existe pnpm-lock.yaml usa --frozen-lockfile, sino instala normalmente
