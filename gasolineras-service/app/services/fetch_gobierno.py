@@ -128,13 +128,39 @@ def parse_horario(raw: Optional[str]) -> Optional[dict]:
     texto = raw.strip()
 
     # 24H / siempre abierto
-    if re.match(r'^24\s*[Hh]', texto):
+    if re.fullmatch(r'24\s*[Hh](?:ORAS?)?', texto, re.IGNORECASE):
         return {"texto": texto, "siempre_abierto": True, "segmentos": []}
+
+    # L-D: 24H / 24 HORAS (semana completa)
+    m_full_week_24h = re.match(
+        r'^([LMXJVSD][LMXJVSD,\-]*)\s*:\s*24\s*[Hh](?:ORAS?)?\s*$',
+        texto,
+        re.IGNORECASE,
+    )
+    if m_full_week_24h:
+        dias = _expand_dias(m_full_week_24h.group(1))
+        if set(dias) == {1, 2, 3, 4, 5, 6, 7}:
+            return {"texto": texto, "siempre_abierto": True, "segmentos": []}
 
     segmentos = []
     for parte in texto.split(";"):
         parte = parte.strip()
         if not parte:
+            continue
+        # Segmento 24H por dias: "L-D: 24H" / "L-V: 24 HORAS"
+        m24 = re.match(
+            r'^([LMXJVSD][LMXJVSD,\-]*)\s*:\s*24\s*[Hh](?:ORAS?)?\s*$',
+            parte,
+            re.IGNORECASE,
+        )
+        if m24:
+            dias = _expand_dias(m24.group(1))
+            if dias:
+                segmentos.append({
+                    "dias": dias,
+                    "apertura": "00:00",
+                    "cierre": "23:59",
+                })
             continue
         # Segmento: "L-D: 07:00-22:00"  o  "L,M,X: 08:00-20:00"
         m = re.match(

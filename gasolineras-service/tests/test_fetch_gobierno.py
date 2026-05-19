@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.services.fetch_gobierno import parse_gasolinera
+from app.services.fetch_gobierno import parse_gasolinera, parse_horario
 
 
 def test_parse_gasolinera_includes_95_premium_and_diesel_renovable():
@@ -51,3 +51,21 @@ def test_parse_gasolinera_accepts_legacy_gasoleo_premium_key_with_tilde():
 
     assert parsed is not None
     assert parsed["Precio Gasoleo Premium"] == "1,799"
+
+
+def test_parse_horario_handles_full_week_24h():
+    parsed = parse_horario("L-D: 24H")
+
+    assert parsed is not None
+    assert parsed["siempre_abierto"] is True
+    assert parsed["segmentos"] == []
+
+
+def test_parse_horario_keeps_weekday_24h_segment():
+    parsed = parse_horario("L-V: 24H")
+
+    assert parsed is not None
+    assert parsed["siempre_abierto"] is False
+    assert parsed["segmentos"] == [
+        {"dias": [1, 2, 3, 4, 5], "apertura": "00:00", "cierre": "23:59"}
+    ]
