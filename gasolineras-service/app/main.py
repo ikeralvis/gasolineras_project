@@ -17,6 +17,7 @@ from app.routes.gasolineras import (
 from app.db.connection import close_db_connection, test_db_connection
 from app.db.connection import is_db_configured
 from app.routes.ev_integration import router as ev_integration_router
+from app.routes.prediction import router as prediction_router
 
 # Configuración de logging
 logging.basicConfig(
@@ -100,6 +101,7 @@ app.add_middleware(
 # Incluir routers
 app.include_router(gasolineras_router)
 app.include_router(ev_integration_router)
+app.include_router(prediction_router)
 
 @app.get("/", tags=["General"])
 def root():

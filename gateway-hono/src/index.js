@@ -738,24 +738,18 @@ app.all("/api/recomendaciones", async (c) => proxyRecomendacion(c, "/api/recomen
 app.all("/api/recomendaciones/*", async (c) => proxyRecomendacion(c, "/api/recomendaciones"));
 
 // ========================================
-// 🔮 PROXY: MICROSERVICIO DE PREDICCIÓN
+// 🔮 PROXY: PREDICCIÓN (rutas servidas por gasolineras-service)
 // ========================================
 async function proxyPrediction(c) {
-  if (!PREDICTION_SERVICE) {
-    return c.json(
-      {
-        error: "Prediction service no configurado",
-        message: "Define PREDICTION_SERVICE_URL para habilitar /api/prediction/*",
-      },
-      501
-    );
-  }
+  // Las predicciones las escribe el Cloud Run Job (sin URL estable).
+  // Los endpoints de lectura viven en gasolineras-service, que sí comparte la BD.
+  const predictionBase = PREDICTION_SERVICE || GASOLINERAS_SERVICE;
 
   try {
     const path = c.req.path.replace("/api/prediction", "");
     const searchParams = new URL(c.req.url).searchParams;
     const queryString = searchParams.toString();
-    const url = `${PREDICTION_SERVICE}/api/prediction${path}${queryString ? "?" + queryString : ""}`;
+    const url = `${predictionBase}/api/prediction${path}${queryString ? "?" + queryString : ""}`;
 
     console.log(`🔮 Proxy prediction: ${c.req.method} ${url}`);
 
