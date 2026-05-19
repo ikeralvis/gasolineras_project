@@ -22,8 +22,7 @@ COPY pnpm-lock.yaml* ./
 
 # Instalar dependencias
 # Si existe pnpm-lock.yaml usa --frozen-lockfile, sino instala normalmente
-RUN pnpm install;
-#RUN if [ -f pnpm-lock.yaml ]; then \
+RUN pnpm install --no-only-built-dependencies#RUN if [ -f pnpm-lock.yaml ]; then \
 #      pnpm install --frozen-lockfile; \
 #    else \
 #      pnpm install; \
