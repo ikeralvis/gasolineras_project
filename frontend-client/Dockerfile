@@ -22,12 +22,11 @@ COPY pnpm-lock.yaml* ./
 
 # Instalar dependencias
 # Si existe pnpm-lock.yaml usa --frozen-lockfile, sino instala normalmente
-# Usar la opción válida: permitir instalación sin forzar el lockfile en CI
 RUN if [ -f pnpm-lock.yaml ]; then \
-			pnpm install --no-frozen-lockfile; \
-		else \
-			pnpm install; \
-		fi
+      pnpm install --frozen-lockfile; \
+    else \
+      pnpm install; \
+    fi
 #RUN if [ -f pnpm-lock.yaml ]; then \
 #      pnpm install --frozen-lockfile; \
 #    else \
