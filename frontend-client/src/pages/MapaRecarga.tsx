@@ -72,11 +72,17 @@ const MIN_ZOOM_FOR_EV_MARKERS = 8;
 
 function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
   const map = useMap();
+  const hasSetRef = useRef(false);
+  const userInteractedRef = useRef(false);
+
+  useMapEvents({
+    dragstart: () => { userInteractedRef.current = true; },
+    click: () => { userInteractedRef.current = true; },
+  });
 
   useEffect(() => {
-    if (!enabled) {
-      return;
-    }
+    if (!enabled || hasSetRef.current || userInteractedRef.current) return;
+    hasSetRef.current = true;
     map.setView(center, 13, { animate: false });
   }, [center, enabled, map]);
 
@@ -102,7 +108,6 @@ interface MapControllerProps {
   onZoomTooLow: (show: boolean) => void;
   onBboxTooLarge: (requiredZoom: number | null) => void;
   onLoading: (loading: boolean) => void;
-  refreshKey: string;
 }
 
 function EVMapController({
@@ -110,7 +115,6 @@ function EVMapController({
   onZoomTooLow,
   onBboxTooLarge,
   onLoading,
-  refreshKey,
 }: MapControllerProps) {
   const map = useMap();
   const fetchSeqRef = useRef(0);
@@ -172,10 +176,6 @@ function EVMapController({
   useEffect(() => {
     map.whenReady(runFetchForCurrentViewport);
   }, [map, runFetchForCurrentViewport]);
-
-  useEffect(() => {
-    map.whenReady(runFetchForCurrentViewport);
-  }, [map, refreshKey, runFetchForCurrentViewport]);
 
   // Only moveend: zoomend also fires moveend, so listening to both causes a double fetch
   useMapEvents({
@@ -556,9 +556,6 @@ export default function MapaRecarga() {
 
   const locationCount = markers.filter((m) => m.type === "location").length;
   const clusterCount = markers.filter((m) => m.type === "cluster").length;
-  const mapRefreshKey = locationGranted
-    ? `${userLocation[0].toFixed(5)},${userLocation[1].toFixed(5)}`
-    : "spain-default";
 
   useEffect(() => {
     navigator.geolocation.getCurrentPosition(
@@ -576,7 +573,7 @@ export default function MapaRecarga() {
   }, []);
 
   return (
-    <div className="w-full h-[calc(100vh-64px)] flex flex-col relative">
+    <div className="w-full h-[calc(100dvh-64px)] flex flex-col relative overflow-hidden">
 
       {/* ── Header ── */}
       <div className="bg-[#000C74] text-white shadow z-10 shrink-0">
@@ -614,7 +611,7 @@ export default function MapaRecarga() {
       <MapContainer
         center={userLocation}
         zoom={locationGranted ? 13 : 6}
-        className="flex-1 z-0"
+        className="flex-1 min-h-0 z-0"
         style={{ zIndex: 0 }}
         zoomControl
         scrollWheelZoom
@@ -634,7 +631,6 @@ export default function MapaRecarga() {
           onZoomTooLow={setZoomTooLow}
           onBboxTooLarge={setBboxTooLargeZoom}
           onLoading={setLoading}
-          refreshKey={mapRefreshKey}
         />
 
         {locationGranted && (

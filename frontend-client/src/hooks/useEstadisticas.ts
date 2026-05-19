@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getEstadisticas, type Estadisticas } from '../api/estadisticas';
 
 interface UseEstadisticasOptions {
@@ -13,7 +13,7 @@ export function useEstadisticas(options: UseEstadisticasOptions = {}) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const cargar = async () => {
+  const cargar = useCallback(async () => {
     setLoading(true);
     setError(null);
 
@@ -26,13 +26,13 @@ export function useEstadisticas(options: UseEstadisticasOptions = {}) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [provincia, municipio]);
 
   useEffect(() => {
     if (autoLoad) {
-      cargar();
+      void cargar();
     }
-  }, [provincia, municipio, autoLoad]);
+  }, [autoLoad, cargar]);
 
   return {
     estadisticas,

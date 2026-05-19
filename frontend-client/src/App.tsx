@@ -38,11 +38,12 @@ function AppContent() {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
   const isAuthPage = location.pathname === "/login" || location.pathname === "/register";
+  const isMapPage = location.pathname === "/mapa" || location.pathname === "/recarga";
 
   return (
     <>
       {!isAuthPage && <Navbar />}
-      <main id="main-content" className={isAuthPage ? "" : "pb-24 md:pb-0"}>
+      <main id="main-content" className={isAuthPage || isMapPage ? "" : "pb-24 md:pb-0"}>
         <Routes>
           <Route path="/" element={isAuthenticated ? <Navigate to="/gasolineras" replace /> : <Home />} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/gasolineras" replace /> : <Login />} />
@@ -64,7 +65,7 @@ function AppContent() {
           <Route path="*" element={<Navigate to={isAuthenticated ? "/gasolineras" : "/"} replace />} />
         </Routes>
       </main>
-      {!isAuthPage && <Footer />}
+      {!isAuthPage && !isMapPage && <Footer />}
       {isAuthenticated && !isAuthPage && <VoiceAssistantWidget />}
     </>
   );

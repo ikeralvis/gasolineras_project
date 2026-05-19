@@ -80,6 +80,7 @@ Thumbs.db
 # ──────────────────────────────
 coverage/
 test-results/
+playwright-report/
 junit.xml
 *.cover
 *.lcov

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FaHeart, FaMapMarkerAlt, FaRoute } from 'react-icons/fa';
@@ -34,27 +34,11 @@ export default function Favoritos() {
   const combustibleSeleccionado = user?.combustible_favorito || "Precio Gasolina 95 E5";
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login');
-      return;
-    }
-
-    if (favoritos.length === 0 && !favLoading) {
-      setLoading(false);
-      return;
-    }
-
-    if (favoritos.length > 0) {
-      void cargarGasolinerasFavoritas(favoritos);
-    }
-  }, [favoritos, favLoading, isAuthenticated, navigate]);
-
-  const cargarGasolinerasFavoritas = async (ids: string[]) => {
+  const cargarGasolinerasFavoritas = useCallback(async (ids: string[]) => {
     const uniqueIds = [...new Set(ids)];
-    const key = uniqueIds.sort().join('|');
+    const key = [...uniqueIds].sort().join('|');
     const lastFetch = lastFetchRef.current;
-    if (lastFetch && lastFetch.key === key && Date.now() - lastFetch.at < 30_000) {
+    if (lastFetch?.key === key && Date.now() - lastFetch.at < 30_000) {
       return;
     }
     if (inflightRef.current && lastKeyRef.current === key) {
@@ -92,7 +76,20 @@ export default function Favoritos() {
       }
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    if (favoritos.length === 0 && !favLoading) {
+      setLoading(false);
+      return;
+    }
+
+    if (favoritos.length > 0) {
+      void cargarGasolinerasFavoritas(favoritos);
+    }
+  }, [favoritos, favLoading, isAuthenticated, cargarGasolinerasFavoritas]);
 
   if (loading || favLoading) {
     return (

@@ -131,12 +131,20 @@ function getBrandLogo(rotulo?: string): string | null {
   return getBrandIcon(rotulo);
 }
 
-// Solo posiciona el mapa una vez cuando la ubicación es concedida
+// Solo posiciona el mapa una vez cuando la ubicación es concedida,
+// y nunca si el usuario ya interactuó con el mapa (drag o tap).
 function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
   const map = useMap();
   const hasSetRef = useRef(false);
+  const userInteractedRef = useRef(false);
+
+  useMapEvents({
+    dragstart: () => { userInteractedRef.current = true; },
+    click: () => { userInteractedRef.current = true; },
+  });
+
   useEffect(() => {
-    if (!enabled || hasSetRef.current) return;
+    if (!enabled || hasSetRef.current || userInteractedRef.current) return;
     hasSetRef.current = true;
     map.setView(center, 13, { animate: false });
   }, [center, enabled, map]);
@@ -502,7 +510,7 @@ export default function MapaGasolineras() {
       (error) => {
         console.warn("No se pudo refinar ubicacion:", error.message);
       },
-      { enableHighAccuracy: true, timeout: 9000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 9000, maximumAge: 30000 }
     );
 
     return () => {

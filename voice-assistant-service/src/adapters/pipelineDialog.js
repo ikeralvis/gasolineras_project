@@ -119,9 +119,9 @@ function normalizeToolArgs(args, location) {
 }
 
 const LANGUAGE_CATALOG = {
-  es: { code: "es-ES", label: "espanol de Espana" },
-  en: { code: "en-US", label: "ingles" },
-  eu: { code: "eu-ES", label: "euskera" },
+  es: { code: "es-ES", label: "spanish" },
+  en: { code: "en-US", label: "english" },
+  eu: { code: "eu-ES", label: "basque" },
 };
 
 function detectLanguageFromText(text) {
@@ -131,7 +131,23 @@ function detectLanguageFromText(text) {
   const euHints = ["kaixo", "eskerrik", "mesedez", "non", "zer", "gasolindegi", "erregai", "prezio", "hurbil", "ibilbide"];
   if (euHints.some((hint) => normalized.includes(hint))) return "eu";
 
-  const enHints = ["hello", "please", "where", "near", "nearest", "gas station", "petrol", "gasoline", "diesel", "price", "cheapest", "route", "map"];
+  const enHints = [
+    "hello",
+    "please",
+    "where",
+    "which",
+    "near",
+    "nearest",
+    "gas station",
+    "station",
+    "petrol",
+    "gasoline",
+    "diesel",
+    "price",
+    "cheapest",
+    "route",
+    "map",
+  ];
   if (enHints.some((hint) => normalized.includes(hint))) return "en";
 
   return "es";
@@ -143,21 +159,57 @@ function resolveLanguage(text) {
 }
 
 function buildSystemInstruction(gasContext, location, language) {
-  const lines = [
-    "Eres el Asistente de Viaje de TankGo.",
-    `Responde SIEMPRE en ${language.label} con tono natural, cercano y claro.`,
-    "Para consultas de precio usa get_prices. Para consultas de proximidad usa get_nearest_stations.",
-    "Al citar precios di el importe en euros por litro. Respuestas de máximo 3-4 frases salvo que pidan más detalle.",
-  ];
+  let lines;
+
+  if (language.code === "en-US") {
+    lines = [
+      "You are the TankGo Travel Assistant.",
+      "Always respond in English with a natural, friendly tone.",
+      "For price questions use get_prices. For proximity questions use get_nearest_stations.",
+      "When quoting prices use euros per liter. Max 3-4 sentences unless more detail is requested.",
+    ];
+  } else if (language.code === "eu-ES") {
+    lines = [
+      "Zu TankGo bidaia laguntzailea zara.",
+      "Erantzun beti euskaraz, tonu natural eta argiarekin.",
+      "Prezio galderetarako erabili get_prices. Hurbiltasun galderetarako erabili get_nearest_stations.",
+      "Prezioak euro/litro adierazi. 3-4 esaldi gehienez, gehiago eskatzen ez badute.",
+    ];
+  } else {
+    lines = [
+      "Eres el Asistente de Viaje de TankGo.",
+      "Responde SIEMPRE en espanol con tono natural, cercano y claro.",
+      "Para consultas de precio usa get_prices. Para consultas de proximidad usa get_nearest_stations.",
+      "Al citar precios di el importe en euros por litro. Respuestas de maximo 3-4 frases salvo que pidan mas detalle.",
+    ];
+  }
 
   if (location?.lat != null && location?.lon != null) {
-    lines.push(`Ubicación del usuario: lat=${location.lat}, lon=${location.lon}. Usa estas coordenadas al llamar a las herramientas.`);
+    if (language.code === "en-US") {
+      lines.push(`User location: lat=${location.lat}, lon=${location.lon}. Use these coordinates when calling tools.`);
+    } else if (language.code === "eu-ES") {
+      lines.push(`Erabiltzailearen kokapena: lat=${location.lat}, lon=${location.lon}. Erabili koordenatu hauek tresnak deitzean.`);
+    } else {
+      lines.push(`Ubicacion del usuario: lat=${location.lat}, lon=${location.lon}. Usa estas coordenadas al llamar a las herramientas.`);
+    }
   } else {
-    lines.push("Si no tienes la ubicación del usuario, pídela brevemente antes de llamar a ninguna función.");
+    if (language.code === "en-US") {
+      lines.push("If you do not have the user location, ask for it briefly before calling any function.");
+    } else if (language.code === "eu-ES") {
+      lines.push("Kokapena ez baduzu, galdetu laburki funtziorik deitu aurretik.");
+    } else {
+      lines.push("Si no tienes la ubicacion del usuario, pidela brevemente antes de llamar a ninguna funcion.");
+    }
   }
 
   if (gasContext?.promptContext) {
-    lines.push(`Contexto actual: ${gasContext.promptContext}`);
+    if (language.code === "en-US") {
+      lines.push(`Current context: ${gasContext.promptContext}`);
+    } else if (language.code === "eu-ES") {
+      lines.push(`Uneko testuingurua: ${gasContext.promptContext}`);
+    } else {
+      lines.push(`Contexto actual: ${gasContext.promptContext}`);
+    }
   }
   return lines.join(" ");
 }
@@ -269,8 +321,8 @@ function formatBrand(brand) {
 
 function classifyIntent(text) {
   const normalized = normalizeText(text);
-  const wantsNearest = /(mas cercana|mas cerca|cerca|proxima|cercana)/.test(normalized);
-  const wantsCheapest = /(mas barata|mas barato|barata|barato|precio|cuesta|economica|economico)/.test(normalized);
+  const wantsNearest = /(mas cercana|mas cerca|cerca|proxima|cercana|nearest|near|closest|hurbil)/.test(normalized);
+  const wantsCheapest = /(mas barata|mas barato|barata|barato|precio|cuesta|economica|economico|cheapest|price|cost|merkeena)/.test(normalized);
   const wantsBrand = /(marca|repsol|cepsa|bp|shell|galp|carrefour|alcampo|eroski|avia)/.test(normalized);
 
   if (wantsCheapest) return { type: "prices", wantsBrand };
@@ -295,43 +347,76 @@ function formatDistance(distanceKm) {
   return `A unos ${Number(distanceKm).toFixed(1)} km.`;
 }
 
-function fuelLabel(fuelKey) {
+function fuelLabel(fuelKey, languageCode) {
   switch (fuelKey) {
     case "gasolina98":
-      return "gasolina 98";
+      return languageCode === "en-US" ? "gasoline 98" : "gasolina 98";
     case "gasoleoA":
-      return "gasoleo A";
+      return languageCode === "en-US" ? "diesel" : "gasoleo A";
     case "gasoleoPremium":
-      return "gasoleo premium";
+      return languageCode === "en-US" ? "premium diesel" : "gasoleo premium";
     default:
-      return "gasolina 95";
+      return languageCode === "en-US" ? "gasoline 95" : "gasolina 95";
   }
 }
 
-function buildCheapestAnswer({ station, fuelKey, km, brand }) {
+function buildCheapestAnswer({ station, fuelKey, km, brand, language }) {
   if (!station) {
     const brandLabel = formatBrand(brand);
-    return `No encuentro una gasolinera${brandLabel ? ` de ${brandLabel}` : ""} a menos de ${km} km con precio disponible. ¿Amplio el radio?`;
+    if (language.code === "en-US") {
+      return `I cannot find a${brandLabel ? ` ${brandLabel}` : ""} gas station within ${km} km with price available. Should I expand the radius?`;
+    }
+    if (language.code === "eu-ES") {
+      return `Ez dut aurkitu${brandLabel ? ` ${brandLabel}` : ""} gasolindegirik ${km} km barruan prezioarekin. Zabaldu eremua?`;
+    }
+    return `No encuentro una gasolinera${brandLabel ? ` de ${brandLabel}` : ""} a menos de ${km} km con precio disponible. Amplio el radio?`;
   }
 
   const price = station?.prices?.[fuelKey];
-  const priceText = price ? `a ${price.toFixed(3)} EUR/l` : "sin precio disponible";
+  let priceText;
+  if (language.code === "en-US") {
+    priceText = price ? `at ${price.toFixed(3)} EUR/L` : "no price available";
+  } else if (language.code === "eu-ES") {
+    priceText = price ? `${price.toFixed(3)} EUR/L` : "preziorik gabe";
+  } else {
+    priceText = price ? `a ${price.toFixed(3)} EUR/l` : "sin precio disponible";
+  }
   const address = formatStationAddress(station);
   const distance = formatDistance(station.distanceKm);
   const brandLabel = formatBrand(brand);
 
-  return `La mas barata${brandLabel ? ` de ${brandLabel}` : ""} para ${fuelLabel(fuelKey)} es ${station.name || "esa gasolinera"} en ${address}, ${priceText}. ${distance}`.trim();
+  if (language.code === "en-US") {
+    return `The cheapest${brandLabel ? ` ${brandLabel}` : ""} option for ${fuelLabel(fuelKey, language.code)} is ${station.name || "that station"} at ${address}, ${priceText}. About ${Number(station.distanceKm || 0).toFixed(1)} km away.`.trim();
+  }
+  if (language.code === "eu-ES") {
+    return `Merkeena${brandLabel ? ` ${brandLabel}` : ""} ${fuelLabel(fuelKey, language.code)}rako ${station.name || "gasolindegi hori"} da, ${address}, ${priceText}. Gutxi gorabehera ${Number(station.distanceKm || 0).toFixed(1)} km.`.trim();
+  }
+
+  return `La mas barata${brandLabel ? ` de ${brandLabel}` : ""} para ${fuelLabel(fuelKey, language.code)} es ${station.name || "esa gasolinera"} en ${address}, ${priceText}. ${distance}`.trim();
 }
 
-function buildNearestAnswer({ station, km, brand }) {
+function buildNearestAnswer({ station, km, brand, language }) {
   if (!station) {
     const brandLabel = formatBrand(brand);
-    return `No encuentro una gasolinera${brandLabel ? ` de ${brandLabel}` : ""} a menos de ${km} km. ¿Quieres ampliar el radio?`;
+    if (language.code === "en-US") {
+      return `I cannot find a${brandLabel ? ` ${brandLabel}` : ""} gas station within ${km} km. Should I expand the radius?`;
+    }
+    if (language.code === "eu-ES") {
+      return `Ez dut aurkitu${brandLabel ? ` ${brandLabel}` : ""} gasolindegirik ${km} km barruan. Zabaldu eremua?`;
+    }
+    return `No encuentro una gasolinera${brandLabel ? ` de ${brandLabel}` : ""} a menos de ${km} km. Quieres ampliar el radio?`;
   }
 
   const address = formatStationAddress(station);
   const distance = formatDistance(station.distanceKm);
   const brandLabel = formatBrand(brand);
+
+  if (language.code === "en-US") {
+    return `The nearest${brandLabel ? ` ${brandLabel}` : ""} station is ${station.name || "that station"} at ${address}. About ${Number(station.distanceKm || 0).toFixed(1)} km away.`.trim();
+  }
+  if (language.code === "eu-ES") {
+    return `Hurbilen dagoen${brandLabel ? ` ${brandLabel}` : ""}a ${station.name || "gasolindegi hori"} da, ${address}. Gutxi gorabehera ${Number(station.distanceKm || 0).toFixed(1)} km.`.trim();
+  }
   return `La mas cercana${brandLabel ? ` de ${brandLabel}` : ""} es ${station.name || "esa gasolinera"} en ${address}. ${distance}`.trim();
 }
 
@@ -374,7 +459,7 @@ async function transcribeAudio({ ai, audioBase64, mimeType }) {
             role: "user",
             parts: [
               {
-                text: "Transcribe exactamente lo que se dice en este audio y respeta el idioma original. Responde SOLO con la transcripcion, sin introduccion ni puntuacion añadida.",
+                text: "Transcribe exactly what is said in this audio and keep the original language. Reply ONLY with the transcript, no extra text.",
               },
               { inlineData: { mimeType: mimeType || "audio/webm", data: audioBase64 } },
             ],
@@ -634,7 +719,7 @@ export async function runPipelineDialog({
         } else {
           const filtered = filterStationsByBrand(pricesResult.stations || [], brand);
           const station = filtered[0] || null;
-          responseText = buildCheapestAnswer({ station, fuelKey, km, brand });
+          responseText = buildCheapestAnswer({ station, fuelKey, km, brand, language });
         }
       } else if (intent.type === "nearest") {
         const km = clampKm(kmFromText ?? location?.km ?? 5, 5);
@@ -652,7 +737,7 @@ export async function runPipelineDialog({
         } else {
           const filtered = filterStationsByBrand(nearestResult.stations || [], brand);
           const station = filtered[0] || null;
-          responseText = buildNearestAnswer({ station, km, brand });
+          responseText = buildNearestAnswer({ station, km, brand, language });
         }
       }
     }
@@ -660,9 +745,19 @@ export async function runPipelineDialog({
 
   if (!responseText) {
     if (voiceEnv.guardrails.enabled && !isInScope(userText)) {
-      responseText = voiceEnv.guardrails.mode === "strict"
-        ? "Lo siento, solo puedo ayudar con consultas de TankGo sobre gasolineras, precios y rutas."
-        : "Puedo ayudarte con precios de combustible, gasolineras cercanas y rutas en TankGo. Si quieres, dime tu consulta sobre gasolineras o precios.";
+      if (language.code === "en-US") {
+        responseText = voiceEnv.guardrails.mode === "strict"
+          ? "Sorry, I can only help with TankGo questions about gas stations, prices, and routes."
+          : "I can help with fuel prices, nearby stations, and routes in TankGo. Tell me your gas station question.";
+      } else if (language.code === "eu-ES") {
+        responseText = voiceEnv.guardrails.mode === "strict"
+          ? "Barkatu, TankGo-ren gasolindegi, prezio eta ibilbide galderak bakarrik erantzun ditzaket."
+          : "TankGo-n erregai prezioekin, gasolindegi hurbilekin eta ibilbideekin lagun dezaket. Esan gasolindegiei buruzko galdera.";
+      } else {
+        responseText = voiceEnv.guardrails.mode === "strict"
+          ? "Lo siento, solo puedo ayudar con consultas de TankGo sobre gasolineras, precios y rutas."
+          : "Puedo ayudarte con precios de combustible, gasolineras cercanas y rutas en TankGo. Si quieres, dime tu consulta sobre gasolineras o precios.";
+      }
     } else {
       const llmResult = await runLlm({ ai, text: userText, location, gasContext, language });
       responseText = llmResult.responseText;
