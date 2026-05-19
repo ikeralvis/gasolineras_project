@@ -576,7 +576,10 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
             "No hay parquet de entrada. Configura GCS_BUCKET/GCS_RAW_PREFIX o LOCAL_RAW_GLOB con archivos válidos."
         )
 
-    needed_cols = ["IDEESS", "fecha_registro"] + [c for c in FUELS]
+    fuel_cols = [c for c in FUELS]
+    needed_cols_full = ["IDEESS", "fecha_registro"] + fuel_cols
+    needed_cols_no_fecha = ["IDEESS"] + fuel_cols
+
     min_date = None
     min_ts = None
     if RAW_LOOKBACK_DAYS > 0:
@@ -587,38 +590,60 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
     read_filters = []
     if station_filter:
         read_filters.append(("IDEESS", "in", list(station_filter)))
-    read_parquet_kwargs = {"columns": needed_cols, "engine": "pyarrow"}
-    if read_filters:
-        read_parquet_kwargs["filters"] = read_filters
+
     for path in file_paths:
-        try:
-            d = pd.read_parquet(path, **read_parquet_kwargs)
-        except Exception as e:
-            # Algunos parquets no tienen todas las columnas; reintentar sin filtros.
+        # Extract snapshot_date from Hive-partitioned path (most reliable source)
+        snap_date_from_path: Optional[pd.Timestamp] = None
+        match = re.search(r"snapshot_date=(\d{4}-\d{2}-\d{2})", path)
+        if match:
             try:
-                d = pd.read_parquet(path, columns=needed_cols, engine="pyarrow")
+                snap_date_from_path = pd.Timestamp(match.group(1))
+            except Exception:
+                pass
+
+        # Skip by date range early when path gives us the date reliably
+        if min_date is not None and snap_date_from_path is not None:
+            if snap_date_from_path.date() < min_date:
+                continue
+
+        d = None
+        for cols in (needed_cols_full, needed_cols_no_fecha):
+            kwargs = {"columns": cols, "engine": "pyarrow"}
+            if read_filters:
+                kwargs["filters"] = read_filters
+            try:
+                d = pd.read_parquet(path, **kwargs)
+                break
+            except Exception:
+                pass
+
+        if d is None:
+            # Last resort: read all columns, keep what we need
+            try:
+                d = pd.read_parquet(path, engine="pyarrow")
+                if read_filters and "IDEESS" in d.columns:
+                    d = d[d["IDEESS"].astype(str).isin(station_filter)]
             except Exception as e2:
                 print(f"⚠️ Error leyendo {path}: {e2}")
                 continue
 
-        if "IDEESS" not in d.columns or "fecha_registro" not in d.columns:
-            print(f"⚠️ Archivo sin columnas requeridas (IDEESS/fecha_registro): {path}")
+        if d is None or "IDEESS" not in d.columns:
+            print(f"⚠️ Archivo sin columna IDEESS: {path}")
             continue
 
-        if "snapshot_date=" in path:
-            try:
-                match = re.search(r"snapshot_date=(\d{4}-\d{2}-\d{2})", path)
-                snap_part = match.group(1) if match else None
-                d["snapshot_date"] = pd.to_datetime(snap_part, errors="coerce").dt.normalize()
-            except Exception:
-                d["snapshot_date"] = pd.NaT
+        # snapshot_date from path is authoritative; fall back to column in parquet
+        if snap_date_from_path is not None:
+            d["snapshot_date"] = snap_date_from_path
+        elif "snapshot_date" not in d.columns:
+            d["snapshot_date"] = pd.NaT
 
         d["_source_path"] = path
 
         if station_filter:
             d = d[d["IDEESS"].astype(str).isin(station_filter)]
 
-        if min_date is not None and "fecha_registro" in d.columns:
+        # Date-range filter on fecha_registro only when snapshot_date is unavailable
+        if min_date is not None and snap_date_from_path is None and "fecha_registro" in d.columns:
             if pd.api.types.is_datetime64_any_dtype(d["fecha_registro"]):
                 d = d[d["fecha_registro"] >= pd.Timestamp(min_date)]
             elif pd.api.types.is_numeric_dtype(d["fecha_registro"]):
@@ -647,33 +672,36 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
         if c in df.columns:
             df[c] = parse_price(c)
 
-    if "snapshot_date" not in df.columns or df["snapshot_date"].isna().all():
-        if "_source_path" in df.columns:
-            extracted = df["_source_path"].str.extract(r"snapshot_date=(\d{4}-\d{2}-\d{2})")[0]
-            df["snapshot_date"] = pd.to_datetime(extracted, errors="coerce").dt.normalize()
-            print(
-                "ℹ️ Snapshot_date derivado desde path: "
-                f"rows={len(df)} | snapshot_notna={df['snapshot_date'].notna().sum()}"
-            )
-
+    # Build fecha: snapshot_date from Hive path is the primary source; fall back to
+    # fecha_registro for old flat parquets that lack Hive partitioning.
     if "snapshot_date" in df.columns and df["snapshot_date"].notna().any():
-        df["fecha"] = df["snapshot_date"]
+        df["fecha"] = df["snapshot_date"].dt.normalize()
+        # Fill gaps (old-style rows without path partition) from fecha_registro
         missing_mask = df["fecha"].isna()
-        if missing_mask.any():
-            df.loc[missing_mask, "fecha"] = pd.to_datetime(
-                df.loc[missing_mask, "fecha_registro"], errors="coerce"
-            ).dt.normalize()
-        print(
-            "ℹ️ Snapshot_date aplicado: "
-            f"rows={len(df)} | snapshot_notna={df['snapshot_date'].notna().sum()}"
-        )
-    else:
-        if pd.api.types.is_datetime64_any_dtype(df["fecha_registro"]):
-            df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
-        elif pd.api.types.is_numeric_dtype(df["fecha_registro"]):
+        if missing_mask.any() and "fecha_registro" in df.columns:
+            fr = df.loc[missing_mask, "fecha_registro"]
+            if pd.api.types.is_numeric_dtype(fr):
+                parsed = pd.to_datetime(fr, unit="ms", errors="coerce")
+            else:
+                parsed = pd.to_datetime(fr, errors="coerce")
+            df.loc[missing_mask, "fecha"] = parsed.dt.normalize()
+        snapshot_coverage = df["snapshot_date"].notna().sum()
+        print(f"ℹ️ Snapshot_date aplicado: rows={len(df)} | snapshot_notna={snapshot_coverage}")
+    elif "fecha_registro" in df.columns:
+        if pd.api.types.is_numeric_dtype(df["fecha_registro"]):
             df["fecha"] = pd.to_datetime(df["fecha_registro"], unit="ms", errors="coerce").dt.normalize()
         else:
             df["fecha"] = pd.to_datetime(df["fecha_registro"], errors="coerce").dt.normalize()
+        print("ℹ️ fecha derivada de fecha_registro (sin snapshot_date en paths)")
+    else:
+        raise RuntimeError("No se pudo determinar columna de fecha (ni snapshot_date ni fecha_registro disponibles)")
+
+    # Drop rows where fecha resolved to epoch or is null (corrupt/legacy records)
+    epoch_cutoff = pd.Timestamp("2000-01-01")
+    bad_fecha = df["fecha"].isna() | (df["fecha"] < epoch_cutoff)
+    if bad_fecha.any():
+        print(f"⚠️ Descartando {bad_fecha.sum()} filas con fecha inválida (< {epoch_cutoff.date()} o nula)")
+        df = df[~bad_fecha]
 
     if "fecha" in df.columns:
         fecha_min = df["fecha"].min()
