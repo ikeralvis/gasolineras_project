@@ -3,7 +3,7 @@ Schemas Pydantic para la API de recomendación de gasolineras.
 """
 from __future__ import annotations
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
-from typing import Optional, List, Literal
+from typing import Annotated, Optional, List, Literal
 from datetime import datetime
 
 
@@ -42,24 +42,22 @@ class Coordenada(BaseModel):
 class RecomendacionRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    origen: Coordenada = Field(
-        ...,
+    origen: Annotated[Coordenada, Field(
         description="Punto de partida",
         validation_alias=AliasChoices("origen", "origin"),
         serialization_alias="origen",
-    )
-    destino: Coordenada = Field(
-        ...,
+    )]
+    destino: Annotated[Coordenada, Field(
         description="Punto de llegada",
         validation_alias=AliasChoices("destino", "destination"),
         serialization_alias="destino",
-    )
-    posicion_actual: Optional[Coordenada] = Field(
-        None,
+    )]
+    posicion_actual: Annotated[Optional[Coordenada], Field(
+        default=None,
         description="Posición GPS actual para descartar gasolineras por detrás de la ruta",
         validation_alias=AliasChoices("posicion_actual", "current_position"),
         serialization_alias="posicion_actual",
-    )
+    )]
     combustible: CombustibleTipo = Field(
         "gasolina_95",
         description="Tipo de combustible a comparar",
@@ -70,14 +68,14 @@ class RecomendacionRequest(BaseModel):
         le=50,
         description="Desvío máximo tolerable en km respecto a la ruta directa",
     )
-    max_desvio_min: Optional[float] = Field(
-        None,
+    max_desvio_min: Annotated[Optional[float], Field(
+        default=None,
         gt=0,
         le=120,
         description="Tiempo extra máximo permitido por desvío (minutos)",
         validation_alias=AliasChoices("max_desvio_min", "max_detour_minutes", "max_detour_time"),
         serialization_alias="max_desvio_min",
-    )
+    )]
     top_n: int = Field(5, ge=1, le=100, description="Número de recomendaciones a devolver")
     peso_precio: float = Field(
         0.6,
@@ -97,12 +95,12 @@ class RecomendacionRequest(BaseModel):
         le=200,
         description="Litros del depósito para calcular ahorro estimado en €",
     )
-    evitar_peajes: bool = Field(
-        False,
+    evitar_peajes: Annotated[bool, Field(
+        default=False,
         description="Evitar carreteras con peaje",
         validation_alias=AliasChoices("evitar_peajes", "avoid_tolls"),
         serialization_alias="evitar_peajes",
-    )
+    )]
 
 
     @model_validator(mode="after")

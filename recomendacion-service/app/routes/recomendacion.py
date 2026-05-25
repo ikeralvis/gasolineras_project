@@ -43,32 +43,50 @@ def _parse_coord(raw) -> float:
     return float(str(raw or "").replace(",", "."))
 
 
+def _parse_station_items(data: object) -> list:
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        return data.get("gasolineras") or data.get("ListaEESSPrecio") or data.get("data") or []
+    return []
+
+
 async def _fetch_stations_from_api(
     combustible: str,
     route_coordinates: list,
     buffer_km: float,
     client: httpx.AsyncClient,
 ) -> list[GasolineraInternal]:
-    """Descarga gasolineras de la API interna y filtra en memoria por corredor de ruta."""
+    """Descarga gasolineras filtrando en memoria por corredor de ruta.
+
+    Intenta primero GASOLINERAS_API_URL (gateway/interno); si falla, cae a
+    GOBIERNO_API_URL (Ministerio de España, ~11 000 registros, sin límite).
+    """
     precio_field = COMBUSTIBLE_FIELD_MAP.get(combustible)
     if not precio_field:
         return []
 
-    try:
-        resp = await client.get(settings.GASOLINERAS_API_URL, timeout=settings.GASOLINERAS_TIMEOUT_S)
-        resp.raise_for_status()
-        data = resp.json()
-    except Exception as exc:
-        logger.warning("Error al obtener gasolineras de la API interna: %s", exc)
+    urls_to_try: list[tuple[str, str]] = [
+        (settings.GASOLINERAS_API_URL, "gateway"),
+    ]
+    if settings.GOBIERNO_API_URL and settings.GOBIERNO_API_URL != settings.GASOLINERAS_API_URL:
+        urls_to_try.append((settings.GOBIERNO_API_URL, "ministerio"))
+
+    data = None
+    for url, source_name in urls_to_try:
+        try:
+            resp = await client.get(url, timeout=settings.GASOLINERAS_TIMEOUT_S)
+            resp.raise_for_status()
+            data = resp.json()
+            logger.info("Gasolineras obtenidas de %s", source_name)
+            break
+        except Exception as exc:
+            logger.warning("Error al obtener gasolineras de %s (%s): %s", source_name, url[:80], exc)
+
+    if data is None:
         return []
 
-    if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        items = data.get("gasolineras") or data.get("ListaEESSPrecio") or data.get("data") or []
-    else:
-        return []
-
+    items = _parse_station_items(data)
     corridor = build_route_corridor(route_coordinates, buffer_km)
 
     result: list[GasolineraInternal] = []
