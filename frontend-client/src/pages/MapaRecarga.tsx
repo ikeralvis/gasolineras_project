@@ -70,6 +70,21 @@ const userLocationIcon = L.divIcon({
 const SPAIN_BOUNDS: [[number, number], [number, number]] = [[35.7, -9.7], [43.9, 3.4]];
 const MIN_ZOOM_FOR_EV_MARKERS = 8;
 
+const EV_GEO_STORAGE_KEY = "ev_last_location";
+
+function readSavedEVLocation(): [number, number] | null {
+  try {
+    const raw = localStorage.getItem(EV_GEO_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed) && parsed.length === 2 &&
+        typeof parsed[0] === "number" && typeof parsed[1] === "number") {
+      return [parsed[0], parsed[1]];
+    }
+    return null;
+  } catch { return null; }
+}
+
 function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
   const map = useMap();
   const hasSetRef = useRef(false);
@@ -83,7 +98,12 @@ function MapUpdater({ center, enabled }: { center: [number, number]; enabled: bo
   useEffect(() => {
     if (!enabled || hasSetRef.current || userInteractedRef.current) return;
     hasSetRef.current = true;
-    map.setView(center, 13, { animate: false });
+    // setTimeout(0) ensures the setView fires AFTER all React effects have run,
+    // including the moveend listener registration in EVMapController.
+    const id = setTimeout(() => {
+      map.setView(center, 13, { animate: true });
+    }, 0);
+    return () => clearTimeout(id);
   }, [center, enabled, map]);
 
   return null;
@@ -547,8 +567,10 @@ export default function MapaRecarga() {
   const { t } = useTranslation();
   const isTouchDevice = useIsCoarsePointer();
   const [markers, setMarkers] = useState<EVMarker[]>([]);
-  const [userLocation, setUserLocation] = useState<[number, number]>(SPAIN_CENTER);
-  const [locationGranted, setLocationGranted] = useState(false);
+
+  const savedEVLoc = useMemo(() => readSavedEVLocation(), []);
+  const [userLocation, setUserLocation] = useState<[number, number]>(savedEVLoc ?? SPAIN_CENTER);
+  const [locationGranted, setLocationGranted] = useState(savedEVLoc !== null);
   const [loading, setLoading] = useState(false);
   const [zoomTooLow, setZoomTooLow] = useState(false);
   const [bboxTooLargeZoom, setBboxTooLargeZoom] = useState<number | null>(null);
@@ -562,6 +584,7 @@ export default function MapaRecarga() {
       (pos) => {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
+        localStorage.setItem(EV_GEO_STORAGE_KEY, JSON.stringify([lat, lon]));
         setUserLocation([lat, lon]);
         setLocationGranted(true);
       },

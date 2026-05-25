@@ -4,12 +4,15 @@ import { MapContainer, Marker, Polyline, TileLayer, useMap, useMapEvents } from 
 import L from "leaflet";
 import {
   LuArrowUpDown,
+  LuChevronDown,
+  LuChevronUp,
   LuCrosshair,
-  LuLocateFixed,
   LuMapPin,
   LuNavigation,
   LuPencil,
   LuSearch,
+  LuSlidersHorizontal,
+  LuX,
 } from "react-icons/lu";
 
 import { useAuth } from "../contexts/AuthContext";
@@ -156,10 +159,10 @@ function FitRouteBounds({
       if (coordinates.length < 2) return;
 
       const bounds = L.latLngBounds(coordinates);
-      const topPadding = 24;
-      const leftPadding = !isMobileLayout && showSearchPanel ? 440 : 24;
+      const topPadding = isMobileLayout ? 110 : 32;
+      const leftPadding = !isMobileLayout ? 408 : 24;
       const rightPadding = !isMobileLayout && hasBottomSheet ? 440 : 24;
-      const bottomPadding = isMobileLayout && hasBottomSheet ? 290 : 32;
+      const bottomPadding = isMobileLayout && hasBottomSheet ? 310 : 32;
 
       map.fitBounds(bounds, {
         paddingTopLeft: [leftPadding, topPadding],
@@ -212,6 +215,7 @@ export default function Rutas() {
   const [maxDetourMin, setMaxDetourMin] = useState(5);
   const [resultLimit, setResultLimit] = useState(20);
 
+  const [showFilters, setShowFilters] = useState(false);
   const [pickMode, setPickMode] = useState<PickMode>(null);
   const [loadingRoute, setLoadingRoute] = useState(false);
   const [routeError, setRouteError] = useState<string | null>(null);
@@ -221,7 +225,7 @@ export default function Rutas() {
   const [gasStationsNearRoute, setGasStationsNearRoute] = useState<GasStation[]>([]);
   const [selectedStop, setSelectedStop] = useState<GasStation | null>(null);
 
-  useBodyScrollLock(isMobileLayout && showSearchPanel);
+  useBodyScrollLock(false);
 
   useEffect(() => {
     setSelectedFuel(mapProfileFuelToCombustible(user?.combustible_favorito, user?.tipo_combustible_coche));
@@ -466,23 +470,23 @@ export default function Rutas() {
   };
 
   return (
-    <div className="relative min-h-[calc(100vh-60px)] overflow-hidden bg-[#edf2ff]">
+    <div className="relative h-[calc(100dvh-60px)] overflow-hidden">
+      {/* ── Mapa full screen ── */}
       <MapContainer
         center={mapCenter}
         zoom={12}
-        style={{ height: "calc(100vh - 60px)", width: "100%" }}
+        style={{ height: "100%", width: "100%" }}
         zoomControl={false}
         scrollWheelZoom={!isMobileLayout}
         dragging
         touchZoom
-        className="z-0"
+        className="absolute inset-0 z-0"
       >
         <TileLayer
           url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
           maxZoom={19}
         />
-
         <FitRouteBounds
           coordinates={routeCoordinates}
           isMobileLayout={isMobileLayout}
@@ -490,400 +494,452 @@ export default function Rutas() {
           hasBottomSheet={Boolean(routeInfo)}
         />
         <MapPickMode pickMode={pickMode} onPick={handlePickFromMap} />
-
         {routeCoordinates.length > 0 && (
           <Polyline positions={routeCoordinates} color="#2563eb" weight={5} opacity={0.9} />
         )}
-
         {origin && <Marker position={[origin.lat, origin.lng]} icon={createMarkerIcon("origin")} />}
         {destination && <Marker position={[destination.lat, destination.lng]} icon={createMarkerIcon("destination")} />}
-
         {gasStationsNearRoute.map((station) => (
           <Marker
             key={station.id}
             position={[station.lat, station.lng]}
             icon={createMarkerIcon(selectedStop?.id === station.id ? "selected" : "station")}
-            eventHandlers={{
-              click: () => setSelectedStop(station),
-            }}
+            eventHandlers={{ click: () => setSelectedStop(station) }}
           />
         ))}
       </MapContainer>
 
-      <section
-        className={isMobileLayout && showSearchPanel
-          ? "fixed inset-0 z-[1300] bg-white"
-          : "pointer-events-none absolute left-0 right-0 top-0 z-40 px-3 pt-3 md:left-4 md:right-auto md:w-[430px] md:px-0 md:pt-4"}
-      >
-        <div className={isMobileLayout && showSearchPanel ? "h-full overflow-y-auto p-4" : "pointer-events-auto w-full"}>
-          {showSearchPanel ? (
-            <div className={`border border-[#d7e2f5] bg-white ${isMobileLayout ? "min-h-full rounded-none p-0 shadow-none" : "rounded-2xl p-3 shadow-xl shadow-[#1e3a8a]/12 backdrop-blur"}`}>
-              {isMobileLayout && (
-                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#d9e4f7] bg-white px-3 py-3">
-                  <h2 className="text-base font-bold text-[#17386f]">{t("routes.title")}</h2>
+      {/* ── Tarjeta de búsqueda flotante ── */}
+      <div className="absolute top-3 left-3 right-3 z-[1200] md:left-4 md:right-auto md:w-[388px]">
+        {showSearchPanel ? (
+          <div className="bg-white rounded-2xl shadow-2xl shadow-black/15 ring-1 ring-black/[0.06] overflow-visible">
+
+            {/* Inputs */}
+            <div className="px-4 pt-4 pb-3">
+
+              {/* Origen */}
+              <div className="relative flex items-center gap-3">
+                <div className="flex flex-col items-center shrink-0 w-5">
+                  <div className="w-3 h-3 rounded-full bg-blue-500 ring-[3px] ring-blue-100 shrink-0" />
+                </div>
+                <div className="flex-1 min-w-0 relative">
+                  <input
+                    className="w-full text-[14px] font-medium text-gray-900 placeholder-gray-400 outline-none bg-transparent pr-8 py-0.5 truncate"
+                    placeholder={t("routes.fromPlaceholder")}
+                    value={originInput}
+                    onFocus={() => setShowOriginList(true)}
+                    onChange={(e) => { setOriginInput(e.target.value); setShowOriginList(true); }}
+                  />
                   <button
                     type="button"
-                    onClick={() => setShowSearchPanel(false)}
-                    className="rounded-lg border border-[#d3def2] px-3 py-1.5 text-xs font-semibold text-[#1d3e7a]"
+                    onClick={resolveCurrentPosition}
+                    className="absolute right-0 top-1/2 -translate-y-1/2 p-1.5 rounded-full text-blue-500 hover:bg-blue-50 transition"
+                    aria-label={t("routes.useCurrentLocation")}
                   >
-                    {t("common.close")}
+                    {(loadingOriginGeolocation || loadingOriginSearch)
+                      ? <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+                      : <LuCrosshair size={14} />
+                    }
                   </button>
-                </div>
-              )}
-
-              <div className={`${isMobileLayout ? "p-3 space-y-3" : "space-y-3"}`}>
-                <div className="relative">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.from")}</label>
-                  <div className="relative">
-                    <LuLocateFixed className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5b77ad]" />
-                    <input
-                      className="w-full rounded-xl border border-[#cdd9ee] bg-[#f8fbff] py-2.5 pl-9 pr-11 text-sm text-[#13295b] outline-none ring-[#1d4ed8]/20 focus:ring-3"
-                      placeholder={t("routes.fromPlaceholder")}
-                      value={originInput}
-                      onFocus={() => setShowOriginList(true)}
-                      onChange={(e) => {
-                        setOriginInput(e.target.value);
-                        setShowOriginList(true);
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={resolveCurrentPosition}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[#1f4f99] hover:bg-[#e7efff]"
-                      title={t("routes.useCurrentLocation")}
-                      aria-label={t("routes.useCurrentLocation")}
-                    >
-                      <LuCrosshair size={16} />
-                    </button>
-                  </div>
                   {showOriginList && originSuggestions.length > 0 && (
-                    <ul className="absolute z-[1200] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#cfdbf1] bg-white py-1 shadow-lg">
-                      {originSuggestions.map((item, idx) => (
+                    <ul className="absolute z-[1250] top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-100 shadow-2xl shadow-black/10 overflow-hidden">
+                      {originSuggestions.slice(0, 5).map((item, idx) => (
                         <li key={`${item.lat}-${item.lng}-${idx}`}>
                           <button
                             type="button"
-                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[#f3f7ff]"
+                            className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-gray-50 transition"
                             onClick={() => selectOrigin(item)}
                           >
-                            <LuMapPin className="mt-1 shrink-0 text-[#3b63a8]" size={15} />
-                            <span className="block min-w-0">
-                              <span className="block truncate text-sm font-semibold text-[#16326d]">{item.name}</span>
-                              <span className="block truncate text-xs text-[#637da9]">{item.address}</span>
+                            <LuMapPin className="shrink-0 text-gray-400 mt-0.5" size={13} />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-gray-900">{item.name}</span>
+                              <span className="block truncate text-xs text-gray-400">{item.address}</span>
                             </span>
                           </button>
                         </li>
                       ))}
                     </ul>
                   )}
-                  {(loadingOriginSearch || loadingOriginGeolocation) && (
-                    <p className="pt-1 text-xs text-[#617aab]">{t("routes.searching")}</p>
-                  )}
                 </div>
+              </div>
 
-                <div className="relative">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#415b8e]">{t("routes.to")}</label>
-                  <div className="relative">
-                    <LuSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#5b77ad]" />
-                    <input
-                      className="w-full rounded-xl border border-[#cdd9ee] bg-[#f8fbff] py-2.5 pl-9 pr-3 text-sm text-[#13295b] outline-none ring-[#1d4ed8]/20 focus:ring-3"
-                      placeholder={t("routes.toPlaceholder")}
-                      value={destinationInput}
-                      onFocus={() => setShowDestinationList(true)}
-                      onChange={(e) => {
-                        setDestinationInput(e.target.value);
-                        setShowDestinationList(true);
-                      }}
-                    />
-                  </div>
+              {/* Conector + swap */}
+              <div className="flex items-center gap-3 my-2.5">
+                <div className="w-5 flex justify-center">
+                  <div className="w-px h-5 bg-gray-200" />
+                </div>
+                <div className="flex-1 h-px bg-gray-100" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const o = origin; setOrigin(destination); setDestination(o);
+                    const oi = originInput; setOriginInput(destinationInput); setDestinationInput(oi);
+                    clearRouteResult();
+                  }}
+                  className="w-7 h-7 rounded-full border border-gray-200 bg-white shadow-sm flex items-center justify-center text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition shrink-0"
+                  title={t("routes.swap")}
+                  aria-label={t("routes.swap")}
+                >
+                  <LuArrowUpDown size={12} />
+                </button>
+              </div>
+
+              {/* Destino */}
+              <div className="relative flex items-center gap-3">
+                <div className="flex flex-col items-center shrink-0 w-5">
+                  <div className="w-3 h-3 rounded-full bg-red-500 shrink-0" />
+                </div>
+                <div className="flex-1 min-w-0 relative">
+                  <input
+                    className="w-full text-[14px] font-medium text-gray-900 placeholder-gray-400 outline-none bg-transparent pr-8 py-0.5 truncate"
+                    placeholder={t("routes.toPlaceholder")}
+                    value={destinationInput}
+                    onFocus={() => setShowDestinationList(true)}
+                    onChange={(e) => { setDestinationInput(e.target.value); setShowDestinationList(true); }}
+                  />
+                  <button
+                    type="button"
+                    className={`absolute right-0 top-1/2 -translate-y-1/2 p-1.5 rounded-full transition ${pickMode === "destination" ? "text-blue-600 bg-blue-50" : "text-gray-400 hover:bg-gray-50"}`}
+                    onClick={() => setPickMode((prev) => (prev === "destination" ? null : "destination"))}
+                    title={t("routes.pickDestinationOnMap")}
+                    aria-label={t("routes.pickDestinationOnMap")}
+                  >
+                    {loadingDestinationSearch
+                      ? <div className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin" />
+                      : <LuMapPin size={14} />
+                    }
+                  </button>
                   {showDestinationList && destinationSuggestions.length > 0 && (
-                    <ul className="absolute z-[1200] mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#cfdbf1] bg-white py-1 shadow-lg">
-                      {destinationSuggestions.map((item, idx) => (
+                    <ul className="absolute z-[1250] top-full mt-2 left-0 right-0 bg-white rounded-xl border border-gray-100 shadow-2xl shadow-black/10 overflow-hidden">
+                      {destinationSuggestions.slice(0, 5).map((item, idx) => (
                         <li key={`${item.lat}-${item.lng}-${idx}`}>
                           <button
                             type="button"
-                            className="flex w-full items-start gap-2 px-3 py-2 text-left hover:bg-[#f3f7ff]"
+                            className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-gray-50 transition"
                             onClick={() => selectDestination(item)}
                           >
-                            <LuMapPin className="mt-1 shrink-0 text-[#3b63a8]" size={15} />
-                            <span className="block min-w-0">
-                              <span className="block truncate text-sm font-semibold text-[#16326d]">{item.name}</span>
-                              <span className="block truncate text-xs text-[#637da9]">{item.address}</span>
+                            <LuMapPin className="shrink-0 text-gray-400 mt-0.5" size={13} />
+                            <span className="min-w-0">
+                              <span className="block truncate text-sm font-semibold text-gray-900">{item.name}</span>
+                              <span className="block truncate text-xs text-gray-400">{item.address}</span>
                             </span>
                           </button>
                         </li>
                       ))}
                     </ul>
                   )}
-                  {loadingDestinationSearch && <p className="pt-1 text-xs text-[#617aab]">{t("routes.searching")}</p>}
                 </div>
+              </div>
+            </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    className="rounded-xl border border-[#c8d6ef] bg-white px-3 py-2 text-xs font-semibold text-[#1a3b7a] hover:bg-[#f3f7ff]"
-                    onClick={() => {
-                      const oldOrigin = origin;
-                      setOrigin(destination);
-                      setDestination(oldOrigin);
-                      setOriginInput(destination?.name || "");
-                      setDestinationInput(oldOrigin?.name || "");
-                      clearRouteResult();
-                    }}
-                    title={t("routes.swap")}
-                    aria-label={t("routes.swap")}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      <LuArrowUpDown size={14} />
-                      {t("routes.swap")}
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-xl border px-3 py-2 text-xs font-semibold ${pickMode === "destination" ? "border-[#1d4ed8] bg-[#eaf1ff] text-[#1c3f81]" : "border-[#c8d6ef] bg-white text-[#1a3b7a] hover:bg-[#f3f7ff]"}`}
-                    onClick={() => setPickMode((prev) => (prev === "destination" ? null : "destination"))}
-                  >
-                    {t("routes.pickDestinationOnMap")}
-                  </button>
-                </div>
+            {/* Barra de acciones */}
+            <div className="border-t border-gray-100 px-3 py-3 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowFilters((f) => !f)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition border shrink-0 ${
+                  showFilters
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : "bg-gray-50 text-gray-600 border-gray-200 hover:bg-gray-100"
+                }`}
+                aria-expanded={showFilters}
+              >
+                <LuSlidersHorizontal size={13} />
+                {t("routes.options", { defaultValue: "Opciones" })}
+                {showFilters ? <LuChevronUp size={11} /> : <LuChevronDown size={11} />}
+              </button>
 
-                <button
-                  type="button"
-                  className="w-full rounded-xl bg-[#1f4fa0] px-3 py-2 text-sm font-bold text-white disabled:opacity-60"
-                  disabled={!origin || !destination || loadingRoute}
-                  onClick={calculateRoute}
-                >
-                  {loadingRoute ? t("routes.calculating") : t("routes.calculateRoute")}
-                </button>
+              <button
+                type="button"
+                className="flex-1 flex items-center justify-center gap-2 bg-[#1f4fa0] hover:bg-[#1a4491] active:bg-[#163a88] text-white rounded-xl py-2 px-4 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed min-h-[38px]"
+                disabled={!origin || !destination || loadingRoute}
+                onClick={calculateRoute}
+              >
+                {loadingRoute ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin shrink-0" />
+                    {t("routes.calculating")}
+                  </>
+                ) : (
+                  <>
+                    <LuSearch size={14} />
+                    {t("routes.calculateRoute")}
+                  </>
+                )}
+              </button>
+            </div>
 
-                <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
-                  <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
+            {/* Panel de opciones (colapsable) */}
+            {showFilters && (
+              <div className="border-t border-gray-100 px-4 pt-3 pb-4 bg-gray-50/60 space-y-4 rounded-b-2xl">
+
+                {/* Combustible */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">
                     {t("routes.fuelForComparison")}
                   </label>
                   <select
-                    className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
+                    className="w-full rounded-xl border border-gray-200 bg-white text-sm px-3 py-2.5 text-gray-800 outline-none focus:ring-2 focus:ring-blue-400/30 transition"
                     value={selectedFuel}
-                    onChange={(e) => {
-                      setSelectedFuel(e.target.value as CombustibleTipo);
-                      clearRouteResult();
-                    }}
+                    onChange={(e) => { setSelectedFuel(e.target.value as CombustibleTipo); clearRouteResult(); }}
                   >
                     {fuelOptions.map((fuel) => (
-                      <option key={fuel.value} value={fuel.value}>
-                        {t(fuel.i18nKey)}
-                      </option>
+                      <option key={fuel.value} value={fuel.value}>{t(fuel.i18nKey)}</option>
                     ))}
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                  <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
-                      {t("routes.maxDetourKm", { defaultValue: "Desvío máximo (km)" })}
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      step={1}
-                      className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
-                      value={maxDetourKm}
-                      onChange={(e) => {
-                        setMaxDetourKm(Number(e.target.value) || 1);
-                        clearRouteResult();
-                      }}
-                    />
+                {/* Desvío */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest block mb-1.5">
+                    {t("routes.maxDetour", { defaultValue: "Desvío máximo permitido" })}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="bg-white rounded-xl border border-gray-200 px-3 py-2 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        className="w-full text-sm font-semibold text-gray-800 outline-none bg-transparent text-center"
+                        value={maxDetourKm}
+                        onChange={(e) => { setMaxDetourKm(Number(e.target.value) || 1); clearRouteResult(); }}
+                      />
+                      <span className="text-xs text-gray-400 shrink-0">km</span>
+                    </div>
+                    <div className="bg-white rounded-xl border border-gray-200 px-3 py-2 flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={0}
+                        max={120}
+                        className="w-full text-sm font-semibold text-gray-800 outline-none bg-transparent text-center"
+                        value={maxDetourMin}
+                        onChange={(e) => updateMaxDetourMinutes(Number(e.target.value))}
+                        onBlur={(e) => updateMaxDetourMinutes(Number(e.target.value))}
+                      />
+                      <span className="text-xs text-gray-400 shrink-0">min</span>
+                    </div>
                   </div>
+                </div>
 
-                  <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
-                      {t("routes.maxDetourMin", { defaultValue: "Desvío máximo (min)" })}
-                    </label>
-                    <input
-                      type="number"
-                      min={0}
-                      max={120}
-                      step={1}
-                      className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
-                      value={maxDetourMin}
-                      onChange={(e) => {
-                        updateMaxDetourMinutes(Number(e.target.value));
-                      }}
-                      onBlur={(e) => updateMaxDetourMinutes(Number(e.target.value))}
-                    />
-                    <p className="mt-1 text-xs font-semibold text-[#1f3f79]">
-                      {formatDurationShort(maxDetourMin)}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl border border-[#d8e4f7] bg-[#f7fbff] p-2">
-                    <label className="mb-1 block text-[11px] font-bold uppercase tracking-wider text-[#4a6599]">
-                      {t("routes.resultLimit", { defaultValue: "Máx. gasolineras" })}
-                    </label>
-                    <select
-                      className="w-full rounded-lg border border-[#c8d8f2] bg-white px-2 py-2 text-sm text-[#1f3f79]"
-                      value={resultLimit}
-                      onChange={(e) => {
-                        setResultLimit(Number(e.target.value));
-                        clearRouteResult();
-                      }}
+                {/* Peajes + resultados */}
+                <div className="flex items-center justify-between gap-4">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                    <div
+                      role="checkbox"
+                      aria-checked={avoidTolls}
+                      tabIndex={0}
+                      onClick={() => { setAvoidTolls((v) => !v); clearRouteResult(); }}
+                      onKeyDown={(e) => e.key === " " && (setAvoidTolls((v) => !v), clearRouteResult())}
+                      className={`relative w-9 h-5 rounded-full transition cursor-pointer ${avoidTolls ? "bg-blue-600" : "bg-gray-300"}`}
                     >
-                      {[10, 20, 30, 50, 80].map((n) => (
-                        <option key={n} value={n}>
-                          {n}
-                        </option>
-                      ))}
+                      <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${avoidTolls ? "translate-x-4" : "translate-x-0"}`} />
+                    </div>
+                    <span className="text-sm text-gray-700 font-medium">
+                      {t("routes.avoidTolls", { defaultValue: "Evitar peajes" })}
+                    </span>
+                  </label>
+
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-gray-400">
+                      {t("routes.resultLimit", { defaultValue: "Máx." })}
+                    </span>
+                    <select
+                      className="rounded-lg border border-gray-200 bg-white text-xs px-2 py-1.5 text-gray-700 outline-none"
+                      value={resultLimit}
+                      onChange={(e) => { setResultLimit(Number(e.target.value)); clearRouteResult(); }}
+                    >
+                      {[10, 20, 30, 50].map((n) => <option key={n} value={n}>{n}</option>)}
                     </select>
                   </div>
                 </div>
+              </div>
+            )}
 
-                <label className="inline-flex items-center gap-2 rounded-xl border border-[#d8e4f7] bg-[#f7fbff] px-3 py-2 text-sm font-semibold text-[#1f427f]">
-                  <input
-                    type="checkbox"
-                    checked={avoidTolls}
-                    onChange={(e) => {
-                      setAvoidTolls(e.target.checked);
-                      clearRouteResult();
-                    }}
-                  />
-                  {t("routes.avoidTolls", { defaultValue: "Evitar peajes" })}
-                </label>
-
+            {/* Pick-mode hint */}
+            {pickMode && (
+              <div className="border-t border-dashed border-blue-200 bg-blue-50/80 px-4 py-2.5 flex items-center gap-2 rounded-b-2xl">
+                <LuMapPin size={14} className="text-blue-500 shrink-0" />
+                <p className="text-xs text-blue-700 font-medium flex-1">
+                  {pickMode === "origin" ? t("routes.mapPickOriginHint") : t("routes.mapPickDestinationHint")}
+                </p>
                 <button
                   type="button"
-                  className="w-full rounded-xl border border-[#c7d8f8] bg-[#edf4ff] px-3 py-2 text-sm font-semibold text-[#1f427f] disabled:opacity-60"
-                  onClick={startNavigationInGoogleMaps}
-                  disabled={!origin || !destination}
+                  className="shrink-0 p-1 rounded-full text-blue-400 hover:text-blue-700 hover:bg-blue-100 transition"
+                  onClick={() => setPickMode(null)}
+                  aria-label="Cancelar selección"
                 >
-                  <span className="inline-flex items-center gap-1.5">
-                    <LuNavigation size={14} />
-                    {selectedStop
-                      ? t("routes.openInGoogleWithStop", { defaultValue: "Iniciar ruta con parada" })
-                      : t("routes.openInGoogle", { defaultValue: "Iniciar ruta" })}
-                  </span>
+                  <LuX size={13} />
                 </button>
-
-                {pickMode && (
-                  <p className="rounded-lg border border-dashed border-[#9eb7e4] bg-[#edf4ff] px-2 py-1.5 text-xs text-[#355286]">
-                    {pickMode === "origin" ? t("routes.mapPickOriginHint") : t("routes.mapPickDestinationHint")}
-                  </p>
-                )}
               </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="fixed left-4 z-[1210] inline-flex items-center gap-2 rounded-full border border-[#cddaf1] bg-white px-4 py-2.5 text-sm font-semibold text-[#16356f] shadow-xl md:left-4 md:top-20"
-              style={{ top: isMobileLayout ? "calc(env(safe-area-inset-top, 0px) + 12px)" : undefined }}
-              onClick={() => setShowSearchPanel(true)}
-            >
-              <LuPencil size={15} />
-              {isMobileLayout
-                ? t("routes.editSearch", { defaultValue: "Filtros y ruta" })
-                : t("routes.editSearch", { defaultValue: "Editar búsqueda" })}
-            </button>
-          )}
-        </div>
-      </section>
+            )}
+          </div>
+        ) : (
+          /* Pill colapsado mostrando origen → destino */
+          <button
+            type="button"
+            className="flex items-center gap-2 bg-white rounded-full shadow-xl shadow-black/10 ring-1 ring-black/[0.06] px-4 py-2.5 hover:bg-gray-50 active:bg-gray-100 transition max-w-full"
+            onClick={() => setShowSearchPanel(true)}
+          >
+            <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
+            <span className="text-sm font-medium text-gray-800 truncate max-w-[110px]">
+              {origin?.name.split(",")[0] ?? "…"}
+            </span>
+            <LuArrowUpDown size={11} className="text-gray-400 shrink-0" />
+            <div className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+            <span className="text-sm font-medium text-gray-800 truncate max-w-[110px]">
+              {destination?.name.split(",")[0] ?? "…"}
+            </span>
+            <LuPencil size={12} className="text-gray-400 shrink-0 ml-0.5" />
+          </button>
+        )}
+      </div>
 
+      {/* ── Error ── */}
       {routeError && (
-        <div className="absolute left-3 right-3 top-20 z-[1200] rounded-xl border border-[#ffd1d8] bg-[#fff0f0] px-3 py-2 text-sm text-[#b42234] md:left-auto md:right-5 md:top-20 md:w-[420px]" role="alert">
-          {routeError}
+        <div
+          className="absolute z-[1190] left-3 right-3 bottom-[5.5rem] md:left-auto md:right-5 md:top-[4.5rem] md:bottom-auto md:w-[388px] rounded-2xl border border-red-200 bg-white px-4 py-3 shadow-xl flex items-start gap-3"
+          role="alert"
+        >
+          <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0 mt-0.5">
+            <LuX size={11} className="text-red-500" />
+          </div>
+          <p className="text-sm text-red-700 flex-1">{routeError}</p>
+          <button
+            type="button"
+            className="shrink-0 text-red-300 hover:text-red-500 transition p-0.5"
+            onClick={() => setRouteError(null)}
+            aria-label="Cerrar"
+          >
+            <LuX size={14} />
+          </button>
         </div>
       )}
 
+      {/* ── Panel de resultados ── */}
       {routeInfo && (
-        <section className="pointer-events-none fixed inset-x-0 bottom-[4.75rem] z-[1180] px-2 pb-[max(env(safe-area-inset-bottom),0px)] md:inset-auto md:right-5 md:top-24 md:bottom-auto md:w-[430px] md:px-0 md:pb-0">
-          <div className="pointer-events-auto overflow-hidden rounded-t-3xl border border-[#cad8ef] bg-white/97 shadow-[0_-14px_40px_rgba(30,58,138,.16)] md:rounded-2xl md:border-[#cfdcf3]">
-            <div className="mx-auto mt-2 h-1.5 w-11 rounded-full bg-[#ccd8ee] md:hidden" />
+        <section className="pointer-events-none fixed inset-x-0 bottom-[4.75rem] z-[1180] px-3 pb-[max(env(safe-area-inset-bottom),0px)] md:inset-auto md:right-5 md:top-4 md:bottom-auto md:w-[388px] md:px-0 md:pb-0">
+          <div className="pointer-events-auto overflow-hidden rounded-t-3xl md:rounded-2xl bg-white shadow-2xl shadow-black/12 ring-1 ring-black/[0.06]">
 
-            <div className="max-h-[60vh] overflow-y-auto p-3 md:max-h-none">
-              <div className="mb-3 grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-[#edf4ff] px-3 py-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#5573a7]">{t("routes.distance")}</p>
-                <p className="text-lg font-extrabold text-[#17396f]">{routeInfo.distanceKm.toFixed(1)} km</p>
+            {/* Drag handle (solo móvil) */}
+            <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-gray-200 md:hidden" />
+
+            <div className="max-h-[62vh] overflow-y-auto overscroll-contain p-4 space-y-3 md:max-h-[calc(100dvh-120px)]">
+
+              {/* Resumen de ruta */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-2xl bg-[#f0f5ff] px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                    {t("routes.distance")}
+                  </p>
+                  <p className="text-xl font-extrabold text-[#0f2f67] mt-0.5">
+                    {routeInfo.distanceKm.toFixed(1)}
+                    <span className="text-sm font-semibold text-blue-400 ml-1">km</span>
+                  </p>
+                </div>
+                <div className="rounded-2xl bg-[#f0f5ff] px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                    {t("routes.duration")}
+                  </p>
+                  <p className="text-xl font-extrabold text-[#0f2f67] mt-0.5">
+                    {formatDurationShort(routeInfo.durationMin)}
+                  </p>
+                </div>
               </div>
-              <div className="rounded-xl bg-[#edf4ff] px-3 py-2">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-[#5573a7]">{t("routes.duration")}</p>
-                <p className="text-lg font-extrabold text-[#17396f]">{formatDurationShort(routeInfo.durationMin)}</p>
-              </div>
-            </div>
 
-            {routeQualityNote && (
-              <p className="mb-3 rounded-xl border border-[#ffe2b4] bg-[#fff8ec] px-3 py-2 text-xs text-[#7a4b00]">
-                {routeQualityNote}
-              </p>
-            )}
+              {routeQualityNote && (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 leading-relaxed">
+                  {routeQualityNote}
+                </p>
+              )}
 
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <h3 className="text-xs font-bold uppercase tracking-widest text-[#4d638e]">{t("routes.stopOptions")}</h3>
-              <span className="text-[11px] font-semibold text-[#5573a7]">
-                {t("routes.candidatesCount", {
-                  defaultValue: "{{count}} candidatas",
-                  count: gasStationsNearRoute.length,
-                })}
-              </span>
-            </div>
-            <div className="mb-3 max-h-56 space-y-2 overflow-y-auto pr-1">
-              {candidateStops.map((station) => (
-                <button
-                  key={station.id}
-                  type="button"
-                  className={`w-full rounded-xl border px-3 py-2 text-left ${selectedStop?.id === station.id ? "border-[#1d4ed8] bg-[#eef4ff]" : "border-[#d5e2f7] bg-white"}`}
-                  onClick={() => setSelectedStop(station)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-[#12316a]">{station.nombre}</p>
-                      <p className="truncate text-xs text-[#6782b0]">{station.municipio} {station.provincia ? `· ${station.provincia}` : ""}</p>
+              {/* Lista de candidatas */}
+              {candidateStops.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                      {t("routes.stopOptions")}
+                    </h3>
+                    <span className="text-[11px] font-semibold text-gray-400">
+                      {candidateStops.length} {t("routes.candidatesCount", { defaultValue: "candidatas", count: candidateStops.length })}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2 max-h-52 overflow-y-auto overscroll-contain pr-1">
+                    {candidateStops.map((station) => {
+                      const isSelected = selectedStop?.id === station.id;
+                      return (
+                        <button
+                          key={station.id}
+                          type="button"
+                          className={`w-full rounded-2xl border px-3.5 py-3 text-left transition ${
+                            isSelected
+                              ? "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
+                              : "border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50/80"
+                          }`}
+                          onClick={() => setSelectedStop(station)}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="truncate text-sm font-bold text-gray-900">{station.nombre}</p>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                                #{station.posicion}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="truncate text-xs text-gray-400 mt-0.5">
+                            {station.municipio}{station.provincia ? ` · ${station.provincia}` : ""}
+                          </p>
+                          <div className="flex items-center gap-3 mt-1.5">
+                            <span className="text-sm font-bold text-gray-900">€{station.precio_litro.toFixed(3)}</span>
+                            <span className="text-xs text-gray-400">+{station.desvio_km.toFixed(1)} km</span>
+                            <span className="text-xs text-gray-400">+{formatDurationShort(station.desvio_min_estimado)}</span>
+                            <span className="ml-auto text-[10px] font-semibold text-blue-500 bg-blue-50 rounded-full px-2 py-0.5">
+                              {Math.round(station.porcentaje_ruta)}% ruta
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Parada seleccionada */}
+              {selectedStop && (
+                <article className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50/60 p-4">
+                  <p className="text-sm font-extrabold text-[#0f2f67] leading-tight">{selectedStop.nombre}</p>
+                  {selectedStop.direccion && (
+                    <p className="text-xs text-blue-400 mt-0.5 truncate">{selectedStop.direccion}</p>
+                  )}
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-white/80 px-2 py-2 text-center">
+                      <p className="text-[10px] text-gray-400 font-semibold">€/L</p>
+                      <p className="text-base font-extrabold text-[#0f2f67]">{selectedStop.precio_litro.toFixed(3)}</p>
                     </div>
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <span className="rounded-full bg-[#f3ecff] px-2 py-0.5 text-[11px] font-semibold text-[#6b21a8]">
-                        #{station.posicion}
-                      </span>
-                      <span className="rounded-full bg-[#e7efff] px-2 py-0.5 text-[11px] font-semibold text-[#1f4fa0]" title={t("routes.progressOnRoute", { defaultValue: "Progreso sobre la ruta" })}>
-                        {Math.round(station.porcentaje_ruta)}% {t("routes.routeShort", { defaultValue: "ruta" })}
-                      </span>
+                    <div className="rounded-xl bg-white/80 px-2 py-2 text-center">
+                      <p className="text-[10px] text-gray-400 font-semibold">+km</p>
+                      <p className="text-base font-extrabold text-[#0f2f67]">{selectedStop.desvio_km.toFixed(1)}</p>
+                    </div>
+                    <div className="rounded-xl bg-white/80 px-2 py-2 text-center">
+                      <p className="text-[10px] text-gray-400 font-semibold">+min</p>
+                      <p className="text-base font-extrabold text-[#0f2f67]">{formatDurationShort(selectedStop.desvio_min_estimado)}</p>
                     </div>
                   </div>
-                  <p className="mt-1 text-xs font-semibold text-[#23467f]">€{station.precio_litro.toFixed(3)} · +{station.desvio_km.toFixed(1)} km · +{formatDurationShort(station.desvio_min_estimado)}</p>
-                </button>
-              ))}
-            </div>
+                </article>
+              )}
 
-            <button
-              type="button"
-              className="mb-3 w-full rounded-xl bg-[#1f4fa0] px-3 py-2.5 text-sm font-bold text-white disabled:opacity-60"
-              onClick={startNavigationInGoogleMaps}
-              disabled={!origin || !destination}
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <LuNavigation size={15} />
+              {/* Botón navegar */}
+              <button
+                type="button"
+                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#1f4fa0] hover:bg-[#1a4491] active:bg-[#163a88] text-white py-3.5 text-sm font-bold transition disabled:opacity-50"
+                onClick={startNavigationInGoogleMaps}
+                disabled={!origin || !destination}
+              >
+                <LuNavigation size={16} />
                 {selectedStop
                   ? t("routes.openInGoogleWithStop", { defaultValue: "Iniciar ruta con parada" })
                   : t("routes.openInGoogle", { defaultValue: "Iniciar ruta" })}
-              </span>
-            </button>
-
-            {selectedStop && (
-              <article className="rounded-xl border border-[#cad9f3] bg-[#f8fbff] p-3">
-                <p className="text-base font-extrabold text-[#0f2f67]">{selectedStop.nombre}</p>
-                <p className="text-sm text-[#4c6698]">{selectedStop.direccion}</p>
-                <div className="mt-2 grid grid-cols-3 gap-2 text-center">
-                  <div className="rounded-lg bg-white px-2 py-1.5">
-                    <p className="text-[11px] text-[#6a84b1]">€/L</p>
-                    <p className="text-sm font-bold text-[#17386f]">{selectedStop.precio_litro.toFixed(3)}</p>
-                  </div>
-                  <div className="rounded-lg bg-white px-2 py-1.5">
-                    <p className="text-[11px] text-[#6a84b1]">+km</p>
-                    <p className="text-sm font-bold text-[#17386f]">{selectedStop.desvio_km.toFixed(1)}</p>
-                  </div>
-                  <div className="rounded-lg bg-white px-2 py-1.5">
-                    <p className="text-[11px] text-[#6a84b1]">{t("routes.extraMinutes")}</p>
-                    <p className="text-sm font-bold text-[#17386f]">{formatDurationShort(selectedStop.desvio_min_estimado)}</p>
-                  </div>
-                </div>
-              </article>
-            )}
+              </button>
             </div>
           </div>
         </section>

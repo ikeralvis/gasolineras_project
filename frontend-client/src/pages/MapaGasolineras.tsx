@@ -131,8 +131,25 @@ function getBrandLogo(rotulo?: string): string | null {
   return getBrandIcon(rotulo);
 }
 
-// Solo posiciona el mapa una vez cuando la ubicación es concedida,
-// y nunca si el usuario ya interactuó con el mapa (drag o tap).
+const GEO_STORAGE_KEY = "gas_last_location";
+
+function readSavedLocation(): [number, number] | null {
+  try {
+    const raw = localStorage.getItem(GEO_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed) && parsed.length === 2 &&
+        typeof parsed[0] === "number" && typeof parsed[1] === "number") {
+      return [parsed[0], parsed[1]];
+    }
+    return null;
+  } catch { return null; }
+}
+
+// Solo posiciona el mapa una vez cuando la ubicación es concedida.
+// Usa setTimeout(0) para diferir el setView hasta DESPUÉS de que todos
+// los efectos de React hayan corrido (especialmente el registro del
+// listener moveend en GasMapController) — sin esto el evento se pierde.
 function MapUpdater({ center, enabled }: { center: [number, number]; enabled: boolean }) {
   const map = useMap();
   const hasSetRef = useRef(false);
@@ -146,7 +163,10 @@ function MapUpdater({ center, enabled }: { center: [number, number]; enabled: bo
   useEffect(() => {
     if (!enabled || hasSetRef.current || userInteractedRef.current) return;
     hasSetRef.current = true;
-    map.setView(center, 13, { animate: false });
+    const id = setTimeout(() => {
+      map.setView(center, 13, { animate: true });
+    }, 0);
+    return () => clearTimeout(id);
   }, [center, enabled, map]);
   return null;
 }
@@ -467,13 +487,16 @@ export default function MapaGasolineras() {
   const { t } = useTranslation();
   const isTouchDevice = useIsCoarsePointer();
   const [markers, setMarkers] = useState<GasMarker[]>([]);
-  const [userLocation, setUserLocation] = useState<[number, number]>(DEFAULT_CENTER);
-  const [loading, setLoading] = useState(false);
-  const [locationGranted, setLocationGranted] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [mapZoom, setMapZoom] = useState(6);
 
-  const prevLocationRef = useRef<[number, number] | null>(null);
+  // Inicializa con la última ubicación guardada para evitar el flash de España
+  const savedLoc = useMemo(() => readSavedLocation(), []);
+  const [userLocation, setUserLocation] = useState<[number, number]>(savedLoc ?? DEFAULT_CENTER);
+  const [loading, setLoading] = useState(false);
+  const [locationGranted, setLocationGranted] = useState(savedLoc !== null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mapZoom, setMapZoom] = useState(savedLoc ? 13 : 6);
+
+  const prevLocationRef = useRef<[number, number] | null>(savedLoc);
 
   useEffect(() => {
     let watchId: number | null = null;
@@ -483,6 +506,7 @@ export default function MapaGasolineras() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         prevLocationRef.current = [lat, lon];
+        localStorage.setItem(GEO_STORAGE_KEY, JSON.stringify([lat, lon]));
         setUserLocation([lat, lon]);
         setLocationGranted(true);
       },
@@ -504,6 +528,7 @@ export default function MapaGasolineras() {
           if (Math.hypot(dLat, dLon) < 0.001) return;
         }
         prevLocationRef.current = [lat, lon];
+        localStorage.setItem(GEO_STORAGE_KEY, JSON.stringify([lat, lon]));
         setUserLocation([lat, lon]);
         setLocationGranted(true);
       },
