@@ -714,28 +714,47 @@ def load_raw_data(file_paths: list[str], station_filter: Optional[set[str]] = No
     return df
 
 
+def _normalize_brent(raw_df: pd.DataFrame) -> pd.DataFrame:
+    all_days = pd.date_range(raw_df["fecha"].min(), raw_df["fecha"].max(), freq="D")
+    return raw_df.set_index("fecha").reindex(all_days).rename_axis("fecha").reset_index().assign(
+        brent=lambda d: d["brent"].ffill()
+    )
+
+
 def load_brent() -> Optional[pd.DataFrame]:
+    """Primary: FRED DCOILBRENTEU (no API key). Fallback: yfinance BZ=F."""
     print(f"📈 Descargando Brent desde {BRENT_START}...")
+
+    try:
+        url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id=DCOILBRENTEU"
+        raw = pd.read_csv(url, parse_dates=["DATE"])
+        raw = raw.rename(columns={"DATE": "fecha", "DCOILBRENTEU": "brent"})
+        raw["brent"] = pd.to_numeric(raw["brent"], errors="coerce")
+        raw = raw.dropna(subset=["brent"])
+        raw["fecha"] = pd.to_datetime(raw["fecha"]).dt.normalize()
+        raw = raw[raw["fecha"] >= BRENT_START][["fecha", "brent"]]
+        if not raw.empty:
+            brent_df = _normalize_brent(raw)
+            print(f"✅ Brent FRED: {len(brent_df)} días hasta {brent_df['fecha'].max().date()}")
+            return brent_df
+        print("⚠️ FRED devolvió vacío; probando yfinance...")
+    except Exception as e:
+        print(f"⚠️ FRED falló ({e}); probando yfinance...")
+
     try:
         raw = yf.download("BZ=F", start=BRENT_START, progress=False, auto_adjust=True)
         if raw.empty:
-            print("⚠️ Brent vacío; se continúa sin Brent")
+            print("⚠️ Brent vacío (yfinance); se continúa sin Brent")
             return None
-
         if isinstance(raw.columns, pd.MultiIndex):
             raw.columns = raw.columns.get_level_values(0)
-
         brent_df = (
-            raw[["Close"]]
-            .reset_index()
+            raw[["Close"]].reset_index()
             .rename(columns={"Date": "fecha", "Close": "brent"})
         )
         brent_df["fecha"] = pd.to_datetime(brent_df["fecha"]).dt.normalize()
-
-        all_days = pd.date_range(brent_df["fecha"].min(), brent_df["fecha"].max(), freq="D")
-        brent_df = brent_df.set_index("fecha").reindex(all_days).rename_axis("fecha").reset_index()
-        brent_df["brent"] = brent_df["brent"].ffill()
-
+        brent_df = _normalize_brent(brent_df[["fecha", "brent"]])
+        print(f"✅ Brent yfinance: {len(brent_df)} días")
         return brent_df
     except Exception as e:
         print(f"⚠️ Error descargando Brent: {e}")
@@ -766,7 +785,10 @@ def add_features(ts, brent_df=None):
     df_feat["trimestre"] = df_feat["fecha"].dt.quarter
     df_feat["dia_mes"] = df_feat["fecha"].dt.day
 
-    for lag in [1, 7, 14, 21, 30]:
+    df_feat["sin_mes"] = np.sin(2 * np.pi * df_feat["mes"] / 12)
+    df_feat["cos_mes"] = np.cos(2 * np.pi * df_feat["mes"] / 12)
+
+    for lag in [1, 2, 3, 7, 14, 21, 30]:
         df_feat[f"lag_{lag}"] = df_feat["y"].shift(lag)
 
     for w in [7, 14, 30]:
@@ -791,9 +813,13 @@ BASE_FEATURES = [
     "es_fin_de_semana",
     "semana_anio",
     "mes",
+    "sin_mes",
+    "cos_mes",
     "trimestre",
     "dia_mes",
     "lag_1",
+    "lag_2",
+    "lag_3",
     "lag_7",
     "lag_14",
     "lag_21",
@@ -814,12 +840,14 @@ def get_feature_cols(brent_df):
 
 LGBM_BASE = {
     "boosting_type": "gbdt",
-    "n_estimators": 400,
-    "learning_rate": 0.04,
-    "num_leaves": 31,
-    "min_child_samples": 10,
+    "n_estimators": 600,
+    "learning_rate": 0.025,
+    "num_leaves": 15,        # reducido para evitar overfitting (~90 muestras por estación)
+    "min_child_samples": 5,
     "subsample": 0.8,
     "colsample_bytree": 0.8,
+    "reg_alpha": 0.05,
+    "reg_lambda": 0.2,
     "verbose": -1,
     "n_jobs": -1,
 }
@@ -862,9 +890,13 @@ def forecast_7d(models, ts, df_feat, feature_cols, brent_df=None):
             "es_fin_de_semana": int(next_date.dayofweek >= 5),
             "semana_anio": int(next_date.isocalendar()[1]),
             "mes": next_date.month,
+            "sin_mes": np.sin(2 * np.pi * next_date.month / 12),
+            "cos_mes": np.cos(2 * np.pi * next_date.month / 12),
             "trimestre": next_date.quarter,
             "dia_mes": next_date.day,
             "lag_1": lag(1),
+            "lag_2": lag(2),
+            "lag_3": lag(3),
             "lag_7": lag(7),
             "lag_14": lag(14),
             "lag_21": lag(21),

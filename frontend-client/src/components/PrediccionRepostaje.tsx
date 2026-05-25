@@ -1,15 +1,16 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  BarChart,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
-  Cell,
-  ResponsiveContainer,
   Legend,
+  ReferenceDot,
+  ErrorBar,
+  ResponsiveContainer,
 } from 'recharts';
 import { usePredictions, type PredictionPoint } from '../hooks/usePredictions';
 
@@ -29,7 +30,6 @@ const FUEL_KEYS = {
 } as const;
 
 const STATION_COLORS = ['#000C74', '#4338ca', '#7c3aed', '#0891b2', '#0f766e', '#b45309'];
-const CHEAPEST_COLOR = '#16a34a';
 
 function formatDay(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -45,6 +45,14 @@ function stationLabel(g: Gasolinera): string {
   return g.Rótulo ? `${g.Rótulo} (${g.Municipio})` : g.Municipio;
 }
 
+type ChartEntry = Record<string, number | string | undefined>;
+
+interface TooltipProps {
+  active?: boolean;
+  payload?: { dataKey: string; value: number; color: string }[];
+  label?: string;
+}
+
 export default function PrediccionRepostaje({ gasolineras }: Props) {
   const { t } = useTranslation();
   const [selectedFuel, setSelectedFuel] = useState<'g95' | 'diesel'>('g95');
@@ -54,57 +62,111 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
 
   const fuelKey = FUEL_KEYS[selectedFuel];
 
-  // Build sorted list of forecast dates from first available station
   const forecastDates = useMemo(() => {
     const firstStation = Object.values(byStation)[0] ?? [];
-    const byFuel = firstStation.filter(p => p.fuel === fuelKey);
-    return [...new Set(byFuel.map(p => p.forecast_date))].sort();
+    const byFuel = firstStation.filter((p: PredictionPoint) => p.fuel === fuelKey);
+    return [...new Set(byFuel.map((p: PredictionPoint) => p.forecast_date))].sort();
   }, [byStation, fuelKey]);
 
-  // Build chart data: one entry per day, one key per station
-  const chartData = useMemo(() => {
-    return forecastDates.map(date => {
-      const entry: Record<string, unknown> = {
-        date: formatDay(date),
-        fullDate: date,
-      };
-      let minPrice = Infinity;
-      let cheapest = '';
-      for (const g of gasolineras) {
-        const preds: PredictionPoint[] = byStation[g.IDEESS] ?? [];
-        const point = preds.find(p => p.forecast_date === date && p.fuel === fuelKey);
-        if (point) {
-          const price = point.precio_predicho;
-          entry[`s_${g.IDEESS}`] = price;
-          if (price < minPrice) {
-            minPrice = price;
-            cheapest = g.IDEESS;
-          }
-        }
-      }
-      entry.cheapest = cheapest;
-      entry.minPrice = minPrice === Infinity ? undefined : minPrice;
-      return entry;
-    });
-  }, [forecastDates, gasolineras, byStation, fuelKey]);
-
-  // Best overall option
   const best = useMemo(() => {
     let bestDay = '';
     let bestStation: Gasolinera | null = null;
     let bestPrice = Infinity;
-    for (const day of chartData) {
-      for (const g of gasolineras) {
-        const price = day[`s_${g.IDEESS}`] as number | undefined;
-        if (price !== undefined && price < bestPrice) {
-          bestPrice = price;
-          bestDay = day.fullDate as string;
+    for (const ideess of Object.keys(byStation)) {
+      const g = gasolineras.find(x => x.IDEESS === ideess);
+      if (!g) continue;
+      for (const point of byStation[ideess]) {
+        if (point.fuel !== fuelKey) continue;
+        if (point.precio_predicho < bestPrice) {
+          bestPrice = point.precio_predicho;
+          bestDay = point.forecast_date;
           bestStation = g;
         }
       }
     }
     return bestStation ? { station: bestStation, date: bestDay, price: bestPrice } : null;
-  }, [chartData, gasolineras]);
+  }, [byStation, gasolineras, fuelKey]);
+
+  const chartData = useMemo((): ChartEntry[] => {
+    return forecastDates.map(date => {
+      const entry: ChartEntry = { date: formatDay(date), fullDate: date };
+      let cheapestDay = '';
+      let minPrice = Infinity;
+
+      for (const g of gasolineras) {
+        const preds: PredictionPoint[] = byStation[g.IDEESS] ?? [];
+        const point = preds.find(p => p.forecast_date === date && p.fuel === fuelKey);
+        if (point) {
+          entry[`s_${g.IDEESS}`] = point.precio_predicho;
+          // ErrorBar expects [lowerError, upperError] relative to the value
+          entry[`err_${g.IDEESS}`] = JSON.stringify([
+            +(point.precio_predicho - point.margen_min).toFixed(3),
+            +(point.margen_max - point.precio_predicho).toFixed(3),
+          ]);
+          entry[`rmin_${g.IDEESS}`] = point.margen_min;
+          entry[`rmax_${g.IDEESS}`] = point.margen_max;
+          if (point.precio_predicho < minPrice) {
+            minPrice = point.precio_predicho;
+            cheapestDay = g.IDEESS;
+          }
+        }
+      }
+      entry.cheapestDay = cheapestDay;
+      return entry;
+    });
+  }, [forecastDates, gasolineras, byStation, fuelKey]);
+
+  const cheapestDot = useMemo(() => {
+    if (!best) return null;
+    return chartData.find(d => d.fullDate === best.date) ?? null;
+  }, [best, chartData]);
+
+  const CustomTooltip = ({ active, payload, label }: TooltipProps) => {
+    if (!active || !payload?.length) return null;
+    const dayEntry = chartData.find(d => d.date === label);
+    if (!dayEntry) return null;
+
+    const rows = gasolineras
+      .map((g, i) => {
+        const price = dayEntry[`s_${g.IDEESS}`] as number | undefined;
+        if (price === undefined) return null;
+        const rmin = dayEntry[`rmin_${g.IDEESS}`] as number | undefined;
+        const rmax = dayEntry[`rmax_${g.IDEESS}`] as number | undefined;
+        const isCheapest = dayEntry.cheapestDay === g.IDEESS;
+        return { g, i, price, rmin, rmax, isCheapest };
+      })
+      .filter(Boolean)
+      .sort((a, b) => (a!.price ?? 0) - (b!.price ?? 0));
+
+    return (
+      <div className="bg-white border border-gray-100 rounded-xl shadow-lg p-3 min-w-55">
+        <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-2">{label}</p>
+        {rows.map(row => {
+          if (!row) return null;
+          const { g, i, price, rmin, rmax, isCheapest } = row;
+          return (
+            <div key={g.IDEESS} className="flex items-center gap-2 py-0.5">
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+                style={{ background: STATION_COLORS[i % STATION_COLORS.length] }}
+              />
+              <span className="text-[11px] text-gray-600 flex-1 truncate" style={{ maxWidth: 120 }}>
+                {g.Rótulo || g.Municipio}
+              </span>
+              <span className={`text-[11px] font-semibold ${isCheapest ? 'text-green-700' : 'text-gray-800'}`}>
+                {price.toFixed(3)}
+                {isCheapest && ' ★'}
+              </span>
+              {rmin !== undefined && rmax !== undefined && (
+                <span className="text-[10px] text-gray-400">{rmin.toFixed(3)}–{rmax.toFixed(3)}</span>
+              )}
+            </div>
+          );
+        })}
+        <p className="text-[10px] text-gray-300 mt-2 pt-1.5 border-t border-gray-100">Intervalo 5%–95%</p>
+      </div>
+    );
+  };
 
   const hasData = forecastDates.length > 0;
 
@@ -136,13 +198,15 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
     );
   }
 
+  const cheapestIdx = best ? gasolineras.findIndex(g => g.IDEESS === best.station.IDEESS) : -1;
+
   return (
     <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm mt-6">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-5">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-2xl bg-[#EEF0FF] flex items-center justify-center text-[#000C74] text-lg">
-            📊
+            📈
           </div>
           <div>
             <p className="font-semibold text-[#0f172a]">{t('prediction.title')}</p>
@@ -150,7 +214,6 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
           </div>
         </div>
 
-        {/* Fuel tabs */}
         <div className="flex rounded-xl bg-[#F5F6FF] p-1 gap-1 self-start sm:self-auto">
           <button
             onClick={() => setSelectedFuel('g95')}
@@ -200,9 +263,9 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
 
       {/* Chart */}
       <div className="overflow-x-auto -mx-2">
-        <div style={{ minWidth: Math.max(gasolineras.length * 7 * 18 + 80, 360) }}>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }} barCategoryGap="25%">
+        <div style={{ minWidth: 320 }}>
+          <ResponsiveContainer width="100%" height={250}>
+            <LineChart data={chartData} margin={{ top: 12, right: 20, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
               <XAxis
                 dataKey="date"
@@ -216,55 +279,75 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
                 tick={{ fontSize: 11, fill: '#6b7280' }}
                 axisLine={false}
                 tickLine={false}
-                width={42}
+                width={44}
               />
-              <Tooltip
-                formatter={(value, _name, props) => {
-                  const stationId = (props?.dataKey as string)?.replace('s_', '');
-                  const g = gasolineras.find(x => x.IDEESS === stationId);
-                  const price = typeof value === 'number' ? value.toFixed(3) : String(value);
-                  return [`${price} €/L`, g ? stationLabel(g) : stationId];
-                }}
-                labelFormatter={(label) => `${label}`}
-                contentStyle={{ borderRadius: 10, fontSize: 12 }}
-              />
+              <Tooltip content={<CustomTooltip />} />
               <Legend
                 formatter={(_value, entry) => {
                   const stationId = (entry?.dataKey as string)?.replace('s_', '');
                   const g = gasolineras.find(x => x.IDEESS === stationId);
-                  return g ? (g.Rótulo || g.Municipio) : (stationId ?? '');
+                  return (
+                    <span style={{ color: '#374151', fontSize: 11 }}>
+                      {g ? (g.Rótulo || g.Municipio) : stationId}
+                    </span>
+                  );
                 }}
-                wrapperStyle={{ paddingTop: 8, fontSize: 11 }}
+                wrapperStyle={{ paddingTop: 8 }}
               />
+
               {gasolineras.map((g, i) => (
-                <Bar
+                <Line
                   key={g.IDEESS}
+                  type="monotone"
                   dataKey={`s_${g.IDEESS}`}
-                  fill={STATION_COLORS[i % STATION_COLORS.length]}
-                  radius={[3, 3, 0, 0]}
-                  maxBarSize={20}
+                  stroke={STATION_COLORS[i % STATION_COLORS.length]}
+                  strokeWidth={2}
+                  dot={{
+                    r: 3.5,
+                    fill: STATION_COLORS[i % STATION_COLORS.length],
+                    strokeWidth: 0,
+                  }}
+                  activeDot={{
+                    r: 5.5,
+                    stroke: 'white',
+                    strokeWidth: 2,
+                    fill: STATION_COLORS[i % STATION_COLORS.length],
+                  }}
                 >
-                  {chartData.map((day) => (
-                    <Cell
-                      key={day.fullDate as string}
-                      fill={
-                        day.cheapest === g.IDEESS
-                          ? CHEAPEST_COLOR
-                          : STATION_COLORS[i % STATION_COLORS.length]
-                      }
-                      opacity={day.cheapest === g.IDEESS ? 1 : 0.75}
-                    />
-                  ))}
-                </Bar>
+                  <ErrorBar
+                    dataKey={`err_${g.IDEESS}`}
+                    width={4}
+                    strokeWidth={1.5}
+                    stroke={STATION_COLORS[i % STATION_COLORS.length]}
+                    opacity={0.35}
+                    direction="y"
+                  />
+                </Line>
               ))}
-            </BarChart>
+
+              {/* Green dot on global cheapest point */}
+              {cheapestDot && best && cheapestIdx >= 0 && (
+                <ReferenceDot
+                  x={cheapestDot.date as string}
+                  y={best.price}
+                  r={8}
+                  fill="#16a34a"
+                  stroke="white"
+                  strokeWidth={2.5}
+                />
+              )}
+            </LineChart>
           </ResponsiveContainer>
         </div>
       </div>
 
-      {/* Run date footer */}
+      {/* Caption */}
+      <p className="text-[10px] text-gray-400 mt-1">
+        Las barras verticales muestran el intervalo de confianza (percentiles 5%–95%) · El punto verde marca el mejor precio predicho
+      </p>
+
       {runDate && (
-        <p className="text-xs text-gray-400 mt-3 text-right">
+        <p className="text-xs text-gray-400 mt-2 text-right">
           {t('prediction.runDate')}: {new Date(runDate + 'T00:00:00').toLocaleDateString('es-ES')}
         </p>
       )}
