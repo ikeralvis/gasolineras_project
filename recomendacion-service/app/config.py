@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # "api"     -> descarga lista y filtra en memoria (fallback universal)
     # "postgis" -> consulta directa a PostgreSQL/PostGIS (rápido y preciso)
     # "auto"    -> usa PostGIS si DATABASE_URL está disponible; si no, API.
-    ROUTE_CANDIDATES_SOURCE: Literal["api", "postgis", "auto"] = "postgis"
+    ROUTE_CANDIDATES_SOURCE: Literal["api", "postgis", "auto"] = "auto"
     DATABASE_URL: str = ""
     POSTGIS_ROUTE_MAX_CANDIDATES: int = 50
     MAX_REAL_DETOUR_CHECKS: int = 10

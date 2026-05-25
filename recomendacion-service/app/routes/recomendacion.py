@@ -31,11 +31,80 @@ from app.services.postgis_candidates import (
     supports_postgis_fuel,
 )
 from app.services.recommender import build_recommendations
-from app.services.geo_math import haversine_km
+from app.services.geo_math import build_route_corridor, haversine_km
+from shapely.geometry import Point
 from app.services.routing import get_route
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/recomendacion", tags=["Recomendación"])
+
+
+def _parse_coord(raw) -> float:
+    return float(str(raw or "").replace(",", "."))
+
+
+async def _fetch_stations_from_api(
+    combustible: str,
+    route_coordinates: list,
+    buffer_km: float,
+    client: httpx.AsyncClient,
+) -> list[GasolineraInternal]:
+    """Descarga gasolineras de la API interna y filtra en memoria por corredor de ruta."""
+    precio_field = COMBUSTIBLE_FIELD_MAP.get(combustible)
+    if not precio_field:
+        return []
+
+    try:
+        resp = await client.get(settings.GASOLINERAS_API_URL, timeout=settings.GASOLINERAS_TIMEOUT_S)
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("Error al obtener gasolineras de la API interna: %s", exc)
+        return []
+
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        items = data.get("gasolineras") or data.get("ListaEESSPrecio") or data.get("data") or []
+    else:
+        return []
+
+    corridor = build_route_corridor(route_coordinates, buffer_km)
+
+    result: list[GasolineraInternal] = []
+    for item in items:
+        try:
+            lat = _parse_coord(item.get("Latitud") or item.get("latitud"))
+            lon = _parse_coord(
+                item.get("Longitud (WGS84)") or item.get("Longitud") or item.get("longitud")
+            )
+            if not corridor.contains(Point(lon, lat)):
+                continue
+            precio_raw = str(item.get(precio_field) or "").replace(",", ".")
+            if not precio_raw:
+                continue
+            precio = float(precio_raw)
+            if precio <= 0:
+                continue
+            result.append(
+                GasolineraInternal(
+                    id=str(item.get("IDEESS") or item.get("ideess") or ""),
+                    nombre=str(item.get("Rótulo") or item.get("Rotulo") or item.get("rotulo") or ""),
+                    direccion=str(item.get("Dirección") or item.get("Direccion") or item.get("direccion") or ""),
+                    municipio=str(item.get("Municipio") or item.get("municipio") or ""),
+                    provincia=str(item.get("Provincia") or item.get("provincia") or ""),
+                    lat=lat,
+                    lon=lon,
+                    precio=precio,
+                    horario=str(item.get("Horario") or item.get("horario") or ""),
+                    tipo_venta=str(item.get("Tipo Venta") or item.get("tipo_venta") or ""),
+                )
+            )
+        except (ValueError, TypeError, AttributeError):
+            continue
+
+    logger.info("API en memoria candidatas en ruta: %d de %d totales", len(result), len(items))
+    return result
 
 
 def _raise_routing_http_error(exc: Exception, evitar_peajes: bool) -> None:
@@ -123,44 +192,66 @@ async def recomendar_ruta(body: RecomendacionRequest) -> RecomendacionResponse:
         route_buffer_km = min(body.max_desvio_km * 3, 50.0)
 
         source_mode = settings.ROUTE_CANDIDATES_SOURCE
-        postgis_supported_fuel = supports_postgis_fuel(body.combustible)
-        postgis_ready = postgis_candidate_source_enabled() and postgis_supported_fuel
+        postgis_available = (
+            postgis_candidate_source_enabled()
+            and supports_postgis_fuel(body.combustible)
+        )
 
-        if source_mode == "postgis" and not postgis_supported_fuel:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Combustible no soportado por búsqueda PostGIS directa. "
-                    "Usa gasolina_95, gasolina_98, gasoleo_a o gasoleo_premium."
-                ),
-            )
+        if source_mode == "postgis":
+            # Modo estricto: falla si PostGIS no está listo
+            if not supports_postgis_fuel(body.combustible):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        "Combustible no soportado por búsqueda PostGIS directa. "
+                        "Usa gasolina_95, gasolina_98, gasoleo_a o gasoleo_premium."
+                    ),
+                )
+            if not postgis_candidate_source_enabled():
+                raise HTTPException(
+                    status_code=503,
+                    detail="ROUTE_CANDIDATES_SOURCE=postgis pero DATABASE_URL/asyncpg no están disponibles.",
+                )
+            try:
+                stations = await fetch_route_candidates_postgis(
+                    route_coordinates=route.coordinates,
+                    combustible=body.combustible,
+                    current_lat=current_position.lat,
+                    current_lon=current_position.lon,
+                    buffer_km=route_buffer_km,
+                )
+                station_source = "postgis"
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503,
+                    detail=f"Error en búsqueda PostGIS de candidatas: {exc}",
+                ) from exc
 
-        if source_mode == "postgis" and not postgis_candidate_source_enabled():
-            raise HTTPException(
-                status_code=503,
-                detail="ROUTE_CANDIDATES_SOURCE=postgis pero DATABASE_URL/asyncpg no están disponibles.",
-            )
+        else:
+            # Modo "auto": intenta PostGIS si está disponible, cae a API en memoria.
+            # Modo "api": siempre usa la API en memoria.
+            if postgis_available:
+                try:
+                    stations = await fetch_route_candidates_postgis(
+                        route_coordinates=route.coordinates,
+                        combustible=body.combustible,
+                        current_lat=current_position.lat,
+                        current_lon=current_position.lon,
+                        buffer_km=route_buffer_km,
+                    )
+                    station_source = "postgis"
+                except Exception as exc:
+                    logger.warning("PostGIS falló (modo %s), usando API en memoria: %s", source_mode, exc)
+                    stations = []
 
-        if not postgis_ready:
-            raise HTTPException(
-                status_code=503,
-                detail="PostGIS no disponible. Se requiere para recomendaciones rapidas.",
-            )
-
-        try:
-            stations = await fetch_route_candidates_postgis(
-                route_coordinates=route.coordinates,
-                combustible=body.combustible,
-                current_lat=current_position.lat,
-                current_lon=current_position.lon,
-                buffer_km=route_buffer_km,
-            )
-            station_source = "postgis"
-        except Exception as exc:
-            raise HTTPException(
-                status_code=503,
-                detail=f"Error en búsqueda PostGIS de candidatas: {exc}",
-            ) from exc
+            if not stations:
+                stations = await _fetch_stations_from_api(
+                    combustible=body.combustible,
+                    route_coordinates=route.coordinates,
+                    buffer_km=route_buffer_km,
+                    client=client,
+                )
+                station_source = "api"
 
     if not stations:
         raise HTTPException(
