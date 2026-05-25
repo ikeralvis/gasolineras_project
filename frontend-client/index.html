@@ -26,7 +26,6 @@
     <link rel="preconnect" href="https://tile.openstreetmap.org" crossorigin />
     
     <title>TankGo - Encuentra el mejor precio</title>
-    <link rel="manifest" href="/manifest.webmanifest" />
   </head>
   <body>
     <!-- Skip link para accesibilidad -->
@@ -34,35 +33,5 @@
     
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Registrar Service Worker para PWA
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js')
-            .then((registration) => {
-              console.log('✅ Service Worker registrado:', registration.scope);
-              
-              // Escuchar actualizaciones
-              registration.addEventListener('updatefound', () => {
-                const newWorker = registration.installing;
-                if (newWorker) {
-                  newWorker.addEventListener('statechange', () => {
-                    if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                      // Nueva versión disponible
-                      if (confirm('Nueva versión disponible. ¿Actualizar?')) {
-                        newWorker.postMessage({ type: 'SKIP_WAITING' });
-                        globalThis.location.reload();
-                      }
-                    }
-                  });
-                }
-              });
-            })
-            .catch((error) => {
-              console.log('❌ Error registrando Service Worker:', error);
-            });
-        });
-      }
-    </script>
   </body>
 </html>

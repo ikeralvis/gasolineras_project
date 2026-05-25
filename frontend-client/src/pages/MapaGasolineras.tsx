@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useNavigate } from "react-router-dom";
-import { LuX, LuMapPin, LuNavigation, LuExternalLink, LuClock } from "react-icons/lu";
+import { LuX, LuMapPin, LuNavigation, LuExternalLink, LuClock, LuLocateFixed } from "react-icons/lu";
 import { MdLocalGasStation } from "react-icons/md";
 import { fetchGasMarkers, type GasMarker } from "../api/gasolineras";
 import HorarioDisplay, { type HorarioParsed } from "../components/HorarioDisplay";
@@ -275,6 +275,18 @@ function DefaultSpainViewController({ enabled }: Readonly<{ enabled: boolean }>)
   return null;
 }
 
+function LocateMeController({ target }: { target: [number, number] | null }) {
+  const map = useMap();
+  const prevRef = useRef<[number, number] | null>(null);
+  useEffect(() => {
+    if (!target) return;
+    if (prevRef.current && prevRef.current[0] === target[0] && prevRef.current[1] === target[1]) return;
+    prevRef.current = target;
+    map.setView(target, 14, { animate: true });
+  }, [target, map]);
+  return null;
+}
+
 interface ClusterCircleProps {
   marker: GasClusterMarker;
 }
@@ -496,6 +508,9 @@ export default function MapaGasolineras() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapZoom, setMapZoom] = useState(savedLoc ? 13 : 6);
 
+  const [locateMeTarget, setLocateMeTarget] = useState<[number, number] | null>(null);
+  const [locatingMe, setLocatingMe] = useState(false);
+
   const prevLocationRef = useRef<[number, number] | null>(savedLoc);
 
   useEffect(() => {
@@ -549,6 +564,23 @@ export default function MapaGasolineras() {
   const clusterMarkers = markers.filter((m): m is GasClusterMarker => m.type === "cluster");
   const showBrandLogos = mapZoom >= 14;
 
+  const handleLocateMe = () => {
+    if (!navigator.geolocation || locatingMe) return;
+    setLocatingMe(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coord: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        localStorage.setItem(GEO_STORAGE_KEY, JSON.stringify(coord));
+        setUserLocation(coord);
+        setLocationGranted(true);
+        setLocateMeTarget(coord);
+        setLocatingMe(false);
+      },
+      () => setLocatingMe(false),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+    );
+  };
+
   const getStatusMessage = () => {
     if (loading) return t("map.loadingLocation");
     if (clusterMarkers.length > 0) return `Mostrando ${clusterMarkers.length} clusters`;
@@ -599,6 +631,7 @@ export default function MapaGasolineras() {
 
           <MapUpdater center={userLocation} enabled={locationGranted} />
           <DefaultSpainViewController enabled={!locationGranted} />
+          <LocateMeController target={locateMeTarget} />
 
           <GasMapController
             onMarkersUpdate={setMarkers}
@@ -637,6 +670,19 @@ export default function MapaGasolineras() {
             />
           ))}
       </MapContainer>
+
+      {/* Botón centrar en mi ubicación */}
+      <button
+        onClick={handleLocateMe}
+        className="absolute bottom-6 right-4 z-600 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center border border-gray-200 hover:bg-gray-50 active:scale-95 transition"
+        aria-label="Centrar en mi ubicación"
+        title="Centrar en mi ubicación"
+      >
+        {locatingMe
+          ? <div className="w-4 h-4 border-2 border-[#000C74] border-t-transparent rounded-full animate-spin" />
+          : <LuLocateFixed size={18} className={locationGranted ? "text-[#000C74]" : "text-gray-500"} />
+        }
+      </button>
 
       {loading && (
         <div className="absolute bottom-24 right-4 z-500 pointer-events-none">

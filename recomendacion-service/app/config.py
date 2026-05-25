@@ -43,9 +43,9 @@ class Settings(BaseSettings):
     # "auto"    -> usa PostGIS si DATABASE_URL está disponible; si no, API.
     ROUTE_CANDIDATES_SOURCE: Literal["api", "postgis", "auto"] = "postgis"
     DATABASE_URL: str = ""
-    POSTGIS_ROUTE_MAX_CANDIDATES: int = 20
-    MAX_REAL_DETOUR_CHECKS: int = 5
-    MATRIX_MAX_CANDIDATES: int = 20
+    POSTGIS_ROUTE_MAX_CANDIDATES: int = 50
+    MAX_REAL_DETOUR_CHECKS: int = 10
+    MATRIX_MAX_CANDIDATES: int = 30
 
 
     # ── Parámetros por defecto del algoritmo ──────────────────────────────────

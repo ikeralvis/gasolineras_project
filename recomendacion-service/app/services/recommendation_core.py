@@ -56,7 +56,7 @@ def resolve_detour_budget(req: RecomendacionRequest, default_minutes: float, avg
     detour_limit_min = req.max_desvio_min if req.max_desvio_min is not None else default_minutes
     time_based_km = max(1.0, minutes_to_km(detour_limit_min, avg_speed_kmh))
     detour_limit_km = max(req.max_desvio_km, time_based_km)
-    prefilter_buffer_km = min(max(8.0, time_based_km * 2.5), 60.0)
+    prefilter_buffer_km = min(max(12.0, time_based_km * 3.0), 80.0)
     return detour_limit_min, detour_limit_km, prefilter_buffer_km
 
 

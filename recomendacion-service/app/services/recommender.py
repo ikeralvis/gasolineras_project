@@ -58,7 +58,7 @@ async def _apply_matrix_detour_minutes(
         evitar_peajes=req.evitar_peajes,
     )
 
-    if req.evitar_peajes and (matrix_failed or had_nulls):
+    if matrix_failed:
         return matrix_failed, had_nulls
 
     for item, detour_min, detour_km_value in zip(matrix_pool, detour_minutes, detour_km):
@@ -190,16 +190,15 @@ async def build_recommendations(
     )
 
     matrix_failed, matrix_nulls = await _apply_matrix_detour_minutes(req, origin, dest, enriched)
-    skip_matrix_for_tolls = req.evitar_peajes and (matrix_failed or matrix_nulls)
+    # Solo "skip" si el fallo es total (matrix_failed). Nulls parciales no saltan el flujo normal
+    # porque la función ya actualizó los candidatos con datos válidos y saltó los nulos.
+    skip_matrix_for_tolls = req.evitar_peajes and matrix_failed
 
-    # Asegura que el ranking final use desvíos en tiempo obtenidos de ruta real A->S->B.
-    if skip_matrix_for_tolls:
-        exact_refine_limit = min(len(enriched), 5)
-    else:
-        exact_refine_limit = min(
-            len(enriched),
-            max(req.top_n, settings.MAX_REAL_DETOUR_CHECKS),
-        )
+    # Mismo pool de refinamiento exacto con o sin peajes — no recortamos a 5.
+    exact_refine_limit = min(
+        len(enriched),
+        max(req.top_n, settings.MAX_REAL_DETOUR_CHECKS),
+    )
     await _refine_exact_detours(
         req,
         origin,

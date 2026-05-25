@@ -142,12 +142,10 @@ function createMarkerIcon(kind: "origin" | "destination" | "station" | "selected
 function FitRouteBounds({
   coordinates,
   isMobileLayout,
-  showSearchPanel,
   hasBottomSheet,
 }: {
   coordinates: [number, number][];
   isMobileLayout: boolean;
-  showSearchPanel: boolean;
   hasBottomSheet: boolean;
 }) {
   const map = useMap();
@@ -159,10 +157,10 @@ function FitRouteBounds({
       if (coordinates.length < 2) return;
 
       const bounds = L.latLngBounds(coordinates);
-      const topPadding = isMobileLayout ? 110 : 32;
-      const leftPadding = !isMobileLayout ? 408 : 24;
+      const topPadding = isMobileLayout ? 64 : 32;
+      const leftPadding = !isMobileLayout ? 420 : 16;
       const rightPadding = !isMobileLayout && hasBottomSheet ? 440 : 24;
-      const bottomPadding = isMobileLayout && hasBottomSheet ? 310 : 32;
+      const bottomPadding = isMobileLayout && hasBottomSheet ? 420 : 32;
 
       map.fitBounds(bounds, {
         paddingTopLeft: [leftPadding, topPadding],
@@ -173,7 +171,7 @@ function FitRouteBounds({
     }, 120);
 
     return () => globalThis.clearTimeout(timer);
-  }, [coordinates, hasBottomSheet, isMobileLayout, map, showSearchPanel]);
+  }, [coordinates, hasBottomSheet, isMobileLayout, map]);
 
   return null;
 }
@@ -221,7 +219,6 @@ export default function Rutas() {
   const [routeError, setRouteError] = useState<string | null>(null);
   const [routeCoordinates, setRouteCoordinates] = useState<[number, number][]>([]);
   const [routeInfo, setRouteInfo] = useState<{ distanceKm: number; durationMin: number } | null>(null);
-  const [routeQualityNote, setRouteQualityNote] = useState<string | null>(null);
   const [gasStationsNearRoute, setGasStationsNearRoute] = useState<GasStation[]>([]);
   const [selectedStop, setSelectedStop] = useState<GasStation | null>(null);
 
@@ -234,7 +231,6 @@ export default function Rutas() {
   const clearRouteResult = () => {
     setRouteCoordinates([]);
     setRouteInfo(null);
-    setRouteQualityNote(null);
     setGasStationsNearRoute([]);
     setSelectedStop(null);
     setRouteError(null);
@@ -311,7 +307,7 @@ export default function Rutas() {
 
   useEffect(() => {
     const query = destinationInput.trim();
-    if (query.length < 2) {
+    if (query.length < 1) {
       setDestinationSuggestions([]);
       return;
     }
@@ -326,14 +322,14 @@ export default function Rutas() {
       } finally {
         setLoadingDestinationSearch(false);
       }
-    }, 320);
+    }, 250);
 
     return () => globalThis.clearTimeout(timer);
   }, [destinationInput]);
 
   useEffect(() => {
     const query = originInput.trim();
-    if (query.length < 2) {
+    if (query.length < 1) {
       setOriginSuggestions([]);
       return;
     }
@@ -348,7 +344,7 @@ export default function Rutas() {
       } finally {
         setLoadingOriginSearch(false);
       }
-    }, 320);
+    }, 250);
 
     return () => globalThis.clearTimeout(timer);
   }, [originInput]);
@@ -397,18 +393,6 @@ export default function Rutas() {
         distanceKm: data.ruta_base.distancia_km,
         durationMin: data.ruta_base.duracion_min,
       });
-      if (data.metadata?.detour_exact_required_for_top === false) {
-        const exact = Number(data.metadata?.detour_candidates_exact ?? 0);
-        const total = Number(data.metadata?.detour_candidates_total_viable ?? 0);
-        setRouteQualityNote(
-          t("routes.detourEstimateNotice", {
-            defaultValue:
-              "Algunas paradas usan estimación de desvío. Si quieres máxima precisión, vuelve a calcular o abre la ruta en Google Maps para validar.",
-          }) + (total > 0 ? ` (${exact}/${total} exactas)` : "")
-        );
-      } else {
-        setRouteQualityNote(null);
-      }
       setGasStationsNearRoute(fullList);
       setSelectedStop(pickDefaultStop(fullList));
       setShowSearchPanel(false);
@@ -490,7 +474,6 @@ export default function Rutas() {
         <FitRouteBounds
           coordinates={routeCoordinates}
           isMobileLayout={isMobileLayout}
-          showSearchPanel={showSearchPanel}
           hasBottomSheet={Boolean(routeInfo)}
         />
         <MapPickMode pickMode={pickMode} onPick={handlePickFromMap} />
@@ -512,7 +495,7 @@ export default function Rutas() {
       {/* ── Tarjeta de búsqueda flotante ── */}
       <div className="absolute top-3 left-3 right-3 z-[1200] md:left-4 md:right-auto md:w-[388px]">
         {showSearchPanel ? (
-          <div className="bg-white rounded-2xl shadow-2xl shadow-black/15 ring-1 ring-black/[0.06] overflow-visible">
+          <div className="bg-white rounded-2xl shadow-2xl shadow-black/15 ring-1 ring-black/6 overflow-visible">
 
             {/* Inputs */}
             <div className="px-4 pt-4 pb-3">
@@ -777,8 +760,8 @@ export default function Rutas() {
           /* Pill colapsado mostrando origen → destino */
           <button
             type="button"
-            className="flex items-center gap-2 bg-white rounded-full shadow-xl shadow-black/10 ring-1 ring-black/[0.06] px-4 py-2.5 hover:bg-gray-50 active:bg-gray-100 transition max-w-full"
-            onClick={() => setShowSearchPanel(true)}
+            className="flex items-center gap-2 bg-white rounded-full shadow-xl shadow-black/10 ring-1 ring-black/6 px-4 py-2.5 hover:bg-gray-50 active:bg-gray-100 transition max-w-full"
+            onClick={() => { setShowSearchPanel(true); clearRouteResult(); }}
           >
             <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0" />
             <span className="text-sm font-medium text-gray-800 truncate max-w-[110px]">
@@ -818,83 +801,76 @@ export default function Rutas() {
       {/* ── Panel de resultados ── */}
       {routeInfo && (
         <section className="pointer-events-none fixed inset-x-0 bottom-[4.75rem] z-[1180] px-3 pb-[max(env(safe-area-inset-bottom),0px)] md:inset-auto md:right-5 md:top-4 md:bottom-auto md:w-[388px] md:px-0 md:pb-0">
-          <div className="pointer-events-auto overflow-hidden rounded-t-3xl md:rounded-2xl bg-white shadow-2xl shadow-black/12 ring-1 ring-black/[0.06]">
+          <div className="pointer-events-auto rounded-t-3xl md:rounded-2xl bg-white shadow-2xl shadow-black/12 ring-1 ring-black/6 flex flex-col overflow-hidden">
 
             {/* Drag handle (solo móvil) */}
-            <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-gray-200 md:hidden" />
+            <div className="mx-auto mt-2.5 mb-1 h-1 w-10 rounded-full bg-gray-200 md:hidden shrink-0" />
 
-            <div className="max-h-[62vh] overflow-y-auto overscroll-contain p-4 space-y-3 md:max-h-[calc(100dvh-120px)]">
+            {/* Contenido desplazable */}
+            <div className="overflow-y-auto overscroll-contain px-4 pt-2 pb-2 space-y-2.5 max-h-[34vh] md:max-h-[calc(100dvh-160px)]">
 
               {/* Resumen de ruta */}
               <div className="grid grid-cols-2 gap-2">
-                <div className="rounded-2xl bg-[#f0f5ff] px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                <div className="rounded-xl bg-[#f0f5ff] px-3 py-2.5">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400">
                     {t("routes.distance")}
                   </p>
-                  <p className="text-xl font-extrabold text-[#0f2f67] mt-0.5">
+                  <p className="text-lg font-extrabold text-[#0f2f67] mt-0.5">
                     {routeInfo.distanceKm.toFixed(1)}
-                    <span className="text-sm font-semibold text-blue-400 ml-1">km</span>
+                    <span className="text-xs font-semibold text-blue-400 ml-1">km</span>
                   </p>
                 </div>
-                <div className="rounded-2xl bg-[#f0f5ff] px-4 py-3">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                <div className="rounded-xl bg-[#f0f5ff] px-3 py-2.5">
+                  <p className="text-[9px] font-bold uppercase tracking-widest text-blue-400">
                     {t("routes.duration")}
                   </p>
-                  <p className="text-xl font-extrabold text-[#0f2f67] mt-0.5">
+                  <p className="text-lg font-extrabold text-[#0f2f67] mt-0.5">
                     {formatDurationShort(routeInfo.durationMin)}
                   </p>
                 </div>
               </div>
 
-              {routeQualityNote && (
-                <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 leading-relaxed">
-                  {routeQualityNote}
-                </p>
-              )}
-
               {/* Lista de candidatas */}
               {candidateStops.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
                       {t("routes.stopOptions")}
                     </h3>
-                    <span className="text-[11px] font-semibold text-gray-400">
-                      {candidateStops.length} {t("routes.candidatesCount", { defaultValue: "candidatas", count: candidateStops.length })}
+                    <span className="text-[10px] font-semibold text-gray-400">
+                      {candidateStops.length} paradas
                     </span>
                   </div>
 
-                  <div className="space-y-2 max-h-52 overflow-y-auto overscroll-contain pr-1">
+                  <div className="space-y-1.5">
                     {candidateStops.map((station) => {
                       const isSelected = selectedStop?.id === station.id;
                       return (
                         <button
                           key={station.id}
                           type="button"
-                          className={`w-full rounded-2xl border px-3.5 py-3 text-left transition ${
+                          className={`w-full rounded-xl border px-3 py-2 text-left transition ${
                             isSelected
                               ? "border-blue-300 bg-blue-50 ring-1 ring-blue-200"
-                              : "border-gray-100 bg-white hover:border-gray-200 hover:bg-gray-50/80"
+                              : "border-gray-100 bg-white hover:bg-gray-50"
                           }`}
                           onClick={() => setSelectedStop(station)}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <p className="truncate text-sm font-bold text-gray-900">{station.nombre}</p>
+                            <p className="truncate text-xs font-semibold text-gray-900 flex-1">{station.nombre}</p>
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+                              <span className="text-sm font-bold text-gray-900">€{station.precio_litro.toFixed(3)}</span>
+                              <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[9px] font-bold text-violet-700">
                                 #{station.posicion}
                               </span>
                             </div>
                           </div>
-                          <p className="truncate text-xs text-gray-400 mt-0.5">
-                            {station.municipio}{station.provincia ? ` · ${station.provincia}` : ""}
-                          </p>
-                          <div className="flex items-center gap-3 mt-1.5">
-                            <span className="text-sm font-bold text-gray-900">€{station.precio_litro.toFixed(3)}</span>
-                            <span className="text-xs text-gray-400">+{station.desvio_km.toFixed(1)} km</span>
-                            <span className="text-xs text-gray-400">+{formatDurationShort(station.desvio_min_estimado)}</span>
-                            <span className="ml-auto text-[10px] font-semibold text-blue-500 bg-blue-50 rounded-full px-2 py-0.5">
-                              {Math.round(station.porcentaje_ruta)}% ruta
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-[10px] text-gray-400 flex-1 truncate">
+                              {station.municipio}{station.provincia ? ` · ${station.provincia}` : ""}
+                            </span>
+                            <span className="text-[10px] text-gray-400 shrink-0">
+                              +{station.desvio_km.toFixed(1)} km · +{formatDurationShort(station.desvio_min_estimado)}
                             </span>
                           </div>
                         </button>
@@ -903,39 +879,17 @@ export default function Rutas() {
                   </div>
                 </div>
               )}
+            </div>
 
-              {/* Parada seleccionada */}
-              {selectedStop && (
-                <article className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 to-indigo-50/60 p-4">
-                  <p className="text-sm font-extrabold text-[#0f2f67] leading-tight">{selectedStop.nombre}</p>
-                  {selectedStop.direccion && (
-                    <p className="text-xs text-blue-400 mt-0.5 truncate">{selectedStop.direccion}</p>
-                  )}
-                  <div className="mt-3 grid grid-cols-3 gap-2">
-                    <div className="rounded-xl bg-white/80 px-2 py-2 text-center">
-                      <p className="text-[10px] text-gray-400 font-semibold">€/L</p>
-                      <p className="text-base font-extrabold text-[#0f2f67]">{selectedStop.precio_litro.toFixed(3)}</p>
-                    </div>
-                    <div className="rounded-xl bg-white/80 px-2 py-2 text-center">
-                      <p className="text-[10px] text-gray-400 font-semibold">+km</p>
-                      <p className="text-base font-extrabold text-[#0f2f67]">{selectedStop.desvio_km.toFixed(1)}</p>
-                    </div>
-                    <div className="rounded-xl bg-white/80 px-2 py-2 text-center">
-                      <p className="text-[10px] text-gray-400 font-semibold">+min</p>
-                      <p className="text-base font-extrabold text-[#0f2f67]">{formatDurationShort(selectedStop.desvio_min_estimado)}</p>
-                    </div>
-                  </div>
-                </article>
-              )}
-
-              {/* Botón navegar */}
+            {/* Botón navegar — siempre visible fuera del scroll */}
+            <div className="px-4 pb-4 pt-2.5 border-t border-gray-100 shrink-0">
               <button
                 type="button"
-                className="w-full flex items-center justify-center gap-2 rounded-2xl bg-[#1f4fa0] hover:bg-[#1a4491] active:bg-[#163a88] text-white py-3.5 text-sm font-bold transition disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#1f4fa0] hover:bg-[#1a4491] active:bg-[#163a88] text-white py-3 text-sm font-bold transition disabled:opacity-50"
                 onClick={startNavigationInGoogleMaps}
                 disabled={!origin || !destination}
               >
-                <LuNavigation size={16} />
+                <LuNavigation size={15} />
                 {selectedStop
                   ? t("routes.openInGoogleWithStop", { defaultValue: "Iniciar ruta con parada" })
                   : t("routes.openInGoogle", { defaultValue: "Iniciar ruta" })}

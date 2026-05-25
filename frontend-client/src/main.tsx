@@ -18,9 +18,11 @@ if (import.meta.env.PROD) {
   // @ts-ignore - module injected by vite-plugin-pwa at build time
   import('virtual:pwa-register')
     .then(({ registerSW }) => {
-      registerSW({
+      const updateSW = registerSW({
         onNeedRefresh() {
-          alert('Nueva versión disponible. Por favor, actualiza la página.');
+          if (confirm('Nueva versión disponible. ¿Actualizar ahora?')) {
+            updateSW(true);
+          }
         },
         onOfflineReady() {
           alert('El contenido está listo para usarse sin conexión.');
