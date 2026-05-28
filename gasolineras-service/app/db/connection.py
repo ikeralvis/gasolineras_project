@@ -33,6 +33,17 @@ def is_db_configured() -> bool:
 _pool: Any | None = None
 
 
+def _with_default_query_params(dsn: str, required: dict[str, str]) -> str:
+    lower_dsn = dsn.lower()
+    missing = [f"{key}=" for key in required.keys() if key not in lower_dsn]
+    if not missing:
+        return dsn
+
+    connector = "&" if "?" in dsn else "?"
+    suffix = "&".join(f"{key}={value}" for key, value in required.items() if f"{key}=" not in lower_dsn)
+    return dsn + connector + suffix
+
+
 def _build_pool():
     """Crea el pool de conexiones."""
     if not _HAS_PSYCOPG2:
@@ -41,10 +52,18 @@ def _build_pool():
         raise RuntimeError("DATABASE_URL env var is not set")
 
     dsn = DATABASE_URL
-    # Añadimos sslmode=require para Neon si no está ya especificado
-    if "sslmode" not in dsn:
-        connector = "&" if "?" in dsn else "?"
-        dsn = dsn + connector + "sslmode=require"
+    # Añadimos sslmode=require y keepalives si no están ya especificados
+    dsn = _with_default_query_params(
+        dsn,
+        {
+            "sslmode": "require",
+            "keepalives": "1",
+            "keepalives_idle": "30",
+            "keepalives_interval": "10",
+            "keepalives_count": "5",
+            "connect_timeout": "5",
+        },
+    )
 
     logger.info("🔌 Creando pool de conexiones PostgreSQL...")
     return psycopg2.pool.ThreadedConnectionPool(
@@ -65,6 +84,11 @@ def get_pool():
     return _pool
 
 
+def _ping_connection(conn) -> None:
+    with conn.cursor() as cur:
+        cur.execute("SELECT 1")
+
+
 def _acquire_connection():
     """Obtiene una conexión viva del pool y recrea el pool si quedó inválido."""
     pool = get_pool()
@@ -82,6 +106,16 @@ def _acquire_connection():
         global _pool
         _pool = None
         conn = get_pool().getconn()
+
+    # Pre-ping: descarta conexiones muertas aunque conn.closed sea False.
+    try:
+        _ping_connection(conn)
+    except psycopg2.OperationalError as exc:
+        logger.warning("♻️ Conexión PostgreSQL muerta, recreando pool: %s", exc)
+        pool.closeall()
+        _pool = None
+        conn = get_pool().getconn()
+        _ping_connection(conn)
 
     return conn
 
