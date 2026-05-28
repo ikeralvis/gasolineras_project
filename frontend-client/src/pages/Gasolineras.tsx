@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
 import GasolinerasTable from "../components/GasolinerasTable";
@@ -62,6 +62,7 @@ export default function Gasolineras() {
     const [radioKm, setRadioKm] = useState(50);
     const [usarCercania, setUsarCercania] = useState(false);
     const [baseRadioKm, setBaseRadioKm] = useState<number | null>(null);
+    const autoCercaniaTriggeredRef = useRef(false);
 
     const [provincia, setProvincia] = useState("");
     const [municipio, setMunicipio] = useState("");
@@ -244,6 +245,16 @@ export default function Gasolineras() {
             cargarGasolinerasCerca(userLocation.lat, userLocation.lon, radioKm);
         }
     }, [usarCercania, userLocation, radioKm, baseRadioKm]);
+
+    useEffect(() => {
+        if (!userLocation) return;
+        if (usarCercania) return;
+        if (autoCercaniaTriggeredRef.current) return;
+        autoCercaniaTriggeredRef.current = true;
+        setUsarCercania(true);
+        setLoading(true);
+        cargarGasolinerasCerca(userLocation.lat, userLocation.lon, radioKm);
+    }, [userLocation, usarCercania, radioKm]);
 
     const ordenarPorPrecio = () => {
         setModoOrden("price");

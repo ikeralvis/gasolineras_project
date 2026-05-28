@@ -8,7 +8,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import L from "leaflet";
-import { LuZap, LuMapPin, LuClock, LuX, LuPhone, LuGlobe, LuInfo } from "react-icons/lu";
+import { LuZap, LuMapPin, LuClock, LuX, LuPhone, LuGlobe, LuInfo, LuLocateFixed } from "react-icons/lu";
 import { useTranslation } from "react-i18next";
 import {
   BoundingBoxTooLargeError,
@@ -118,6 +118,20 @@ function DefaultSpainViewController({ enabled }: Readonly<{ enabled: boolean }>)
     }
     map.fitBounds(SPAIN_BOUNDS, { padding: [24, 24] });
   }, [enabled, map]);
+
+  return null;
+}
+
+function LocateMeController({ target }: { target: [number, number] | null }) {
+  const map = useMap();
+  const prevRef = useRef<[number, number] | null>(null);
+
+  useEffect(() => {
+    if (!target) return;
+    if (prevRef.current && prevRef.current[0] === target[0] && prevRef.current[1] === target[1]) return;
+    prevRef.current = target;
+    map.setView(target, 14, { animate: true });
+  }, [target, map]);
 
   return null;
 }
@@ -575,6 +589,8 @@ export default function MapaRecarga() {
   const [zoomTooLow, setZoomTooLow] = useState(false);
   const [bboxTooLargeZoom, setBboxTooLargeZoom] = useState<number | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [locateMeTarget, setLocateMeTarget] = useState<[number, number] | null>(null);
+  const [locatingMe, setLocatingMe] = useState(false);
 
   const locationCount = markers.filter((m) => m.type === "location").length;
   const clusterCount = markers.filter((m) => m.type === "cluster").length;
@@ -594,6 +610,23 @@ export default function MapaRecarga() {
       { timeout: 5000 }
     );
   }, []);
+
+  const handleLocateMe = () => {
+    if (!navigator.geolocation || locatingMe) return;
+    setLocatingMe(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coord: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        localStorage.setItem(EV_GEO_STORAGE_KEY, JSON.stringify(coord));
+        setUserLocation(coord);
+        setLocationGranted(true);
+        setLocateMeTarget(coord);
+        setLocatingMe(false);
+      },
+      () => setLocatingMe(false),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 10000 }
+    );
+  };
 
   return (
     <div className="w-full h-[calc(100dvh-64px)] flex flex-col relative overflow-hidden">
@@ -648,6 +681,7 @@ export default function MapaRecarga() {
 
         <MapUpdater center={userLocation} enabled={locationGranted} />
         <DefaultSpainViewController enabled={!locationGranted} />
+        <LocateMeController target={locateMeTarget} />
 
         <EVMapController
           onMarkersUpdate={setMarkers}
@@ -695,6 +729,19 @@ export default function MapaRecarga() {
           );
         })}
       </MapContainer>
+
+      {/* Boton centrar en mi ubicacion */}
+      <button
+        onClick={handleLocateMe}
+        className="absolute bottom-6 right-4 z-600 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center border border-gray-200 hover:bg-gray-50 active:scale-95 transition"
+        aria-label="Centrar en mi ubicación"
+        title="Centrar en mi ubicación"
+      >
+        {locatingMe
+          ? <div className="w-4 h-4 border-2 border-[#000C74] border-t-transparent rounded-full animate-spin" />
+          : <LuLocateFixed size={18} className={locationGranted ? "text-[#000C74]" : "text-gray-500"} />
+        }
+      </button>
 
       {/* ── Details drawer ── */}
       <LocationDrawer
