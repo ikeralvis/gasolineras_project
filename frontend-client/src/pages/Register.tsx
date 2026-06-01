@@ -199,7 +199,15 @@ export default function Register() {
       >
         <div className="landing-panel rounded-3xl p-5 sm:p-7">
           <div className="mb-6 flex items-center justify-center">
-            <img src={logo} alt="TankGo" className="h-14 w-auto" />
+            <img
+              src={logo}
+              alt="TankGo"
+              width={160}
+              height={160}
+              loading="eager"
+              decoding="async"
+              className="h-14 w-auto"
+            />
           </div>
 
           <div className="mb-4">

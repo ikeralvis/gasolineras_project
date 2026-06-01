@@ -205,9 +205,13 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                   <td className="py-4">
                     <div className="flex items-center gap-3">
                       {logo ? (
-                        <img 
-                          src={logo} 
-                          alt={stationName} 
+                        <img
+                          src={logo}
+                          alt={stationName}
+                          width={40}
+                          height={40}
+                          loading="lazy"
+                          decoding="async"
                           className="w-10 h-10 object-contain rounded-lg bg-white shadow-sm p-1"
                         />
                       ) : (

@@ -95,7 +95,16 @@ function App() {
       }
     }
 
-    checkAndSync();
+    const runCheck = () => {
+      void checkAndSync();
+    };
+
+    if ("requestIdleCallback" in window) {
+      (window as Window & { requestIdleCallback: (cb: IdleRequestCallback, opts?: IdleRequestOptions) => number })
+        .requestIdleCallback(runCheck, { timeout: 1500 });
+    } else {
+      window.setTimeout(runCheck, 300);
+    }
   }, [API_BASE_URL]);
 
   return (

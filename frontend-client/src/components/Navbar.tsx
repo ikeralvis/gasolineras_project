@@ -88,7 +88,15 @@ export default function Navbar() {
         <header className="sticky top-0 z-50 hidden border-b border-(--color-border) bg-white/70 backdrop-blur-xl md:block">
           <nav className="mx-auto flex h-16 w-full max-w-7xl items-center justify-between px-6">
             <Link to="/" className="flex items-center gap-3">
-              <img src={logo} alt="TankGo" className="h-10 w-auto object-contain" />
+              <img
+                src={logo}
+                alt="TankGo"
+                width={160}
+                height={160}
+                loading="eager"
+                decoding="async"
+                className="h-10 w-auto object-contain"
+              />
             </Link>
 
             <div className="flex items-center gap-1 rounded-full bg-white/75 p-1 ring-1 ring-(--color-border)">

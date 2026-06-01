@@ -71,7 +71,16 @@ export default function Home() {
         <div className="landing-panel rounded-3xl p-5 sm:p-8">
           <div className="mb-8 flex items-center justify-between gap-3 sm:mb-10">
             <div className="flex items-center gap-3">
-              <img src={logo} alt="TankGo" className="h-9 w-auto sm:h-11" />
+              <img
+                src={logo}
+                alt="TankGo"
+                width={160}
+                height={160}
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
+                className="h-9 w-auto sm:h-11"
+              />
               <span className="text-xs font-semibold tracking-[0.18em] text-(--color-text-muted) uppercase">
                 movilidad inteligente
               </span>
