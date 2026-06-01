@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { ReactElement } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { applyPageMeta } from "./seo";
 import Home from "./pages/Home";
 import Navbar from "./components/Navbar";
 import Gasolineras from "./pages/Gasolineras";
@@ -39,6 +40,10 @@ function AppContent() {
   const location = useLocation();
   const isAuthPage = location.pathname === "/login" || location.pathname === "/register";
   const isMapPage = location.pathname === "/mapa" || location.pathname === "/recarga";
+
+  useEffect(() => {
+    applyPageMeta(location.pathname);
+  }, [location.pathname]);
 
   return (
     <>

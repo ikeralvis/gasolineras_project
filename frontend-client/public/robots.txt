@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /login
+Disallow: /register
+Disallow: /profile
+Disallow: /favoritos
+Disallow: /rutas
+Disallow: /gasolinera/
+
+Sitemap: https://tankgo.dev/sitemap.xml

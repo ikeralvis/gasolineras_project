@@ -19,10 +19,9 @@ if (import.meta.env.PROD) {
   import('virtual:pwa-register')
     .then(({ registerSW }) => {
       const updateSW = registerSW({
+        immediate: true,
         onNeedRefresh() {
-          if (confirm('Nueva versión disponible. ¿Actualizar ahora?')) {
-            updateSW(true);
-          }
+          updateSW(true);
         },
         onOfflineReady() {
           alert('El contenido está listo para usarse sin conexión.');
