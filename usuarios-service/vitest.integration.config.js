@@ -12,7 +12,7 @@ export default defineConfig({
     forks: { singleFork: true },
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'json-summary', 'html'],
       include: ['src/**/*.js'],
       exclude: ['node_modules/', 'tests/', 'src/index.js'],
     },

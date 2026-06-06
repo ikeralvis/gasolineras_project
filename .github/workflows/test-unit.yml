@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [master, main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
   # recomendacion-service
@@ -40,12 +43,48 @@ jobs:
             --cov=app \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
+            --cov-report=json:coverage.json \
+            --cov-report=html:htmlcov \
             -v
 
-      - name: Upload coverage report
+      - name: Coverage summary → GitHub Step Summary
+        run: |
+          python - <<'PYEOF'
+          import json, os
+          with open("coverage.json") as f:
+              data = json.load(f)
+          t = data["totals"]
+          pct = t["percent_covered"]
+          icon = "🟢" if pct >= 80 else ("🟡" if pct >= 60 else "🔴")
+          lines = [
+              "## Coverage — recomendacion-service",
+              "",
+              f"{icon} **Total: {pct:.1f}%** &nbsp; ({t['covered_lines']}/{t['num_statements']} statements, {t['missing_lines']} missing)",
+              "",
+              "| File | Stmts | Miss | Cover |",
+              "|------|------:|-----:|------:|",
+          ]
+          for path, info in sorted(data["files"].items()):
+              short = path.replace("app/", "")
+              s = info["summary"]
+              p = s["percent_covered"]
+              fi = "🟢" if p >= 80 else ("🟡" if p >= 60 else "🔴")
+              lines.append(f"| `{short}` | {s['num_statements']} | {s['missing_lines']} | {fi} {p:.1f}% |")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n")
+          PYEOF
+
+      - name: Upload HTML coverage report
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-recomendacion
+          name: coverage-recomendacion-html
+          path: recomendacion-service/htmlcov/
+          retention-days: 7
+
+      - name: Upload XML coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-recomendacion-xml
           path: recomendacion-service/coverage.xml
           retention-days: 7
 
@@ -74,17 +113,52 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run unit tests with coverage
-        # Solo los tests unitarios puros (sin BD ni red)
         run: |
           pytest tests/test_models.py tests/test_sync_parser.py \
             --cov=app \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \
+            --cov-report=json:coverage.json \
+            --cov-report=html:htmlcov \
             -v
 
-      - name: Upload coverage report
+      - name: Coverage summary → GitHub Step Summary
+        run: |
+          python - <<'PYEOF'
+          import json, os
+          with open("coverage.json") as f:
+              data = json.load(f)
+          t = data["totals"]
+          pct = t["percent_covered"]
+          icon = "🟢" if pct >= 80 else ("🟡" if pct >= 60 else "🔴")
+          lines = [
+              "## Coverage — gasolineras-service",
+              "",
+              f"{icon} **Total: {pct:.1f}%** &nbsp; ({t['covered_lines']}/{t['num_statements']} statements, {t['missing_lines']} missing)",
+              "",
+              "| File | Stmts | Miss | Cover |",
+              "|------|------:|-----:|------:|",
+          ]
+          for path, info in sorted(data["files"].items()):
+              short = path.replace("app/", "")
+              s = info["summary"]
+              p = s["percent_covered"]
+              fi = "🟢" if p >= 80 else ("🟡" if p >= 60 else "🔴")
+              lines.append(f"| `{short}` | {s['num_statements']} | {s['missing_lines']} | {fi} {p:.1f}% |")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write("\n".join(lines) + "\n")
+          PYEOF
+
+      - name: Upload HTML coverage report
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-gasolineras-unit
+          name: coverage-gasolineras-html
+          path: gasolineras-service/htmlcov/
+          retention-days: 7
+
+      - name: Upload XML coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-gasolineras-xml
           path: gasolineras-service/coverage.xml
           retention-days: 7

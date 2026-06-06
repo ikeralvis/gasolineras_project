@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [master, main]
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   integration-usuarios:
     name: usuarios-service · vitest (PostgreSQL)
@@ -32,9 +35,6 @@ jobs:
         working-directory: usuarios-service
 
     env:
-      # Las variables de test usan valores hardcodeados seguros (no son los de producción).
-      # JWT_SECRET e INTERNAL_API_SECRET se leen de GitHub Secrets para poder
-      # sobreescribirlos si algún día se necesitan valores distintos.
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
       JWT_SECRET: ${{ secrets.JWT_SECRET || 'integration-test-jwt-secret-minimum-32-chars' }}
       INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET || 'test-internal-secret' }}
@@ -76,7 +76,38 @@ jobs:
             --config vitest.integration.config.js \
             --coverage
 
-      - name: Upload coverage report
+      - name: Coverage summary → GitHub Step Summary
+        if: always()
+        run: |
+          node - <<'JSEOF'
+          const fs = require('fs');
+          const path = 'coverage/coverage-summary.json';
+          if (!fs.existsSync(path)) { console.log('No coverage summary found'); process.exit(0); }
+          const data = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const total = data.total;
+          const pct = total.lines.pct;
+          const icon = pct >= 80 ? '🟢' : pct >= 60 ? '🟡' : '🔴';
+          const rows = [
+            '## Coverage — usuarios-service',
+            '',
+            `${icon} **Total: ${pct.toFixed(1)}%** (lines) &nbsp;|&nbsp; Stmts: ${total.statements.pct.toFixed(1)}% &nbsp;|&nbsp; Fns: ${total.functions.pct.toFixed(1)}% &nbsp;|&nbsp; Branches: ${total.branches.pct.toFixed(1)}%`,
+            '',
+            '| File | Stmts % | Fns % | Lines % |',
+            '|------|--------:|------:|--------:|',
+          ];
+          for (const [file, info] of Object.entries(data)) {
+            if (file === 'total') continue;
+            const short = file.replace(/.*\/src\//, 'src/');
+            const fp = info.lines.pct;
+            const fi = fp >= 80 ? '🟢' : fp >= 60 ? '🟡' : '🔴';
+            rows.push(`| \`${short}\` | ${info.statements.pct.toFixed(1)}% | ${info.functions.pct.toFixed(1)}% | ${fi} ${fp.toFixed(1)}% |`);
+          }
+          const summary = process.env.GITHUB_STEP_SUMMARY;
+          if (summary) fs.appendFileSync(summary, rows.join('\n') + '\n');
+          else console.log(rows.join('\n'));
+          JSEOF
+
+      - name: Upload HTML coverage report
         uses: actions/upload-artifact@v4
         with:
           name: coverage-usuarios-integration

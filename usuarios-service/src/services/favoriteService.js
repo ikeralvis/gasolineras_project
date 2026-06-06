@@ -39,7 +39,7 @@ export class FavoriteService {
     if (!removed) {
       return { ok: false, statusCode: 404, error: 'Favorito no encontrado.' };
     }
-    return { ok: true, statusCode: 200, data: { message: 'Favorito eliminado correctamente.' } };
+    return { ok: true, statusCode: 204, data: null };
   }
 
   async listAllIdeess() {
