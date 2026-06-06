@@ -25,7 +25,7 @@ export function usePredictions(ideessList: string[]): UsePredictionsResult {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const stableKey = [...ideessList].sort().join(',');
+  const stableKey = [...ideessList].sort((a, b) => a.localeCompare(b)).join(',');
 
   useEffect(() => {
     if (!stableKey) {

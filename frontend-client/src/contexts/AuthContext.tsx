@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { authAPI } from '../services/auth';
-import { setAuthToken, clearAuthToken } from '../api/tokenStore';
+import { setAuthToken, clearAuthToken, getAuthToken } from '../api/tokenStore';
 import type { User } from '../types/auth';
 
 type RegisterPayload = {
@@ -29,6 +29,27 @@ interface AuthProviderProps {
 }
 
 const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const SESSION_HINT_KEY = 'tankgo_has_session';
+
+function hasSessionHint(): boolean {
+  try {
+    return localStorage.getItem(SESSION_HINT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function setSessionHint(active: boolean): void {
+  try {
+    if (active) {
+      localStorage.setItem(SESSION_HINT_KEY, '1');
+    } else {
+      localStorage.removeItem(SESSION_HINT_KEY);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -38,13 +59,21 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [loading, setLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
+    const authToken = getAuthToken();
+    if (!authToken && !hasSessionHint()) {
+      setUser(null);
+      setToken(null);
+      return;
+    }
     try {
       const userData = await authAPI.getProfile();
       setUser(userData);
       setToken('cookie-session');
+      setSessionHint(true);
     } catch {
       setUser(null);
       setToken(null);
+      setSessionHint(false);
     }
   }, []);
 
@@ -63,6 +92,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setToken(newToken);
       setUser(userData);
       if (newToken) setAuthToken(newToken);
+      setSessionHint(true);
       return userData;
     } catch (error: unknown) {
       console.error('❌ Error en login:', error);
@@ -79,10 +109,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setAuthToken(newToken);
       const userData = await authAPI.getProfile();
       setUser(userData);
+      setSessionHint(true);
       return userData;
     } catch (error: unknown) {
       console.error('❌ Error en loginWithToken:', error);
       setToken(null);
+      setSessionHint(false);
       const axiosError = error as { response?: { data?: { error?: string } } };
       throw new Error(axiosError.response?.data?.error || 'Error al iniciar sesión con token');
     }
@@ -107,6 +139,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const { token: newToken } = await response.json();
       setToken(newToken ?? null);
       if (newToken) setAuthToken(newToken);
+      setSessionHint(true);
 
       const userData = await authAPI.getProfile();
       setUser(userData);
@@ -114,6 +147,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error: unknown) {
       console.error('❌ Error en loginWithGoogleCredential:', error);
       setToken(null);
+      setSessionHint(false);
       if (error instanceof Error) {
         throw error;
       }
@@ -138,6 +172,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setUser(null);
     setToken(null);
     clearAuthToken();
+    setSessionHint(false);
   }, []);
 
   const contextValue = useMemo(() => ({

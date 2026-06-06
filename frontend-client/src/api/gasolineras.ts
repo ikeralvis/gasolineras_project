@@ -83,7 +83,7 @@ export async function getGasolinerasCerca(lat: number, lon: number, km: number):
 
     // El backend devuelve { gasolineras: [...] }
     if (!data.gasolineras || !Array.isArray(data.gasolineras)) {
-      console.error("⚠️ Respuesta inesperada:", data);
+      console.error("⚠️ Respuesta inesperada: gasolineras no es un array");
       return [];
     }
 

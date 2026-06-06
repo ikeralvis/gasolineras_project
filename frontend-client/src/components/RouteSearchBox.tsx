@@ -58,8 +58,8 @@ export default function RouteSearchBox({
       const suggestions: LocationOption[] = data.map((result: any) => ({
         name: result.name || result.display_name.split(",")[0],
         address: result.display_name,
-        lat: parseFloat(result.lat),
-        lng: parseFloat(result.lon),
+        lat: Number.parseFloat(result.lat),
+        lng: Number.parseFloat(result.lon),
         type: "nominatim",
       }));
 
@@ -198,6 +198,7 @@ export default function RouteSearchBox({
             <input
               id="origin-input"
               type="text"
+              role="combobox"
               className="route-input"
               placeholder={t("routes.fromPlaceholder")}
               value={originInput}
@@ -271,6 +272,7 @@ export default function RouteSearchBox({
             <input
               id="destination-input"
               type="text"
+              role="combobox"
               className="route-input"
               placeholder={t("routes.toPlaceholder")}
               value={destinationInput}

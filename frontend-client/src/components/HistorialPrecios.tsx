@@ -32,7 +32,7 @@ interface DatosGrafico {
 
 const parsePrecio = (precio?: string | number | null): number | undefined => {
   if (precio === null || precio === undefined || precio === "") return undefined;
-  const raw = typeof precio === "number" ? String(precio) : String(precio);
+  const raw = String(precio);
   const num = Number.parseFloat(raw.replace(",", "."));
   return Number.isNaN(num) || num === 0 ? undefined : num;
 };

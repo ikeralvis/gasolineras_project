@@ -7,6 +7,7 @@ import asyncio
 import json
 import logging
 import os
+import uuid as uuid_module
 from datetime import datetime, timezone, timedelta
 from typing import Annotated, Any
 
@@ -236,12 +237,17 @@ async def ev_markers(bbox: EvBoundingBoxRequest):
 @router.get(
     "/api/charging/details/{location_id}",
     summary="Detalle EV por location_id",
-    responses={404: {"description": "No encontrado"}, 502: {"description": "API EV externa no disponible"}},
+    responses={400: {"description": "ID de localización inválido"}, 404: {"description": "No encontrado"}, 502: {"description": "API EV externa no disponible"}},
 )
 @router.get("/gasolineras/ev/details/{location_id}", include_in_schema=False)
 async def ev_details(
     location_id: Annotated[str, Path(description="UUID de la localizacion EV")],
 ):
+    try:
+        uuid_module.UUID(location_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid location ID format")
+
     cached = _details_cache.get(location_id)
     if cached:
         cached_at, cached_data = cached

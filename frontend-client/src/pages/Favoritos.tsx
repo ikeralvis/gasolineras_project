@@ -37,7 +37,7 @@ export default function Favoritos() {
 
   const cargarGasolinerasFavoritas = useCallback(async (ids: string[]) => {
     const uniqueIds = [...new Set(ids)];
-    const key = [...uniqueIds].sort().join('|');
+    const key = [...uniqueIds].sort((a, b) => a.localeCompare(b)).join('|');
     const lastFetch = lastFetchRef.current;
     if (lastFetch?.key === key && Date.now() - lastFetch.at < 30_000) {
       return;

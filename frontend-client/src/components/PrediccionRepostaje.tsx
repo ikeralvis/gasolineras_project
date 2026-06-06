@@ -65,7 +65,7 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
   const forecastDates = useMemo(() => {
     const firstStation = Object.values(byStation)[0] ?? [];
     const byFuel = firstStation.filter((p: PredictionPoint) => p.fuel === fuelKey);
-    return [...new Set(byFuel.map((p: PredictionPoint) => p.forecast_date))].sort();
+    return [...new Set(byFuel.map((p: PredictionPoint) => p.forecast_date))].sort((a, b) => a.localeCompare(b));
   }, [byStation, fuelKey]);
 
   const best = useMemo(() => {

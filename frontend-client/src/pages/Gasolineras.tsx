@@ -412,9 +412,11 @@ export default function Gasolineras() {
             {filtrosAbiertos && (
                 <>
                     {/* Backdrop */}
-                    <div
-                        className="fixed inset-0 bg-black/40 z-40 backdrop-blur-[2px]"
+                    <button
+                        type="button"
+                        className="fixed inset-0 bg-black/40 z-40 backdrop-blur-[2px] cursor-default"
                         onClick={() => setFiltrosAbiertos(false)}
+                        aria-label={t('common.close')}
                     />
 
                     {/* Panel – bottom sheet en móvil, modal centrado en desktop */}

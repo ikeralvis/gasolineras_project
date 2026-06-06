@@ -45,7 +45,7 @@ export class UserRepository {
     const COLUMNS = {
       NAME: 'nombre',
       EMAIL: 'email',
-      PASSWORD_HASH: 'password_hash',
+      PASS_COL: 'password_hash',
       FUEL_PREFERENCE: 'combustible_favorito',
       CAR_MODEL: 'modelo_coche',
       CAR_FUEL_TYPE: 'tipo_combustible_coche',
@@ -54,7 +54,7 @@ export class UserRepository {
     const allowed = {
       nombre: COLUMNS.NAME,
       email: COLUMNS.EMAIL,
-      password_hash: COLUMNS.PASSWORD_HASH,
+      password_hash: COLUMNS.PASS_COL,
       combustible_favorito: COLUMNS.FUEL_PREFERENCE,
       modelo_coche: COLUMNS.CAR_MODEL,
       tipo_combustible_coche: COLUMNS.CAR_FUEL_TYPE,
