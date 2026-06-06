@@ -39,7 +39,7 @@ jobs:
 
       - name: Run unit tests with coverage
         run: |
-          pytest tests/test_geo_math.py tests/test_recommender.py \
+          pytest tests/test_geo_math.py tests/test_recommender.py tests/test_schemas.py \
             --cov=app \
             --cov-report=term-missing \
             --cov-report=xml:coverage.xml \

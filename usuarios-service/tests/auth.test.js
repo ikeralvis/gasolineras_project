@@ -1,14 +1,23 @@
 /**
  * Tests de integración — Auth routes con PostgreSQL real.
  * Se ejecutan con: npx vitest run --config vitest.integration.config.js
- *
- * Requieren DATABASE_URL apuntando a una instancia postgres con el schema creado.
- * Si DATABASE_URL no está definido, todos los tests se omiten.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildTestServer } from './helpers/buildTestServer.js';
 
 const hasDB = !!process.env.DATABASE_URL;
+
+describe.skipIf(!hasDB)('GET /health', () => {
+  let app;
+
+  beforeAll(async () => { app = await buildTestServer(); });
+  afterAll(async () => { await app.close(); });
+
+  it('devuelve 200', async () => {
+    const res = await app.inject({ method: 'GET', url: '/health' });
+    expect(res.statusCode).toBe(200);
+  });
+});
 
 describe.skipIf(!hasDB)('POST /api/usuarios/register', () => {
   let app;
@@ -50,6 +59,24 @@ describe.skipIf(!hasDB)('POST /api/usuarios/register', () => {
     expect(res.statusCode).toBe(409);
     expect(res.json()).toHaveProperty('error');
   });
+
+  it('devuelve 400 si falta el campo email', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: { nombre: 'Sin Email', password: 'TestPass!123' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('devuelve 400 si falta la contraseña', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: { nombre: 'Sin Pass', email: 'sinpass@example.com' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe.skipIf(!hasDB)('POST /api/usuarios/login', () => {
@@ -59,7 +86,6 @@ describe.skipIf(!hasDB)('POST /api/usuarios/login', () => {
 
   beforeAll(async () => {
     app = await buildTestServer();
-    // Registrar usuario de prueba
     await app.inject({
       method: 'POST',
       url: '/api/usuarios/register',
@@ -83,7 +109,6 @@ describe.skipIf(!hasDB)('POST /api/usuarios/login', () => {
     const body = res.json();
     expect(body.authenticated).toBe(true);
     expect(body.cookieSet).toBe(true);
-    // Fastify setea la cookie en la cabecera set-cookie
     const setCookie = res.headers['set-cookie'];
     expect(setCookie).toBeDefined();
     expect(String(setCookie)).toContain('authToken');
@@ -100,12 +125,19 @@ describe.skipIf(!hasDB)('POST /api/usuarios/login', () => {
     expect(res.json()).toHaveProperty('error');
   });
 
+  it('devuelve 400 si faltan campos requeridos', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/login',
+      payload: { email },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('devuelve 429 al 6º intento (rate limit)', async () => {
-    // IP externa para no estar en el allowList ['127.0.0.1', '::1']
     const rateLimitIp = '203.0.113.42';
     const payload = { email: 'noexiste-rl@example.com', password: 'AnyPass!1' };
 
-    // Consumir las 5 peticiones del quota (retornan 401 por user no existente)
     for (let i = 0; i < 5; i++) {
       const r = await app.inject({
         method: 'POST',
@@ -113,10 +145,9 @@ describe.skipIf(!hasDB)('POST /api/usuarios/login', () => {
         remoteAddress: rateLimitIp,
         payload,
       });
-      expect(r.statusCode).not.toBe(429); // todavía no debe estar limitado
+      expect(r.statusCode).not.toBe(429);
     }
 
-    // La 6ª debe ser bloqueada
     const res = await app.inject({
       method: 'POST',
       url: '/api/usuarios/login',

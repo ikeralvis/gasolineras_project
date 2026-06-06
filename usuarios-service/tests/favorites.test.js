@@ -1,9 +1,6 @@
 /**
  * Tests de integración — Favorites routes con PostgreSQL real.
  * Se ejecutan con: npx vitest run --config vitest.integration.config.js
- *
- * Requieren DATABASE_URL apuntando a una instancia postgres con el schema creado.
- * Si DATABASE_URL no está definido, todos los tests se omiten.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { buildTestServer } from './helpers/buildTestServer.js';
@@ -20,7 +17,6 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
   beforeAll(async () => {
     app = await buildTestServer();
 
-    // Registrar usuario de prueba y obtener su id
     const regRes = await app.inject({
       method: 'POST',
       url: '/api/usuarios/register',
@@ -30,7 +26,6 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
     expect(regRes.statusCode).toBe(201);
     userId = regRes.json().id;
 
-    // Generar JWT directamente (sin pasar por login) para mayor control
     authToken = app.jwt.sign({
       id: userId,
       email: email.toLowerCase(),
@@ -54,8 +49,25 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
       headers: { authorization: `Bearer ${authToken}` },
       payload: { ideess: '12345' },
     });
-
     expect(res.statusCode).toBe(201);
+    expect(res.json()).toHaveProperty('ideess', '12345');
+  });
+
+  it('POST /favoritos → 200 si el favorito ya existe (idempotente)', async () => {
+    // Añadir dos veces el mismo ideess
+    await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/favoritos',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { ideess: '77777' },
+    });
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/favoritos',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { ideess: '77777' },
+    });
+    expect(res.statusCode).toBe(200);
   });
 
   it('POST /favoritos → 401 sin JWT', async () => {
@@ -64,14 +76,32 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
       url: '/api/usuarios/favoritos',
       payload: { ideess: '99999' },
     });
+    expect(res.statusCode).toBe(401);
+  });
 
+  // ── GET /favoritos ───────────────────────────────────────────────────────────
+
+  it('GET /favoritos → 200 lista de favoritos del usuario', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/usuarios/favoritos',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(Array.isArray(res.json())).toBe(true);
+  });
+
+  it('GET /favoritos → 401 sin JWT', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/usuarios/favoritos',
+    });
     expect(res.statusCode).toBe(401);
   });
 
   // ── DELETE /favoritos/:ideess ────────────────────────────────────────────────
 
   it('DELETE /favoritos/:ideess → 204 si existe', async () => {
-    // Primero añadir el favorito
     await app.inject({
       method: 'POST',
       url: '/api/usuarios/favoritos',
@@ -79,13 +109,11 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
       payload: { ideess: '11111' },
     });
 
-    // Luego borrarlo
     const res = await app.inject({
       method: 'DELETE',
       url: '/api/usuarios/favoritos/11111',
       headers: { authorization: `Bearer ${authToken}` },
     });
-
     expect(res.statusCode).toBe(204);
   });
 
@@ -95,7 +123,6 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
       url: '/api/usuarios/favoritos/ideess-que-no-existe-xyz',
       headers: { authorization: `Bearer ${authToken}` },
     });
-
     expect(res.statusCode).toBe(404);
   });
 
@@ -106,8 +133,19 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
       method: 'GET',
       url: '/api/usuarios/favoritos/all-ideess',
     });
-
     expect(res.statusCode).toBe(403);
     expect(res.json()).toHaveProperty('error');
+  });
+
+  it('GET /favoritos/all-ideess → 200 con X-Internal-Secret correcto', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/usuarios/favoritos/all-ideess',
+      headers: { 'x-internal-secret': process.env.INTERNAL_API_SECRET || 'test-internal-secret' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty('ideess');
+    expect(Array.isArray(body.ideess)).toBe(true);
   });
 });
