@@ -145,7 +145,7 @@ def get_db_conn():
 
 def get_cursor(conn):
     """Devuelve un cursor que retorna filas como diccionarios."""
-    if RealDictCursor is None:
+    if not _HAS_PSYCOPG2:
         raise RuntimeError("RealDictCursor no disponible (psycopg2 no instalado)")
     return conn.cursor(cursor_factory=RealDictCursor)
 

@@ -30,8 +30,10 @@ logger = logging.getLogger(__name__)
 
 try:
     from psycopg2.extras import Json as PgJson
+    _HAS_PGJSON = True
 except Exception:  # pragma: no cover - psycopg2 puede no estar disponible
     PgJson = None
+    _HAS_PGJSON = False
 
 
 class SyncService:
@@ -114,7 +116,7 @@ class SyncService:
         def _as_jsonb(value):
             if value is None:
                 return None
-            if PgJson is not None:
+            if _HAS_PGJSON:
                 return PgJson(value)
             return json.dumps(value)
 

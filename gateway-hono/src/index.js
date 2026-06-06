@@ -927,7 +927,7 @@ async function ensureGasolinerasFresh(reason = "scheduler") {
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.warn(`⚠️ daily-sync-export falló (${reason}) status=${response.status}`, payload);
+      console.warn(`⚠️ daily-sync-export falló (${reason}) status=${response.status}`);
       return;
     }
 

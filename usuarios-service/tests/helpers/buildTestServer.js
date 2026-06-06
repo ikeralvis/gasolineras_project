@@ -50,10 +50,10 @@ export async function buildTestServer() {
     skipOnError: false,
   });
 
-  // Postgres — sin SSL (servicio local en CI)
+  // Postgres — sin SSL (servicio local en CI; postgres:15 en GitHub Actions no soporta SSL)
   await fastify.register(fastifyPostgres, {
     connectionString: databaseUrl,
-    ssl: { rejectUnauthorized: false },
+    ssl: false,
   });
 
   // Verificar conexión

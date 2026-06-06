@@ -692,7 +692,7 @@ export async function runPipelineDialog({
   let responseText = "";
 
   if (intent.type !== "unknown") {
-    if (!locationKnown) {
+    if (!locationKnown || !location) {
       responseText = "Necesito tu ubicacion para buscar gasolineras cercanas. ¿Puedes compartirla?";
     } else {
       const userProfile = await getUserProfile({ authToken });

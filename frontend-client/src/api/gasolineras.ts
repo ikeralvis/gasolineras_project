@@ -87,8 +87,6 @@ export async function getGasolinerasCerca(lat: number, lon: number, km: number):
       return [];
     }
 
-    console.log(`✅ Cargadas ${data.gasolineras.length} gasolineras cercanas`);
-    
     // Devolver los datos tal como vienen del backend, sin transformar
     // Así mantienen la misma estructura que getGasolineras()
     return data.gasolineras.map((g: any) => normalizeStationKeys(g));
@@ -138,7 +136,6 @@ export async function getHistorialPrecios(ideess: string, dias: number = 30): Pr
     }
     
     const data = await res.json();
-    console.log(`✅ Historial cargado: ${data.registros} registros`);
     return data;
   } catch (error) {
     console.error("❌ Error en getHistorialPrecios:", error);
