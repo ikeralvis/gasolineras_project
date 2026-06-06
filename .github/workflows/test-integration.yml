@@ -1,0 +1,84 @@
+name: Integration Tests — usuarios-service
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  integration-usuarios:
+    name: usuarios-service · vitest (PostgreSQL)
+    runs-on: ubuntu-latest
+
+    # ── Servicio PostgreSQL ─────────────────────────────────────────────────────
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: usuarios-service
+
+    env:
+      # Las variables de test usan valores hardcodeados seguros (no son los de producción).
+      # JWT_SECRET e INTERNAL_API_SECRET se leen de GitHub Secrets para poder
+      # sobreescribirlos si algún día se necesitan valores distintos.
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/testdb
+      JWT_SECRET: ${{ secrets.JWT_SECRET || 'integration-test-jwt-secret-minimum-32-chars' }}
+      INTERNAL_API_SECRET: ${{ secrets.INTERNAL_API_SECRET || 'test-internal-secret' }}
+      COOKIE_SECRET: integration-test-cookie-secret-32ch
+      NODE_ENV: test
+      USE_INTERNAL_API_SECRET: "true"
+      FAVORITES_VALIDATE_ON_WRITE: "false"
+      GASOLINERAS_SERVICE_URL: "http://localhost:9999"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: usuarios-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          until pg_isready -h localhost -U postgres; do
+            echo "Esperando a PostgreSQL..."
+            sleep 2
+          done
+
+      - name: Run database migration
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d testdb -f tests/helpers/migrate.sql
+
+      - name: Run integration tests with coverage
+        run: |
+          npx vitest run \
+            --config vitest.integration.config.js \
+            --coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-usuarios-integration
+          path: usuarios-service/coverage/
+          retention-days: 7

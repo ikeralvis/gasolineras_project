@@ -1,0 +1,90 @@
+name: Unit Tests — Python Services
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # recomendacion-service
+  # ────────────────────────────────────────────────────────────────────────────
+  unit-recomendacion:
+    name: recomendacion-service · pytest
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: recomendacion-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            recomendacion-service/requirements.txt
+            recomendacion-service/requirements-test.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt -r requirements-test.txt
+
+      - name: Run unit tests with coverage
+        run: |
+          pytest tests/test_geo_math.py tests/test_recommender.py \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -v
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-recomendacion
+          path: recomendacion-service/coverage.xml
+          retention-days: 7
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # gasolineras-service
+  # ────────────────────────────────────────────────────────────────────────────
+  unit-gasolineras:
+    name: gasolineras-service · pytest
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: gasolineras-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: gasolineras-service/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests with coverage
+        # Solo los tests unitarios puros (sin BD ni red)
+        run: |
+          pytest tests/test_models.py tests/test_sync_parser.py \
+            --cov=app \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            -v
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-gasolineras-unit
+          path: gasolineras-service/coverage.xml
+          retention-days: 7
