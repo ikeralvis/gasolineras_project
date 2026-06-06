@@ -1,0 +1,24 @@
+[run]
+# Solo medir los módulos que los tests unitarios cubren directamente.
+# El resto (DB, repos, clientes, servicios de infraestructura) requiere
+# integración con PostgreSQL/APIs externas y se cubre con otros tipos de test.
+omit =
+    app/main.py
+    app/config.py
+    app/db/*
+    app/repositories/*
+    app/clients/gcs_client.py
+    app/clients/gobierno_client.py
+    app/clients/usuarios_client.py
+    app/decorators/*
+    app/services/export_service.py
+    app/services/gasolinera_service.py
+    app/services/memory_store.py
+    app/services/sync_service.py
+    */site-packages/*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
