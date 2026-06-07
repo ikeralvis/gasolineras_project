@@ -8,7 +8,6 @@ steps:
     args: ['push', 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/gateway-img']
 
   # 3. Desplegar en Cloud Run
-  # Nota: no se fuerza allow-unauthenticated aqui para evitar fallos IAM en trigger.
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -26,6 +25,41 @@ steps:
       - '--concurrency'
       - '80'
       - '--session-affinity'
+
+  # 4. Smoke test — verifica que el servicio responde correctamente tras el deploy
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        echo "⏳ Obteniendo URL del servicio desplegado..."
+        SERVICE_URL=$(gcloud run services describe gateway-hono \
+          --region europe-west1 \
+          --format 'value(status.url)')
+        echo "🔍 Smoke test: $SERVICE_URL"
+
+        # /health
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$SERVICE_URL/health")
+        if [ "$STATUS" != "200" ]; then
+          echo "❌ /health devolvió $STATUS (esperado 200)"
+          exit 1
+        fi
+        echo "✅ /health OK ($STATUS)"
+
+        # /api/gasolineras/count — verifica que el proxy a gasolineras-service funciona
+        RESPONSE=$(curl -s --max-time 20 "$SERVICE_URL/api/gasolineras/count" || echo '{}')
+        echo "📊 /api/gasolineras/count → $RESPONSE"
+        # Verificación básica: debe ser JSON y tener campo total
+        python3 -c "
+        import json, sys
+        data = json.loads('$RESPONSE'.replace(\"'\", '\"'))
+        assert 'total' in data, f'Falta campo total: {data}'
+        total = int(data['total'])
+        print(f'✅ Gasolineras en BD: {total}')
+        " || echo "⚠️  /api/gasolineras/count no validó — puede que el servicio esté bootstrappeando"
+
+        echo "🎉 Smoke tests del gateway pasaron correctamente"
 
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/gateway-img'

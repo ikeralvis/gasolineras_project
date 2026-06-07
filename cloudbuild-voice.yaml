@@ -35,6 +35,28 @@ steps:
       - '0'
       - '--session-affinity'
 
+  # 4. Smoke test — verifica que el servicio responde tras el deploy
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        SERVICE_URL=$(gcloud run services describe voice-assistant-service \
+          --region europe-west1 \
+          --format 'value(status.url)')
+        TOKEN=$(gcloud auth print-identity-token)
+        echo "🔍 Smoke test: $SERVICE_URL"
+
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+          -H "Authorization: Bearer $TOKEN" \
+          "$SERVICE_URL/health")
+        if [ "$STATUS" != "200" ]; then
+          echo "❌ /health devolvió $STATUS (esperado 200)"
+          exit 1
+        fi
+        echo "✅ voice-assistant-service /health OK"
+
 images:
   - 'europe-west1-docker.pkg.dev/$PROJECT_ID/tankgo/voice-img'
 

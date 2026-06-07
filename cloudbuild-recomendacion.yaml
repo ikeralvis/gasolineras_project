@@ -29,6 +29,28 @@ steps:
       - '--set-secrets'
       - 'ORS_API_KEY=ORS_API_KEY:latest'
 
+  # 4. Smoke test — verifica que el servicio responde tras el deploy
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -e
+        SERVICE_URL=$(gcloud run services describe ${_SERVICE_NAME} \
+          --region ${_REGION} \
+          --format 'value(status.url)')
+        TOKEN=$(gcloud auth print-identity-token)
+        echo "🔍 Smoke test: $SERVICE_URL"
+
+        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
+          -H "Authorization: Bearer $TOKEN" \
+          "$SERVICE_URL/health")
+        if [ "$STATUS" != "200" ]; then
+          echo "❌ /health devolvió $STATUS (esperado 200)"
+          exit 1
+        fi
+        echo "✅ ${_SERVICE_NAME} /health OK"
+
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}'
 
