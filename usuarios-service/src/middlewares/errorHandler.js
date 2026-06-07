@@ -1,13 +1,6 @@
-/**
- * Middleware global de manejo de errores para Fastify
- * Centraliza el manejo de errores comunes y proporciona respuestas consistentes
- */
+import fp from 'fastify-plugin';
 
-/**
- * Plugin de Fastify para registrar el error handler global
- * @param {import('fastify').FastifyInstance} fastify
- */
-export async function errorHandler(fastify) {
+async function errorHandlerImpl(fastify) {
     fastify.setErrorHandler((error, request, reply) => {
         // Logging estructurado del error
         fastify.log.error({
@@ -118,3 +111,5 @@ export async function errorHandler(fastify) {
         });
     });
 }
+
+export const errorHandler = fp(errorHandlerImpl, { name: 'error-handler' });

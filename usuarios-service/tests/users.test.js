@@ -204,6 +204,12 @@ describe.skipIf(!hasDB)('User profile integration', () => {
 
   // ── Probes (health.js) ─────────────────────────────────────────────────────
 
+  it('GET /ruta-inexistente → 404 (notFoundHandler)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/usuarios/esta-ruta-no-existe-xyz' });
+    expect(res.statusCode).toBe(404);
+    expect(res.json()).toHaveProperty('error');
+  });
+
   it('GET /ready → 200 cuando la BD está disponible', async () => {
     const res = await app.inject({ method: 'GET', url: '/ready' });
     expect(res.statusCode).toBe(200);
@@ -252,5 +258,30 @@ describe.skipIf(!hasDB)('DELETE /me', () => {
   it('DELETE /me → 401 sin JWT', async () => {
     const res = await app.inject({ method: 'DELETE', url: '/api/usuarios/me' });
     expect(res.statusCode).toBe(401);
+  });
+
+  it('PATCH /me → 409 si el email ya lo usa otro usuario', async () => {
+    const emailA = `test-del-taken-a-${Date.now()}@example.com`;
+    const emailB = `test-del-taken-b-${Date.now()}@example.com`;
+
+    const regA = await app.inject({
+      method: 'POST', url: '/api/usuarios/register',
+      payload: { nombre: 'User A', email: emailA, password: 'TestPass!123' },
+    });
+    const regB = await app.inject({
+      method: 'POST', url: '/api/usuarios/register',
+      payload: { nombre: 'User B', email: emailB, password: 'TestPass!123' },
+    });
+    expect(regA.statusCode).toBe(201);
+    expect(regB.statusCode).toBe(201);
+
+    const tokenB = app.jwt.sign({ id: regB.json().id, email: emailB, is_admin: false, nombre: 'User B' });
+
+    const res = await app.inject({
+      method: 'PATCH', url: '/api/usuarios/me',
+      headers: { authorization: `Bearer ${tokenB}` },
+      payload: { email: emailA },
+    });
+    expect(res.statusCode).toBe(409);
   });
 });
