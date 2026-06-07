@@ -11,6 +11,8 @@
 ![PWA](https://img.shields.io/badge/PWA-Ready-5A0FC8)
 ![GCP](https://img.shields.io/badge/GCP-Cloud_Run-4285F4?logo=googlecloud)
 
+[![Smoke Tests — Cloud Run Production](https://github.com/ikeralvis/gasolineras_project/actions/workflows/smoke-test.yml/badge.svg)](https://github.com/ikeralvis/gasolineras_project/actions/workflows/smoke-test.yml)
+
 **Encuentra las gasolineras más baratas de España**
 
 [Demo en vivo](https://tankgo.dev) · [Documentación API](https://api.tankgo.dev)
