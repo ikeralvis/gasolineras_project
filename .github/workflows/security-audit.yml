@@ -23,7 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         service:
-          - { name: frontend-client,         dir: frontend-client }
           - { name: usuarios-service,        dir: usuarios-service }
           - { name: gateway-hono,            dir: gateway-hono }
           - { name: voice-assistant-service, dir: voice-assistant-service }
@@ -44,6 +43,33 @@ jobs:
         # --audit-level=high: falla solo en vulnerabilidades altas o críticas
         run: npm audit --audit-level=high
         working-directory: ${{ matrix.service.dir }}
+
+  # ────────────────────────────────────────────────────────────────────────────
+  # Auditoría de dependencias frontend (usa pnpm)
+  # ────────────────────────────────────────────────────────────────────────────
+  audit-pnpm:
+    name: pnpm audit — frontend-client
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: frontend-client
+
+      - name: pnpm audit (frontend-client)
+        run: pnpm audit --audit-level high
+        working-directory: frontend-client
 
   # ────────────────────────────────────────────────────────────────────────────
   # Auditoría de dependencias Python

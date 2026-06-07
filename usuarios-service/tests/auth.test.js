@@ -89,6 +89,71 @@ describe.skipIf(!hasDB)('POST /api/usuarios/register', () => {
   });
 });
 
+describe.skipIf(!hasDB)('Validaciones de contraseña y combustible en registro', () => {
+  let app;
+
+  beforeAll(async () => { app = await buildTestServer(); });
+  afterAll(async () => {
+    await app.pg.query("DELETE FROM users WHERE email LIKE 'test-validators-%@example.com'");
+    await app.close();
+  });
+
+  it('devuelve 400 con contraseña sin carácter especial (≥8 chars)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: { nombre: 'Test', email: `test-validators-spec-${Date.now()}@example.com`, password: 'NoSpecial123' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('devuelve 400 con contraseña sin mayúsculas (≥8 chars)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: { nombre: 'Test', email: `test-validators-up-${Date.now()}@example.com`, password: 'nouppercase!1' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('devuelve 400 con contraseña sin número (≥8 chars)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: { nombre: 'Test', email: `test-validators-num-${Date.now()}@example.com`, password: 'NoNumberHere!' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('devuelve 201 con tipo_combustible_coche gasolina', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: {
+        nombre: 'Gas User',
+        email: `test-validators-gas-${Date.now()}@example.com`,
+        password: 'TestPass!123',
+        tipo_combustible_coche: 'gasolina',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it('devuelve 201 con tipo_combustible_coche diesel', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: {
+        nombre: 'Diesel User',
+        email: `test-validators-diesel-${Date.now()}@example.com`,
+        password: 'TestPass!123',
+        tipo_combustible_coche: 'diesel',
+      },
+    });
+    expect(res.statusCode).toBe(201);
+  });
+});
+
 describe.skipIf(!hasDB)('POST /api/usuarios/login', () => {
   let app;
   const email = `test-auth-login-${Date.now()}@example.com`;

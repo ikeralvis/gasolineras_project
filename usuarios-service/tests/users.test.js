@@ -114,6 +114,48 @@ describe.skipIf(!hasDB)('User profile integration', () => {
     expect(res.json().combustible_favorito).toBe('Precio Gasolina 95 E5');
   });
 
+  it('PATCH /me → 200 tipo_combustible_coche hibrido infiere combustible_favorito gasolina95', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/usuarios/me',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { tipo_combustible_coche: 'hibrido' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().combustible_favorito).toBe('Precio Gasolina 95 E5');
+  });
+
+  it('PATCH /me → 200 combustible_favorito directo (sin inferir del tipo_combustible_coche)', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/usuarios/me',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { combustible_favorito: 'Precio Gasoleo A' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().combustible_favorito).toBe('Precio Gasoleo A');
+  });
+
+  it('PATCH /me → 200 actualiza contraseña', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/usuarios/me',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { password: 'UpdatedPass!456' },
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('PATCH /me → 400 contraseña débil en actualización', async () => {
+    const res = await app.inject({
+      method: 'PATCH',
+      url: '/api/usuarios/me',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { password: 'weakpassword' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('PATCH /me → 400 body vacío (sin campos para actualizar)', async () => {
     const res = await app.inject({
       method: 'PATCH',
