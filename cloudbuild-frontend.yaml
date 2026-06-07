@@ -105,17 +105,17 @@ steps:
       - '-c'
       - |
         set -e
-        SERVICE_URL=$(gcloud run services describe frontend-client \
+        SERVICE_URL=$$(gcloud run services describe frontend-client \
           --region europe-west1 \
           --format 'value(status.url)')
-        echo "🔍 Smoke test: $SERVICE_URL"
+        echo "🔍 Smoke test: $$SERVICE_URL"
 
-        STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$SERVICE_URL")
-        if [ "$STATUS" != "200" ]; then
-          echo "❌ Frontend devolvió $STATUS (esperado 200)"
+        STATUS=$$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$$SERVICE_URL")
+        if [ "$$STATUS" != "200" ]; then
+          echo "❌ Frontend devolvió $$STATUS (esperado 200)"
           exit 1
         fi
-        echo "✅ frontend-client OK ($STATUS)"
+        echo "✅ frontend-client OK ($$STATUS)"
 
 images:
   - 'europe-west1-docker.pkg.dev/${PROJECT_ID}/tankgo/frontend-img'
