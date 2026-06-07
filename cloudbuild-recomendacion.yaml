@@ -39,7 +39,8 @@ steps:
         SERVICE_URL=$$(gcloud run services describe ${_SERVICE_NAME} \
           --region ${_REGION} \
           --format 'value(status.url)')
-        TOKEN=$$(gcloud auth print-identity-token)
+        TOKEN=$$(curl -sf -H "Metadata-Flavor: Google" \
+          "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=$$SERVICE_URL&format=full")
         echo "🔍 Smoke test: $$SERVICE_URL"
 
         STATUS=$$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
