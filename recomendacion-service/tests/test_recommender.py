@@ -6,6 +6,7 @@ from app.models.schemas import Coordenada, GasolineraInternal, RecomendacionRequ
 from app.services.recommendation_core import (
     SERVICE_AREA_BONUS,
     CandidateScore,
+    build_initial_candidates,
     build_stop_option_candidates,
     filter_viable_candidates,
     infer_service_area_bonus,
@@ -289,7 +290,77 @@ def test_build_stop_options_devuelve_hasta_4():
 
 def test_build_stop_options_deduplica_posiciones():
     """Si varias categorías apuntan al mismo candidato solo aparece una vez."""
-    # Un candidato es el mejor en todo (mismo score, precio, desvío y posición ≈ 50%)
     solo = _stop(score=0.9, precio_litro=1.1, porcentaje_ruta=50.0, desvio_km=0.1, posicion=1)
     result = build_stop_option_candidates([solo])
     assert len(result) == 1
+
+
+# ── build_initial_candidates ──────────────────────────────────────────────────
+
+def _make_route(dist_km: float = 100.0, coords=None):
+    """Ruta Madrid → Barcelona simplificada (lon, lat) para Shapely."""
+    if coords is None:
+        coords = [(-3.7, 40.4), (-1.0, 40.9), (2.2, 41.4)]
+    return SimpleNamespace(distancia_km=dist_km, coordinates=coords)
+
+
+def test_build_initial_candidates_devuelve_tupla_cinco_elementos():
+    """La función siempre devuelve (candidates, route_line, progress, dlim_min, dlim_km)."""
+    req = _req()
+    route = _make_route()
+    result = build_initial_candidates(
+        req=req, route=route, stations=[],
+        avg_speed_kmh=80.0, road_factor=1.3, default_detour_minutes=15.0,
+    )
+    candidates, route_line, current_progress, detour_limit_min, detour_limit_km = result
+    assert candidates == []
+    assert 0.0 <= current_progress <= 1.0
+    assert detour_limit_min > 0
+    assert detour_limit_km > 0
+
+
+def test_build_initial_candidates_sin_estaciones_devuelve_vacio():
+    req = _req()
+    candidates, *_ = build_initial_candidates(
+        req=req, route=_make_route(), stations=[],
+        avg_speed_kmh=80.0, road_factor=1.3, default_detour_minutes=15.0,
+    )
+    assert candidates == []
+
+
+def test_build_initial_candidates_filtra_sin_precio():
+    """Estaciones con precio 0 (tiene_precio=False) son ignoradas."""
+    req = _req()
+    station = _station(0.0, lat=40.9, lon=-1.0)
+    candidates, *_ = build_initial_candidates(
+        req=req, route=_make_route(), stations=[station],
+        avg_speed_kmh=80.0, road_factor=1.3, default_detour_minutes=15.0,
+        prefiltered=True,
+    )
+    assert candidates == []
+
+
+def test_build_initial_candidates_prefiltered_incluye_estacion_en_ruta():
+    """Con prefiltered=True y una estación cerca de la ruta con precio, debe incluirla."""
+    req = _req(max_desvio_km=50.0, max_desvio_min=60.0)
+    station = _station(1.5, lat=40.9, lon=-1.0)
+    candidates, *_ = build_initial_candidates(
+        req=req, route=_make_route(), stations=[station],
+        avg_speed_kmh=80.0, road_factor=1.3, default_detour_minutes=60.0,
+        prefiltered=True,
+    )
+    assert len(candidates) == 1
+    assert candidates[0].precio == pytest.approx(1.5)
+
+
+def test_build_initial_candidates_max_desvio_min_limita_candidatos():
+    """Con un desvío muy pequeño, estaciones alejadas de la ruta no se incluyen."""
+    req = _req(max_desvio_km=0.1, max_desvio_min=0.1)
+    # Estación muy lejos del corredor de la ruta
+    station = _station(1.5, lat=38.0, lon=-6.0)
+    candidates, *_ = build_initial_candidates(
+        req=req, route=_make_route(), stations=[station],
+        avg_speed_kmh=80.0, road_factor=1.3, default_detour_minutes=0.1,
+        prefiltered=True,
+    )
+    assert candidates == []
