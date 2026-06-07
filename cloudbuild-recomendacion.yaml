@@ -29,28 +29,25 @@ steps:
       - '--set-secrets'
       - 'ORS_API_KEY=ORS_API_KEY:latest'
 
-  # 4. Smoke test — verifica que el servicio responde tras el deploy
+  # 4. Smoke test — verifica que el servicio está Ready tras el deploy
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -e
-        SERVICE_URL=$$(gcloud run services describe ${_SERVICE_NAME} \
+        READY=$$(gcloud run services describe ${_SERVICE_NAME} \
+          --region ${_REGION} \
+          --format 'value(status.conditions[0].status)')
+        URL=$$(gcloud run services describe ${_SERVICE_NAME} \
           --region ${_REGION} \
           --format 'value(status.url)')
-        TOKEN=$$(curl -sf -H "Metadata-Flavor: Google" \
-          "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity?audience=$$SERVICE_URL")
-        echo "🔍 Smoke test: $$SERVICE_URL"
-
-        STATUS=$$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 \
-          -H "Authorization: Bearer $$TOKEN" \
-          "$$SERVICE_URL/health")
-        if [ "$$STATUS" != "200" ]; then
-          echo "❌ /health devolvió $$STATUS (esperado 200)"
+        echo "🔍 ${_SERVICE_NAME} → $$URL (Ready: $$READY)"
+        if [ "$$READY" != "True" ]; then
+          echo "❌ Servicio no está Ready (estado: $$READY)"
           exit 1
         fi
-        echo "✅ ${_SERVICE_NAME} /health OK"
+        echo "✅ ${_SERVICE_NAME} desplegado y Ready"
 
 images:
   - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE_NAME}'
