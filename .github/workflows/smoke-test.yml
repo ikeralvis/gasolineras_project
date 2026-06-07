@@ -1,0 +1,108 @@
+name: Smoke Tests — Cloud Run Production
+
+# Formas de ejecutar:
+#   1. Manualmente desde GitHub → Actions → "Run workflow"
+#   2. Desde Cloud Build usando el paso al final de cada cloudbuild-*.yaml:
+#      curl -X POST \
+#        -H "Authorization: token $$GITHUB_TOKEN" \
+#        -H "Accept: application/vnd.github.v3+json" \
+#        https://api.github.com/repos/OWNER/REPO/actions/workflows/smoke-test.yml/dispatches \
+#        -d '{"ref":"master","inputs":{"service":"gateway"}}'
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: 'Servicio a probar (all | gateway | gasolineras | usuarios | frontend)'
+        required: false
+        default: 'all'
+        type: choice
+        options: [all, gateway, gasolineras, usuarios, frontend]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # URLs de producción — configura estos secrets en GitHub → Settings → Secrets
+  # GATEWAY_URL    → URL pública del gateway (ej: https://gateway-hono-xxx.run.app)
+  # FRONTEND_URL   → URL del frontend en Cloud Run
+  GATEWAY_URL: ${{ secrets.GATEWAY_URL || '' }}
+  FRONTEND_URL: ${{ secrets.FRONTEND_URL || '' }}
+
+jobs:
+  smoke:
+    name: Smoke test — ${{ inputs.service || 'all' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verificar configuración
+        run: |
+          if [ -z "$GATEWAY_URL" ]; then
+            echo "❌ GATEWAY_URL no configurado. Añade el secret en GitHub → Settings → Secrets → Actions"
+            exit 1
+          fi
+          echo "✅ Gateway URL: $GATEWAY_URL"
+
+      # ── Gateway ────────────────────────────────────────────────────────────
+      - name: Gateway — /health
+        if: inputs.service == 'all' || inputs.service == 'gateway'
+        run: |
+          echo "🔍 Testing $GATEWAY_URL/health"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$GATEWAY_URL/health")
+          echo "Status: $STATUS"
+          [ "$STATUS" = "200" ] || (echo "❌ /health devolvió $STATUS (esperado 200)" && exit 1)
+          echo "✅ Gateway /health OK"
+
+      - name: Gateway — /api/gasolineras/count
+        if: inputs.service == 'all' || inputs.service == 'gateway' || inputs.service == 'gasolineras'
+        run: |
+          echo "🔍 Testing $GATEWAY_URL/api/gasolineras/count"
+          RESPONSE=$(curl -s --max-time 20 "$GATEWAY_URL/api/gasolineras/count")
+          echo "Response: $RESPONSE"
+          # Verifica que sea JSON con campo total
+          echo "$RESPONSE" | python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          assert 'total' in data, f'Falta campo total en respuesta: {data}'
+          assert isinstance(data['total'], int), f'total debe ser int: {data}'
+          print(f\"✅ Gasolineras count: {data['total']} estaciones\")
+          " || (echo "❌ Respuesta inválida de /api/gasolineras/count" && exit 1)
+
+      - name: Gateway — /api/usuarios/health
+        if: inputs.service == 'all' || inputs.service == 'usuarios'
+        run: |
+          echo "🔍 Testing $GATEWAY_URL/api/usuarios/health"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$GATEWAY_URL/api/usuarios/health")
+          echo "Status: $STATUS"
+          [ "$STATUS" = "200" ] || (echo "❌ /api/usuarios/health devolvió $STATUS" && exit 1)
+          echo "✅ Usuarios /health OK"
+
+      - name: Gateway — /api/recomendacion/health
+        if: inputs.service == 'all' || inputs.service == 'gateway'
+        run: |
+          echo "🔍 Testing $GATEWAY_URL/api/recomendacion/health"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$GATEWAY_URL/api/recomendacion/health")
+          # 200 o 404 son aceptables; 503 indica servicio caído
+          echo "Status: $STATUS"
+          [ "$STATUS" = "503" ] && (echo "❌ Recomendacion service parece caído (503)" && exit 1) || true
+          echo "✅ Recomendacion status: $STATUS"
+
+      # ── Frontend ───────────────────────────────────────────────────────────
+      - name: Frontend — carga correctamente
+        if: (inputs.service == 'all' || inputs.service == 'frontend') && env.FRONTEND_URL != ''
+        run: |
+          echo "🔍 Testing $FRONTEND_URL"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$FRONTEND_URL")
+          echo "Status: $STATUS"
+          [ "$STATUS" = "200" ] || (echo "❌ Frontend devolvió $STATUS" && exit 1)
+          echo "✅ Frontend OK"
+
+      # ── Resumen ────────────────────────────────────────────────────────────
+      - name: Resumen de smoke tests
+        if: always()
+        run: |
+          echo "## 🚀 Smoke Tests — $(date -u '+%Y-%m-%d %H:%M UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Endpoint | URL |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-----|" >> $GITHUB_STEP_SUMMARY
+          echo "| Gateway health | \`$GATEWAY_URL/health\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Gasolineras count | \`$GATEWAY_URL/api/gasolineras/count\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Usuarios health | \`$GATEWAY_URL/api/usuarios/health\` |" >> $GITHUB_STEP_SUMMARY
