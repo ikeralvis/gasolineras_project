@@ -217,7 +217,8 @@ def parse_gasolinera(raw_data: Dict) -> Optional[Dict]:
         return parsed_data
 
     except Exception as e:
-        logger.warning(f"⚠️ Error procesando registro {raw_data.get('IDEESS')}: {e}")
+        ideess = raw_data.get('IDEESS') if isinstance(raw_data, dict) else repr(raw_data)
+        logger.warning(f"⚠️ Error procesando registro {ideess}: {e}")
         return None
 
 def fetch_data_gobierno() -> List[Dict]:

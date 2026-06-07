@@ -77,6 +77,16 @@ describe.skipIf(!hasDB)('POST /api/usuarios/register', () => {
     });
     expect(res.statusCode).toBe(400);
   });
+
+  it('devuelve 201 con tipo_combustible_coche hibrido', async () => {
+    const hibridoEmail = `test-auth-hibrido-${Date.now()}@example.com`;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/register',
+      payload: { nombre: 'Hibrido User', email: hibridoEmail, password: 'TestPass!123', tipo_combustible_coche: 'hibrido' },
+    });
+    expect(res.statusCode).toBe(201);
+  });
 });
 
 describe.skipIf(!hasDB)('POST /api/usuarios/login', () => {

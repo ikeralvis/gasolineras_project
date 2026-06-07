@@ -79,6 +79,17 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
     expect(res.statusCode).toBe(401);
   });
 
+  it('POST /favoritos → 400 si ideess está vacío', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/favoritos',
+      headers: { authorization: `Bearer ${authToken}` },
+      payload: { ideess: '' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toHaveProperty('error', 'ideess es requerido');
+  });
+
   // ── GET /favoritos ───────────────────────────────────────────────────────────
 
   it('GET /favoritos → 200 lista de favoritos del usuario', async () => {
@@ -147,5 +158,60 @@ describe.skipIf(!hasDB)('Favorites integration', () => {
     const body = res.json();
     expect(body).toHaveProperty('ideess');
     expect(Array.isArray(body.ideess)).toBe(true);
+  });
+
+  // ── GET /favoritos/stats (interno) ───────────────────────────────────────────
+
+  it('GET /favoritos/stats → 403 sin X-Internal-Secret', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/usuarios/favoritos/stats',
+    });
+    expect(res.statusCode).toBe(403);
+  });
+
+  it('GET /favoritos/stats → 200 con X-Internal-Secret correcto', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/usuarios/favoritos/stats',
+      headers: { 'x-internal-secret': process.env.INTERNAL_API_SECRET || 'test-internal-secret' },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty('count');
+    expect(body).toHaveProperty('stations');
+    expect(Array.isArray(body.stations)).toBe(true);
+  });
+
+  it('GET /favoritos/stats → 200 con parámetros top_n y min_favorites', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/usuarios/favoritos/stats?top_n=10&min_favorites=1',
+      headers: { 'x-internal-secret': process.env.INTERNAL_API_SECRET || 'test-internal-secret' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().top_n).toBe(10);
+  });
+
+  // ── POST /favoritos/reconcile ────────────────────────────────────────────────
+
+  it('POST /favoritos/reconcile → 401 sin JWT', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/favoritos/reconcile',
+    });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('POST /favoritos/reconcile → 200 con JWT (gasolineras-service no configurado)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/usuarios/favoritos/reconcile',
+      headers: { authorization: `Bearer ${authToken}` },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body).toHaveProperty('removed_count');
+    expect(body.removed_count).toBe(0);
   });
 });

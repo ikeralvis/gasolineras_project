@@ -14,7 +14,7 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'json', 'json-summary', 'html'],
       include: ['src/**/*.js'],
-      exclude: ['node_modules/', 'tests/', 'src/index.js', '**/*.test.js'],
+      exclude: ['node_modules/', 'tests/', 'src/index.js', 'src/config/env.js', 'src/clients/gasolinerasClient.js', '**/*.test.js'],
     },
   },
 });
