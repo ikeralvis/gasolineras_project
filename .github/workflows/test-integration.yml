@@ -79,7 +79,7 @@ jobs:
       - name: Coverage summary → GitHub Step Summary
         if: always()
         run: |
-          node - <<'JSEOF'
+          node --input-type=commonjs - <<'JSEOF'
           const fs = require('fs');
           const path = 'coverage/coverage-summary.json';
           if (!fs.existsSync(path)) { console.log('No coverage summary found'); process.exit(0); }

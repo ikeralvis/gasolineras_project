@@ -120,4 +120,38 @@ describe('AuthService', () => {
     expect(result.ok).toBe(true);
     expect(result.data.token).toBe('jwt-token');
   });
+
+  it('loginOrCreateGoogle no llama setGoogleId si el usuario ya tiene google_id', async () => {
+    const user = { id: 1, nombre: 'Ana', email: 'ana@test.com', is_admin: false, google_id: 'existing-id' };
+    const { service, userRepository } = buildService({
+      userRepository: {
+        findByEmail: vi.fn().mockResolvedValue(user),
+        setGoogleId: vi.fn(),
+      },
+    });
+    const result = await service.loginOrCreateGoogle({ google_id: 'new-id', email: 'ana@test.com', name: 'Ana' });
+    expect(userRepository.setGoogleId).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+  });
+
+  it('registro devuelve 500 si create devuelve null', async () => {
+    const { service } = buildService({
+      userRepository: { create: vi.fn().mockResolvedValue(null) },
+    });
+    const result = await service.register({ nombre: 'Ana', email: 'ana@test.com', password: 'Password123!' });
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(500);
+  });
+
+  it('login devuelve 401 si la contraseña no coincide', async () => {
+    const passwordHash = await bcrypt.hash('OtherPass!99', 10);
+    const { service } = buildService({
+      userRepository: {
+        findByEmail: vi.fn().mockResolvedValue({ id: 1, nombre: 'Ana', email: 'ana@test.com', is_admin: false, password_hash: passwordHash }),
+      },
+    });
+    const result = await service.login({ email: 'ana@test.com', password: 'WrongPass!1' });
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(401);
+  });
 });

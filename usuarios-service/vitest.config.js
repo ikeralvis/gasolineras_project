@@ -5,10 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     // Unit tests only — no DB required. Integration tests use vitest.integration.config.js
-    include: [
-      'src/**/*.test.{js,ts}',
-      'tests/auth.routes.integration.test.js',
-    ],
+    include: ['src/**/*.test.{js,ts}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json-summary', 'html'],
