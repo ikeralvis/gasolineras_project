@@ -40,6 +40,15 @@ const ROUTE_SEO: Array<{ test: (path: string) => boolean; config: SeoConfig }> =
     },
   },
   {
+    test: (path) => path === "/ruta",
+    config: {
+      title: "Planificación de rutas | TankGo",
+      description:
+        "Planifica tu ruta de viaje y encuentra las gasolineras más baratas en el camino.",
+      canonicalPath: "/ruta",
+    },
+  },
+  {
     test: (path) => path === "/recarga",
     config: {
       title: "Mapa de puntos de recarga | TankGo",
@@ -91,12 +100,21 @@ const ROUTE_SEO: Array<{ test: (path: string) => boolean; config: SeoConfig }> =
   },
   {
     test: (path) =>
-      path === "/profile" || path === "/favoritos" || path === "/rutas",
+      path === "/profile",
     config: {
       title: "Area privada | TankGo",
       description: "Gestiona tu perfil y tus favoritos en TankGo.",
       canonicalPath: "/profile",
       noIndex: true,
+    },
+  },
+  {
+    test: (path) => path === "/favoritos",
+    config: {
+      title: "Gasolineras favoritas | TankGo",
+      description:
+        "Consulta tus gasolineras favoritas y compara precios en tiempo real.",
+      canonicalPath: "/favoritos",
     },
   },
   {

@@ -739,8 +739,8 @@ export default function VoiceAssistantWidget() {
           {liveMode && !liveUiHidden ? (
             <div className="flex-1 flex flex-col items-center justify-between bg-radial-[at_50%_20%] from-[#E9EEFF] via-[#F8FAFF] to-[#F2F6FF] px-5 py-6">
               <div className="w-full flex items-center justify-between">
-                <span className="text-xs font-semibold text-[#31447D] uppercase tracking-wide">Live Voice</span>
-                <span className="text-xs text-[#4A5D99]">{liveStatus}</span>
+                <span className="text-sm font-bold text-[#31447D] uppercase tracking-wide">Live Voice</span>
+                <span className="text-sm font-medium text-[#4A5D99]">{liveStatus}</span>
               </div>
 
               <div className="flex-1 w-full max-w-xl flex flex-col items-center justify-center gap-5">
@@ -765,11 +765,11 @@ export default function VoiceAssistantWidget() {
                   ))}
                 </div>
 
-                <div className="w-full rounded-2xl border border-[#D9E0FF] bg-white/85 p-4 min-h-28">
-                  <p className="text-xs uppercase tracking-wide text-[#5D6FA9] mb-2">Lo que escucho</p>
-                  <p className="text-[#152452] text-sm leading-relaxed wrap-break-word">
+                <div className="w-full rounded-2xl border border-[#D9E0FF] bg-white/85 p-4 min-h-32">
+                  <p className="text-xs font-bold uppercase tracking-wide text-[#5D6FA9] mb-2">Lo que escucho</p>
+                  <p className="text-[#152452] text-base leading-relaxed wrap-break-word">
                     {liveHeardText || "Habla ahora... iré transcribiendo en vivo."}
-                    {liveListening && <span className="inline-block ml-1 w-2 h-4 bg-[#2A44D2] animate-pulse align-middle" />}
+                    {liveListening && <span className="inline-block ml-1 w-2 h-5 bg-[#2A44D2] animate-pulse align-middle rounded-sm" />}
                   </p>
                 </div>
               </div>
@@ -781,9 +781,9 @@ export default function VoiceAssistantWidget() {
                     onClick={() => {
                       void stopLiveModeAndSend("manual");
                     }}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#AF1E37] px-5 py-3 text-sm font-semibold text-white shadow-md"
+                    className="inline-flex items-center gap-3 rounded-2xl bg-[#AF1E37] px-7 py-4 text-base font-bold text-white shadow-lg active:scale-95 transition-transform"
                   >
-                    <MicOff className="h-4 w-4" />
+                    <MicOff className="h-5 w-5" />
                     Parar y enviar
                   </button>
                 ) : (
@@ -792,9 +792,9 @@ export default function VoiceAssistantWidget() {
                     onClick={() => {
                       void startLiveMode();
                     }}
-                    className="inline-flex items-center gap-2 rounded-xl bg-[#0A7A2F] px-5 py-3 text-sm font-semibold text-white shadow-md"
+                    className="inline-flex items-center gap-3 rounded-2xl bg-[#0A7A2F] px-7 py-4 text-base font-bold text-white shadow-lg active:scale-95 transition-transform"
                   >
-                    <Mic className="h-4 w-4" />
+                    <Mic className="h-5 w-5" />
                     Reanudar Live
                   </button>
                 )}
@@ -803,26 +803,27 @@ export default function VoiceAssistantWidget() {
           ) : (
             <>
               {liveProcessing && (
-                <div className="mx-3 mt-3 rounded-2xl border border-[#D7DBFF] bg-linear-to-r from-[#EEF1FF] via-white to-[#EEF1FF] px-4 py-3 text-xs text-[#1B2A6B] flex items-center justify-between">
-                  <span className="font-semibold">Procesando tu audio...</span>
-                  <span className="inline-flex gap-1">
-                    <span className="h-2 w-2 rounded-full bg-[#2336C7] animate-pulse" />
-                    <span className="h-2 w-2 rounded-full bg-[#2336C7] animate-pulse [animation-delay:120ms]" />
-                    <span className="h-2 w-2 rounded-full bg-[#2336C7] animate-pulse [animation-delay:240ms]" />
-                  </span>
+                <div className="mx-3 mt-3 rounded-2xl border border-[#D7DBFF] bg-linear-to-r from-[#EEF1FF] via-white to-[#EEF1FF] px-4 py-3.5 text-[#1B2A6B] flex items-center gap-3">
+                  <span className="h-5 w-5 rounded-full border-2 border-[#2336C7]/25 border-t-[#2336C7] animate-spin shrink-0" />
+                  <span className="font-semibold text-sm">Procesando tu audio...</span>
                 </div>
               )}
-              <div id="voice-chat-scroll" className="flex-1 overflow-y-auto p-3 space-y-2 bg-[#F7F8FF] min-h-0">
+              <div id="voice-chat-scroll" className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-[#F7F8FF] min-h-0">
                 {messages.map((m) => (
                   <div
                     key={m.id}
-                    className={`max-w-[88%] rounded-2xl px-3 py-2 text-sm leading-snug ${
+                    className={`max-w-[90%] rounded-2xl px-4 py-3 text-base leading-relaxed ${
                       m.role === "user"
                         ? "ml-auto bg-[#000C74] text-white"
                         : "mr-auto bg-white text-[#12203D] border border-[#E1E5FF]"
                     }`}
                   >
-                    {m.pending ? <span className="inline-block animate-pulse">{m.text}</span> : m.text}
+                    {m.pending ? (
+                      <span className="flex items-center gap-2.5">
+                        <span className="h-4 w-4 rounded-full border-2 border-[#1B2AA6]/25 border-t-[#1B2AA6] animate-spin shrink-0" />
+                        <span className="font-medium text-[#1B2AA6]">{m.text}</span>
+                      </span>
+                    ) : m.text}
                   </div>
                 ))}
               </div>
@@ -831,17 +832,17 @@ export default function VoiceAssistantWidget() {
                 <div className="mb-2 rounded-xl border border-[#D7DBFF] bg-[#F6F8FF] p-2">
                   <div className="flex items-center justify-between gap-2">
                     <div>
-                      <p className="text-[11px] font-semibold text-[#1F2B6A]">Modo Live (estilo asistente de voz)</p>
-                      <p className="text-[11px] text-[#51609B]">Habla y se enviara al detectar silencio</p>
+                      <p className="text-sm font-semibold text-[#1F2B6A]">Modo Live (estilo asistente de voz)</p>
+                      <p className="text-xs text-[#51609B]">Habla y se enviará al detectar silencio</p>
                     </div>
                     <button
                       type="button"
                       onClick={() => {
                         void startLiveMode();
                       }}
-                      className="inline-flex items-center gap-1 rounded-lg bg-[#0A7A2F] px-2.5 py-1.5 text-[11px] font-semibold text-white"
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#0A7A2F] px-3.5 py-2 text-sm font-bold text-white active:scale-95 transition-transform shrink-0"
                     >
-                      <Mic className="h-3.5 w-3.5" />
+                      <Mic className="h-4 w-4" />
                       Live
                     </button>
                   </div>
@@ -853,7 +854,7 @@ export default function VoiceAssistantWidget() {
                       key={q.label}
                       type="button"
                       onClick={() => sendPrompt(q.text)}
-                      className="rounded-full border border-[#D7DBFF] bg-[#F5F7FF] px-2.5 py-1 text-[11px] text-[#253778] hover:bg-[#EAF0FF]"
+                      className="rounded-full border border-[#D7DBFF] bg-[#F5F7FF] px-3 py-1.5 text-xs font-medium text-[#253778] hover:bg-[#EAF0FF] active:bg-[#D8E4FF] transition"
                     >
                       {q.label}
                     </button>
@@ -871,7 +872,7 @@ export default function VoiceAssistantWidget() {
                       }
                     }}
                     placeholder="Escribe tu consulta..."
-                    className="flex-1 rounded-xl border border-[#D2D8FF] px-3 py-2 text-sm outline-none focus:border-[#6877E8] disabled:bg-[#F2F4FF]"
+                    className="flex-1 rounded-xl border border-[#D2D8FF] px-3 py-2.5 text-base outline-none focus:border-[#6877E8] disabled:bg-[#F2F4FF]"
                     maxLength={420}
                     disabled={liveMode}
                   />

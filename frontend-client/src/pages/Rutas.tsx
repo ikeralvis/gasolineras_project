@@ -800,7 +800,7 @@ export default function Rutas() {
 
       {/* ── Panel de resultados ── */}
       {routeInfo && (
-        <section className="pointer-events-none fixed inset-x-0 bottom-[4.75rem] z-[1180] px-3 pb-[max(env(safe-area-inset-bottom),0px)] md:inset-auto md:right-5 md:top-4 md:bottom-auto md:w-[388px] md:px-0 md:pb-0">
+        <section className="pointer-events-none fixed inset-x-0 bottom-[4.75rem] z-[1180] px-3 pb-[max(env(safe-area-inset-bottom),0px)] md:inset-auto md:right-5 md:top-[76px] md:bottom-auto md:w-[388px] md:px-0 md:pb-0">
           <div className="pointer-events-auto rounded-t-3xl md:rounded-2xl bg-white shadow-2xl shadow-black/12 ring-1 ring-black/6 flex flex-col overflow-hidden">
 
             {/* Drag handle (solo móvil) */}
