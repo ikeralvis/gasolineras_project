@@ -322,7 +322,7 @@ function extractBrand(text) {
   const hit = knownBrands.find((brand) => normalized.includes(brand));
   if (hit) return hit;
 
-  const match = /(?:marca|de)\s+([a-z0-9-]{2,})/i.exec(text || "");
+  const match = /marca\s+([a-z0-9-]{2,})/i.exec(text || "");
   return match ? match[1].toLowerCase() : null;
 }
 
@@ -807,4 +807,4 @@ export async function runPipelineDialog({
   return result;
 }
 
-export { classifyIntent, isInScope, detectLanguageFromText };
+export { classifyIntent, isInScope, detectLanguageFromText, extractBrand };

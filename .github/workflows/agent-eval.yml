@@ -47,7 +47,7 @@ jobs:
           import { readFileSync, appendFileSync } from "node:fs";
 
           const r = JSON.parse(readFileSync("eval/results.json", "utf8"));
-          const { tool_selection: t, guardrails: g, language_detection: l } = r.metrics;
+          const { tool_selection: t, guardrails: g, language_detection: l, brand_extraction: b } = r.metrics;
 
           const pct  = (v) => `${(v * 100).toFixed(1)}%`;
           const icon = (v) => v === 1 ? "✅" : v >= 0.9 ? "⚠️" : "❌";
@@ -60,6 +60,7 @@ jobs:
             `| **1. Precisión en Selección de Herramientas** | ${pct(t.score)} (${t.correct}/${t.total}) | ${icon(t.score)} |`,
             `| **2. Efectividad de los Guardarraíles** | Accuracy ${pct(g.accuracy)} · F1 ${pct(g.f1)} | ${icon(g.accuracy)} |`,
             `| **3. Detección de Idioma** (regresión) | ${pct(l.score)} (${l.correct}/${l.total}) | ${icon(l.score)} |`,
+            `| **4. Extracción de Marca** (regresión) | ${pct(b.score)} (${b.correct}/${b.total}) | ${icon(b.score)} |`,
             "",
             "> Sin llamadas a API · Coste: \\$0",
           ];
@@ -68,6 +69,7 @@ jobs:
             ...t.errors.map(e => `- **[Tool]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
             ...g.errors.map(e => `- **[Guardrail]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, actual \`${e.actual}\``),
             ...l.errors.map(e => `- **[Lang]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
+            ...(b?.errors ?? []).map(e => `- **[Brand]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected_brand}\`, predicho \`${e.predicted}\``),
           ];
 
           if (allErrors.length > 0) {
@@ -87,7 +89,7 @@ jobs:
             const path = require("path");
             const r    = JSON.parse(fs.readFileSync("voice-assistant-service/eval/results.json", "utf8"));
 
-            const { tool_selection: t, guardrails: g, language_detection: l } = r.metrics;
+            const { tool_selection: t, guardrails: g, language_detection: l, brand_extraction: b } = r.metrics;
             const pct  = (v) => `${(v * 100).toFixed(1)}%`;
             const icon = (v) => v === 1 ? "✅" : v >= 0.9 ? "⚠️" : "❌";
 
@@ -98,12 +100,14 @@ jobs:
             body += `| Métrica | Score | Estado |\n|---|---|---|\n`;
             body += `| **1. Precisión en Selección de Herramientas** | ${pct(t.score)} (${t.correct}/${t.total}) | ${icon(t.score)} |\n`;
             body += `| **2. Efectividad de los Guardarraíles** | Accuracy ${pct(g.accuracy)} · F1 ${pct(g.f1)} | ${icon(g.accuracy)} |\n`;
-            body += `| **3. Detección de Idioma** (regresión) | ${pct(l.score)} (${l.correct}/${l.total}) | ${icon(l.score)} |\n\n`;
+            body += `| **3. Detección de Idioma** (regresión) | ${pct(l.score)} (${l.correct}/${l.total}) | ${icon(l.score)} |\n`;
+            body += `| **4. Extracción de Marca** (regresión) | ${pct(b.score)} (${b.correct}/${b.total}) | ${icon(b.score)} |\n\n`;
 
             const allErrors = [
               ...t.errors.map(e => `- **[Tool]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
               ...g.errors.map(e => `- **[Guardrail]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, actual \`${e.actual}\``),
               ...l.errors.map(e => `- **[Lang]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
+              ...(b?.errors ?? []).map(e => `- **[Brand]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected_brand}\`, predicho \`${e.predicted}\``),
             ];
 
             if (allErrors.length > 0) {

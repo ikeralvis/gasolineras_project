@@ -13,8 +13,8 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { classifyIntent, isInScope, detectLanguageFromText } from "../src/adapters/pipelineDialog.js";
-import { TOOL_CASES, GUARDRAIL_CASES, LANGUAGE_CASES } from "./dataset.js";
+import { classifyIntent, isInScope, detectLanguageFromText, extractBrand } from "../src/adapters/pipelineDialog.js";
+import { TOOL_CASES, GUARDRAIL_CASES, LANGUAGE_CASES, BRAND_EXTRACTION_CASES } from "./dataset.js";
 
 // ── Métrica 1: Precisión en Selección de Herramientas ────────────────────────
 
@@ -95,6 +95,25 @@ function evalLanguageDetection() {
   };
 }
 
+// ── Regresión: extracción de marca (bug "de gasolina" → brand falso) ──────────
+
+function evalBrandExtraction() {
+  const rows = BRAND_EXTRACTION_CASES.map((tc) => {
+    const predicted = extractBrand(tc.text);
+    const pass = predicted === tc.expected_brand;
+    return { ...tc, predicted, pass };
+  });
+
+  const correct = rows.filter((r) => r.pass).length;
+  return {
+    metric: "brand_extraction_accuracy",
+    score: correct / rows.length,
+    correct,
+    total: rows.length,
+    errors: rows.filter((r) => !r.pass),
+  };
+}
+
 // ── Helpers de display ────────────────────────────────────────────────────────
 
 const pct = (v) => `${(v * 100).toFixed(1)}%`;
@@ -145,6 +164,7 @@ console.log("╚═════════════════════�
 const toolResult      = evalToolSelection();
 const guardrailResult = evalGuardrails();
 const langResult      = evalLanguageDetection();
+const brandResult     = evalBrandExtraction();
 
 console.log("\n─── 1. Precisión en Selección de Herramientas ───────────────");
 console.log("    (classifyIntent — sin llamadas API)");
@@ -158,6 +178,10 @@ console.log("\n─── 3. Detección de Idioma (regresión) ──────
 console.log("    (detectLanguageFromText — cubre bug gasolineras/gasoline)");
 printToolResult(langResult);
 
+console.log("\n─── 4. Extracción de Marca (regresión) ──────────────────────");
+console.log("    (extractBrand — cubre bug 'de gasolina' detectado como marca)");
+printToolResult(brandResult);
+
 console.log("\n─── Tasa de Éxito de Tarea (end-to-end) ─────────────────────");
 console.log("    Monitorizada en tiempo real vía Langfuse.");
 console.log("    Scores emitidos automáticamente por cada llamada al pipeline.");
@@ -167,14 +191,15 @@ console.log("    Dashboard: https://cloud.langfuse.com\n");
 
 const summary = {
   timestamp: new Date().toISOString(),
-  passed: toolResult.score === 1 && guardrailResult.accuracy === 1 && langResult.score === 1,
+  passed: toolResult.score === 1 && guardrailResult.accuracy === 1 && langResult.score === 1 && brandResult.score === 1,
   metrics: {
-    tool_selection:    { score: toolResult.score,       correct: toolResult.correct,    total: toolResult.total,    errors: toolResult.errors },
+    tool_selection:    { score: toolResult.score,    correct: toolResult.correct,    total: toolResult.total,    errors: toolResult.errors },
     guardrails:        { accuracy: guardrailResult.accuracy, precision: guardrailResult.precision, recall: guardrailResult.recall, f1: guardrailResult.f1, confusion: guardrailResult.confusion, errors: guardrailResult.errors },
-    language_detection:{ score: langResult.score,       correct: langResult.correct,    total: langResult.total,    errors: langResult.errors },
+    language_detection:{ score: langResult.score,    correct: langResult.correct,    total: langResult.total,    errors: langResult.errors },
+    brand_extraction:  { score: brandResult.score,   correct: brandResult.correct,   total: brandResult.total,   errors: brandResult.errors },
   },
 };
 
 writeFileSync(new URL("./results.json", import.meta.url), JSON.stringify(summary, null, 2));
 
-export { toolResult, guardrailResult, langResult };
+export { toolResult, guardrailResult, langResult, brandResult };

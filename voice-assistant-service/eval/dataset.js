@@ -35,6 +35,19 @@ export const TOOL_CASES = [
   { id: "U03", text: "Vale, perfecto",                        expected: "unknown" },
 ];
 
+// ── Regresión: extractBrand no debe falsos positivos con tipos de combustible ─
+// Bug: "de gasolina" se detectaba como brand="gasolina" → filtraba todas las estaciones
+export const BRAND_EXTRACTION_CASES = [
+  { id: "B01", text: "¿Cuál es la gasolinera más barata de gasolina 95 en 5 kilómetros?", expected_brand: null },
+  { id: "B02", text: "Quiero la más barata de gasoleo cerca",                              expected_brand: null },
+  { id: "B03", text: "Precio de gasolina 98",                                              expected_brand: null },
+  { id: "B04", text: "Gasolinera de Repsol más cercana",                                   expected_brand: "repsol" },
+  { id: "B05", text: "Busco una BP cerca",                                                 expected_brand: "bp" },
+  { id: "B06", text: "¿Hay una gasolinera de marca Galp?",                                 expected_brand: "galp" },
+  { id: "B07", text: "Dame la más barata de Cepsa",                                        expected_brand: "cepsa" },
+  { id: "B08", text: "¿Cuánto cuesta la gasolina 95 en la REPSOL más cercana?",            expected_brand: "repsol" },
+];
+
 // ── Detección de idioma (regresión) ──────────────────────────────────────────
 // Cubre el bug: "gasolineras" contiene "gasoline" → detectaba en-US incorrectamente.
 // expected: "es" | "en" | "eu"
