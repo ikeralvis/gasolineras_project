@@ -10,6 +10,7 @@ o una lista directa [ {...}, ... ]
 """
 import logging
 from typing import List, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -17,6 +18,24 @@ from app.config import settings
 from app.models.schemas import GasolineraInternal, COMBUSTIBLE_FIELD_MAP
 
 logger = logging.getLogger(__name__)
+
+_GCP_METADATA_TOKEN_URL = (
+    "http://metadata.google.internal/computeMetadata/v1/instance/"
+    "service-accounts/default/identity?audience={audience}"
+)
+
+
+async def _get_identity_token(audience: str) -> Optional[str]:
+    """Obtiene un OIDC identity token del metadata server de GCP para autenticar llamadas Cloud Run→Cloud Run."""
+    try:
+        url = _GCP_METADATA_TOKEN_URL.format(audience=audience)
+        async with httpx.AsyncClient() as c:
+            resp = await c.get(url, headers={"Metadata-Flavor": "Google"}, timeout=5)
+            resp.raise_for_status()
+            return resp.text.strip()
+    except Exception as exc:
+        logger.debug("No se pudo obtener identity token GCP: %s", exc)
+        return None
 
 
 def _parse_precio(raw: Optional[str]) -> Optional[float]:
@@ -111,7 +130,16 @@ async def fetch_gasolineras(
 
         logger.debug("Obteniendo gasolineras desde %s", url)
         try:
-            resp = await client.get(url, timeout=settings.GASOLINERAS_TIMEOUT_S)
+            headers = {}
+            parsed = urlparse(url)
+            if parsed.hostname and parsed.hostname.endswith(".run.app"):
+                audience = f"{parsed.scheme}://{parsed.netloc}"
+                token = await _get_identity_token(audience)
+                if token:
+                    headers["Authorization"] = f"Bearer {token}"
+                    logger.debug("Identity token GCP añadido para %s", audience)
+
+            resp = await client.get(url, timeout=settings.GASOLINERAS_TIMEOUT_S, headers=headers)
             resp.raise_for_status()
             data = resp.json()
             source = "gateway"
