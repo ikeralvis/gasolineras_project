@@ -1,0 +1,137 @@
+name: Agent Eval — Agente TankGo Voz
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "voice-assistant-service/**"
+      - ".github/workflows/agent-eval.yml"
+  pull_request:
+    branches: [master, main]
+    paths:
+      - "voice-assistant-service/**"
+      - ".github/workflows/agent-eval.yml"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  eval:
+    name: Métricas offline agente de voz
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+
+    defaults:
+      run:
+        working-directory: voice-assistant-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "lts/*"
+
+      - name: Install dependencies
+        run: npm install --no-fund --no-audit
+
+      - name: Run offline eval (sin API keys, coste $0)
+        run: node eval/metrics.js
+
+      # ── GitHub Step Summary (visible en el tab Actions) ─────────────────────
+      - name: Write step summary
+        if: always()
+        run: |
+          node --input-type=module - <<'JSEOF'
+          import { readFileSync, appendFileSync } from "node:fs";
+
+          const r = JSON.parse(readFileSync("eval/results.json", "utf8"));
+          const { tool_selection: t, guardrails: g, language_detection: l } = r.metrics;
+
+          const pct  = (v) => `${(v * 100).toFixed(1)}%`;
+          const icon = (v) => v === 1 ? "✅" : v >= 0.9 ? "⚠️" : "❌";
+
+          const lines = [
+            `## ${r.passed ? "✅" : "❌"} Evaluación Offline — Agente TankGo Voz`,
+            "",
+            "| Métrica | Score | Estado |",
+            "|---|---|---|",
+            `| **1. Precisión en Selección de Herramientas** | ${pct(t.score)} (${t.correct}/${t.total}) | ${icon(t.score)} |`,
+            `| **2. Efectividad de los Guardarraíles** | Accuracy ${pct(g.accuracy)} · F1 ${pct(g.f1)} | ${icon(g.accuracy)} |`,
+            `| **3. Detección de Idioma** (regresión) | ${pct(l.score)} (${l.correct}/${l.total}) | ${icon(l.score)} |`,
+            "",
+            "> Sin llamadas a API · Coste: \\$0",
+          ];
+
+          const allErrors = [
+            ...t.errors.map(e => `- **[Tool]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
+            ...g.errors.map(e => `- **[Guardrail]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, actual \`${e.actual}\``),
+            ...l.errors.map(e => `- **[Lang]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
+          ];
+
+          if (allErrors.length > 0) {
+            lines.push("", `### ⚠️ ${allErrors.length} error(es)`, "", ...allErrors);
+          }
+
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+          JSEOF
+
+      # ── Comentario en el PR (solo en pull_request, se crea o actualiza) ──────
+      - name: Post PR comment
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs   = require("fs");
+            const path = require("path");
+            const r    = JSON.parse(fs.readFileSync("voice-assistant-service/eval/results.json", "utf8"));
+
+            const { tool_selection: t, guardrails: g, language_detection: l } = r.metrics;
+            const pct  = (v) => `${(v * 100).toFixed(1)}%`;
+            const icon = (v) => v === 1 ? "✅" : v >= 0.9 ? "⚠️" : "❌";
+
+            const MARKER = "<!-- agent-eval-comment -->";
+
+            let body = `${MARKER}\n`;
+            body += `## ${r.passed ? "✅" : "❌"} Evaluación Offline — Agente TankGo Voz\n\n`;
+            body += `| Métrica | Score | Estado |\n|---|---|---|\n`;
+            body += `| **1. Precisión en Selección de Herramientas** | ${pct(t.score)} (${t.correct}/${t.total}) | ${icon(t.score)} |\n`;
+            body += `| **2. Efectividad de los Guardarraíles** | Accuracy ${pct(g.accuracy)} · F1 ${pct(g.f1)} | ${icon(g.accuracy)} |\n`;
+            body += `| **3. Detección de Idioma** (regresión) | ${pct(l.score)} (${l.correct}/${l.total}) | ${icon(l.score)} |\n\n`;
+
+            const allErrors = [
+              ...t.errors.map(e => `- **[Tool]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
+              ...g.errors.map(e => `- **[Guardrail]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, actual \`${e.actual}\``),
+              ...l.errors.map(e => `- **[Lang]** \`${e.id}\` — _"${e.text}"_ → esperado \`${e.expected}\`, predicho \`${e.predicted}\``),
+            ];
+
+            if (allErrors.length > 0) {
+              body += `<details>\n<summary>⚠️ ${allErrors.length} error(es) encontrado(s) — ver detalle</summary>\n\n${allErrors.join("\n")}\n\n</details>\n\n`;
+            }
+
+            body += `> _Commit \`${context.sha.slice(0, 7)}\` · Sin llamadas a API · Coste: $0_`;
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.includes(MARKER));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner:      context.repo.owner,
+                repo:       context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner:        context.repo.owner,
+                repo:         context.repo.repo,
+                issue_number: context.issue.number,
+                body,
+              });
+            }

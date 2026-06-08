@@ -14,6 +14,7 @@ import { Buffer } from "node:buffer";
 import { GoogleGenAI, Type } from "@google/genai";
 import { voiceEnv } from "../config/env.js";
 import { getNearestStationContext, getPricesForVoice, getNearestStations, getUserProfile } from "./gatewayTools.js";
+import { traceResult } from "../eval/tracer.js";
 
 // ─── Cliente Gemini ───────────────────────────────────────────────────────────
 
@@ -131,6 +132,15 @@ function detectLanguageFromText(text) {
   const euHints = ["kaixo", "eskerrik", "mesedez", "non", "zer", "gasolindegi", "erregai", "prezio", "hurbil", "ibilbide"];
   if (euHints.some((hint) => normalized.includes(hint))) return "eu";
 
+  // Comprobar español antes que inglés para evitar falsos positivos:
+  // "gasolineras" contiene "gasoline", "mapa" contiene "map", "petroleo" contiene "petrol".
+  const esHints = [
+    "gasolinera", "gasolineras", "precio", "precios", "cerca", "cercana",
+    "mas barata", "mas barato", "barata", "barato", "repostar", "combustible",
+    "gasoleo", "gasolina", "donde", "cuanto", "cual", "que hay",
+  ];
+  if (esHints.some((hint) => normalized.includes(hint))) return "es";
+
   const enHints = [
     "hello",
     "please",
@@ -232,11 +242,14 @@ function isInScope(text) {
     "diesel",
     "gasoleo",
     "erregai",
+    "combustible",
+    "repostar",
     "precio",
     "precios",
     "price",
     "cheapest",
     "barata",
+    "barato",
     "cerca",
     "near",
     "nearest",
@@ -668,6 +681,7 @@ export async function runPipelineDialog({
   location = null,
   authToken = null,
 }) {
+  const _t0 = Date.now();
   const ai = getClient();
   const userTextRaw = String(text || "").trim();
   const needsStt = Boolean(!userTextRaw && audioBase64);
@@ -743,8 +757,10 @@ export async function runPipelineDialog({
     }
   }
 
+  let guardrailFired = false;
   if (!responseText) {
     if (voiceEnv.guardrails.enabled && !isInScope(userText)) {
+      guardrailFired = true;
       if (language.code === "en-US") {
         responseText = voiceEnv.guardrails.mode === "strict"
           ? "Sorry, I can only help with TankGo questions about gas stations, prices, and routes."
@@ -768,7 +784,7 @@ export async function runPipelineDialog({
   // Paso 3: TTS
   const tts = await maybeSynthesizeSpeech({ ai, text: responseText, includeAudio, languageCode: language.code });
 
-  return {
+  const result = {
     provider: "pipeline",
     pipeline: {
       stt: sttTranscript !== null ? "gemini" : "text-input",
@@ -780,9 +796,15 @@ export async function runPipelineDialog({
       intent: intent.type,
       language: language.code,
       toolOutputs,
+      guardrailsTriggered: guardrailFired,
       ...(sttTranscript !== null && { sttTranscript }),
     },
     answer: { text: responseText },
     tts,
   };
+
+  traceResult({ text: userText, audioBase64, location }, result, Date.now() - _t0).catch(() => {});
+  return result;
 }
+
+export { classifyIntent, isInScope, detectLanguageFromText };
