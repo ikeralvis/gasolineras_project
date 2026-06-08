@@ -50,4 +50,36 @@ describe('UserService', () => {
     expect(result.ok).toBe(true);
     expect(result.data).toEqual(rows);
   });
+
+  it('getMe devuelve usuario cuando existe', async () => {
+    const user = { id: 1, nombre: 'Ana', email: 'ana@test.com' };
+    const { service } = buildService({ findById: vi.fn().mockResolvedValue(user) });
+    const result = await service.getMe(1);
+    expect(result.ok).toBe(true);
+    expect(result.statusCode).toBe(200);
+    expect(result.data).toEqual(user);
+  });
+
+  it('updateMe actualiza nombre y devuelve usuario actualizado', async () => {
+    const updated = { id: 1, nombre: 'Nuevo Nombre', email: 'ana@test.com' };
+    const { service } = buildService({
+      emailInUseByOtherUser: vi.fn(),
+      updateById: vi.fn().mockResolvedValue(updated),
+    });
+    const result = await service.updateMe(1, { nombre: 'Nuevo Nombre' });
+    expect(result.ok).toBe(true);
+    expect(result.statusCode).toBe(200);
+    expect(result.data.nombre).toBe('Nuevo Nombre');
+  });
+
+  it('updateMe con tipo_combustible_coche diesel infiere combustible_favorito', async () => {
+    const updated = { id: 1, tipo_combustible_coche: 'diesel', combustible_favorito: 'Precio Gasoleo A' };
+    const { service, userRepository } = buildService({
+      emailInUseByOtherUser: vi.fn(),
+      updateById: vi.fn().mockResolvedValue(updated),
+    });
+    await service.updateMe(1, { tipo_combustible_coche: 'diesel' });
+    const updates = userRepository.updateById.mock.calls[0][1];
+    expect(updates.combustible_favorito).toBe('Precio Gasoleo A');
+  });
 });

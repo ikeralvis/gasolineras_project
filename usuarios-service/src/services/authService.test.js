@@ -74,4 +74,50 @@ describe('AuthService', () => {
     expect(result.ok).toBe(true);
     expect(result.data.token).toBe('jwt-token');
   });
+
+  it('rechaza registro con contraseña débil', async () => {
+    const { service } = buildService();
+    const result = await service.register({ nombre: 'Ana', email: 'ana@test.com', password: 'weakpass' });
+    expect(result.ok).toBe(false);
+    expect(result.statusCode).toBe(400);
+  });
+
+  it('registro exitoso devuelve los datos del usuario creado', async () => {
+    const created = { id: 1, nombre: 'Ana', email: 'ana@test.com' };
+    const { service } = buildService({
+      userRepository: { create: vi.fn().mockResolvedValue(created) },
+    });
+    const result = await service.register({ nombre: 'Ana', email: 'ana@test.com', password: 'Password123!' });
+    expect(result.ok).toBe(true);
+    expect(result.statusCode).toBe(201);
+    expect(result.data).toEqual(created);
+  });
+
+  it('loginOrCreateGoogle vincula google_id a usuario existente que no lo tenía', async () => {
+    const user = { id: 1, nombre: 'Ana', email: 'ana@test.com', is_admin: false, google_id: null };
+    const { service, userRepository } = buildService({
+      userRepository: {
+        findByEmail: vi.fn().mockResolvedValue(user),
+        setGoogleId: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const result = await service.loginOrCreateGoogle({ google_id: 'g123', email: 'ana@test.com', name: 'Ana' });
+    expect(userRepository.setGoogleId).toHaveBeenCalledWith(1, 'g123');
+    expect(result.ok).toBe(true);
+    expect(result.data.token).toBe('jwt-token');
+  });
+
+  it('loginOrCreateGoogle crea usuario nuevo cuando no existe y devuelve token', async () => {
+    const newUser = { id: 2, nombre: 'Bot', email: 'bot@test.com', is_admin: false };
+    const { service, userRepository } = buildService({
+      userRepository: {
+        findByEmail: vi.fn().mockResolvedValue(null),
+        createGoogleUser: vi.fn().mockResolvedValue(newUser),
+      },
+    });
+    const result = await service.loginOrCreateGoogle({ google_id: 'g456', email: 'bot@test.com', name: 'Bot' });
+    expect(userRepository.createGoogleUser).toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(result.data.token).toBe('jwt-token');
+  });
 });

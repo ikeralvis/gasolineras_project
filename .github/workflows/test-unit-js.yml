@@ -1,0 +1,75 @@
+name: Unit Tests — JavaScript Services
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # usuarios-service
+  # ────────────────────────────────────────────────────────────────────────────
+  unit-usuarios:
+    name: usuarios-service · vitest
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: usuarios-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+          cache-dependency-path: usuarios-service/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        run: npx vitest run --coverage
+        env:
+          NODE_ENV: test
+
+      - name: Coverage summary → GitHub Step Summary
+        run: |
+          node --input-type=commonjs - <<'JSEOF'
+          const { readFileSync, appendFileSync } = require('fs');
+          const data = JSON.parse(readFileSync('coverage/coverage-summary.json', 'utf8'));
+          const total = data.total;
+          const pct = total.lines.pct;
+          const icon = pct >= 80 ? '🟢' : (pct >= 60 ? '🟡' : '🔴');
+          const lines = [
+            '## Coverage — usuarios-service',
+            '',
+            `${icon} **Total: ${pct.toFixed(1)}%**   (${total.lines.covered}/${total.lines.total} lines · ${total.branches.pct.toFixed(1)}% branches · ${total.functions.pct.toFixed(1)}% functions)`,
+            '',
+            '| File | Lines | Branches | Funcs |',
+            '|------|------:|---------:|------:|',
+          ];
+          for (const [filePath, info] of Object.entries(data)) {
+            if (filePath === 'total') continue;
+            const short = filePath.replace(/.*\/src\//, '');
+            const l = info.lines.pct.toFixed(1);
+            const b = info.branches.pct.toFixed(1);
+            const f = info.functions.pct.toFixed(1);
+            const fi = info.lines.pct >= 80 ? '🟢' : (info.lines.pct >= 60 ? '🟡' : '🔴');
+            lines.push(`| \`${short}\` | ${fi} ${l}% | ${b}% | ${f}% |`);
+          }
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n');
+          JSEOF
+
+      - name: Upload HTML coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-usuarios-html
+          path: usuarios-service/coverage/
+          retention-days: 7
