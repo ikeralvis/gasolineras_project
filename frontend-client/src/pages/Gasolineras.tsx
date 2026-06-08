@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import GasolinerasTable from "../components/GasolinerasTable";
 import { getGasolinerasCerca } from "../api/gasolineras";
 import { useAuth } from "../contexts/AuthContext";
+import { useLocationContext } from "../contexts/LocationContext";
 
 const MARCAS_POPULARES = [
     { nombre: "Repsol",   color: "#D32F2F" },
@@ -55,6 +56,7 @@ const normalizeGasolinera = (g: any) => {
 export default function Gasolineras() {
     const { t } = useTranslation();
     const { user } = useAuth();
+    const { location: ctxLocation } = useLocationContext();
     const [gasolineras, setGasolineras] = useState<any[]>([]);
     const [filtered, setFiltered] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -170,7 +172,18 @@ export default function Gasolineras() {
 
                 if (!hasCache) setLoading(true);
 
-                const geoTimeout = setTimeout(cargarTodasLasGasolineras, 5000);
+                // If the shared location context already has a position (from cache or earlier page),
+                // use it immediately — no geo request needed.
+                if (ctxLocation) {
+                    setUserLocation(ctxLocation);
+                    setUsarCercania(true);
+                    await cargarGasolinerasCerca(ctxLocation.lat, ctxLocation.lon, radioKm);
+                    return;
+                }
+
+                // Fall back to a direct geo request with lenient settings
+                // enableHighAccuracy:false = network-based (~1s), maximumAge:30s = instant on repeat
+                const geoTimeout = setTimeout(cargarTodasLasGasolineras, 10_000);
 
                 navigator.geolocation.getCurrentPosition(
                     async (pos) => {
@@ -181,14 +194,16 @@ export default function Gasolineras() {
                         setUsarCercania(true);
                         await cargarGasolinerasCerca(lat, lon, radioKm);
                     },
-                    async () => { clearTimeout(geoTimeout); cargarTodasLasGasolineras(); },
-                    { timeout: 5000 }
+                    async () => { clearTimeout(geoTimeout); await cargarTodasLasGasolineras(); },
+                    { enableHighAccuracy: false, maximumAge: 30_000, timeout: 10_000 }
                 );
             } catch {
                 setLoading(false);
             }
         }
         cargarDatos();
+    // ctxLocation intentionally excluded: we only want the snapshot at mount time
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
     useEffect(() => {

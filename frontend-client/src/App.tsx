@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { ReactElement } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { LocationProvider } from "./contexts/LocationContext";
 import { applyPageMeta } from "./seo";
 import Home from "./pages/Home";
 import Navbar from "./components/Navbar";
@@ -109,7 +110,9 @@ function App() {
 
   return (
     <AuthProvider>
-      <AppContent />
+      <LocationProvider>
+        <AppContent />
+      </LocationProvider>
     </AuthProvider>
   );
 }

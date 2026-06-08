@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MessageCircle, Mic, MicOff, Send, Sparkles, X } from "lucide-react";
+import { Mic, MicOff, Send, Sparkles, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { askVoiceAssistant } from "../api/voiceAssistant";
+import { useLocationContext } from "../contexts/LocationContext";
 
 type ChatMessage = {
   id: string;
@@ -39,23 +40,6 @@ function mergeTranscript(base: string, incoming: string): string {
   return `${previous} ${next}`.trim();
 }
 
-function getCurrentLocation(): Promise<{ lat: number; lon: number } | null> {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) {
-      resolve(null);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude });
-      },
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 4500 }
-    );
-  });
-}
-
 function formatTtsFallbackReason(note?: string): string {
   const normalized = String(note || "").trim().toLowerCase();
   if (!normalized) {
@@ -72,6 +56,7 @@ function formatTtsFallbackReason(note?: string): string {
 export default function VoiceAssistantWidget() {
   const location = useLocation();
   const isRoutesPage = location.pathname === "/rutas";
+  const { location: userLocation } = useLocationContext();
   const isMobileDevice = /android|iphone|ipad|ipod|mobile/i.test(globalThis.navigator?.userAgent ?? "");
   const liveTuning = useMemo(
     () => ({
@@ -550,12 +535,11 @@ export default function VoiceAssistantWidget() {
     setLiveStatus("Enviando al asistente...");
 
     try {
-      const location = await getCurrentLocation();
       const response = await askVoiceAssistant({
         text: previewText || undefined,
         audioBase64: finalAudioBase64,
         mimeType: liveMimeTypeRef.current,
-        location: location ? { ...location, km: 8 } : undefined,
+        location: userLocation ? { ...userLocation, km: 8 } : undefined,
         includeAudio: true,
       });
 
@@ -648,10 +632,9 @@ export default function VoiceAssistantWidget() {
     setLoading(true);
 
     try {
-      const location = await getCurrentLocation();
       const response = await askVoiceAssistant({
         text: prompt,
-        location: location ? { ...location, km: 8 } : undefined,
+        location: userLocation ? { ...userLocation, km: 8 } : undefined,
         includeAudio: true,
       });
 
@@ -698,194 +681,207 @@ export default function VoiceAssistantWidget() {
     }
   }
 
+  // Live mode is active and showing transcription overlay
+  const showLiveOverlay = liveMode && !liveUiHidden;
+
   return (
     <>
+      {/* ── FAB button when closed ── */}
       {!open && (
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className={`fixed right-4 z-[1200] flex h-12 w-12 items-center justify-center rounded-full bg-[#000C74] text-white shadow-xl transition hover:scale-[1.02] md:right-6 md:h-14 md:w-14 md:bottom-6 ${isRoutesPage ? "bottom-[7.25rem]" : "bottom-[5.5rem]"}`}
+          className={`fixed right-4 z-[1200] flex h-14 w-14 items-center justify-center rounded-full bg-[#000C74] text-white shadow-2xl transition-transform hover:scale-105 active:scale-95 md:right-6 md:h-16 md:w-16 md:bottom-6 ${isRoutesPage ? "bottom-[7.25rem]" : "bottom-[5.5rem]"}`}
           aria-label="Abrir asistente TankGo"
         >
-          <MessageCircle className="h-5 w-5" />
+          <Sparkles className="h-6 w-6" />
         </button>
       )}
 
       {open && (
-        <section className="fixed inset-0 z-[1190] md:inset-auto md:right-6 md:bottom-24 md:h-[78vh] md:w-[min(92vw,720px)] w-screen h-screen overflow-hidden rounded-none border border-[#DCE0FF] bg-white shadow-2xl md:rounded-2xl flex flex-col">
-          <header className="flex items-center justify-between bg-linear-to-r from-[#000C74] to-[#1B2AA6] px-4 py-3 text-white shrink-0">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-4 w-4" />
-              <h3 className="text-sm font-semibold">TankGo AI Assistant</h3>
+        <section className="fixed inset-0 z-[1190] flex flex-col bg-white md:inset-auto md:right-6 md:bottom-6 md:w-[420px] md:h-[82vh] md:max-h-[700px] md:rounded-3xl md:shadow-2xl md:border md:border-[#E0E4FF] overflow-hidden">
+
+          {/* ── Header ── */}
+          <header className="shrink-0 flex items-center justify-between px-4 py-3 bg-[#000C74] text-white">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-8 w-8 rounded-full bg-white/15 flex items-center justify-center shrink-0">
+                <Sparkles className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold leading-none">TankGo AI</p>
+                <p className="text-[11px] text-white/60 mt-0.5 truncate">
+                  {showLiveOverlay
+                    ? liveStatus
+                    : liveProcessing
+                      ? "Procesando audio..."
+                      : userLocation
+                        ? "Ubicación detectada ✓"
+                        : "Asistente de voz"}
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] text-white/80">Beta</span>
+            <div className="flex items-center gap-2 shrink-0">
+              {liveMode && (
+                <span className="flex items-center gap-1 rounded-full bg-red-500/20 border border-red-400/40 px-2 py-0.5">
+                  <span className="h-1.5 w-1.5 rounded-full bg-red-400 animate-pulse" />
+                  <span className="text-[10px] font-bold text-red-300 uppercase">Live</span>
+                </span>
+              )}
               <button
                 type="button"
-                onClick={() => {
-                  if (liveMode) {
-                    stopLiveModeImmediate();
-                  }
-                  setOpen(false);
-                }}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-white/15 hover:bg-white/25"
-                aria-label="Cerrar asistente"
+                onClick={() => { if (liveMode) stopLiveModeImmediate(); setOpen(false); }}
+                className="h-8 w-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition"
+                aria-label="Cerrar"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
           </header>
 
-          {liveMode && !liveUiHidden ? (
-            <div className="flex-1 flex flex-col items-center justify-between bg-radial-[at_50%_20%] from-[#E9EEFF] via-[#F8FAFF] to-[#F2F6FF] px-5 py-6">
-              <div className="w-full flex items-center justify-between">
-                <span className="text-sm font-bold text-[#31447D] uppercase tracking-wide">Live Voice</span>
-                <span className="text-sm font-medium text-[#4A5D99]">{liveStatus}</span>
-              </div>
-
-              <div className="flex-1 w-full max-w-xl flex flex-col items-center justify-center gap-5">
+          {/* ── Live voice overlay ── */}
+          {showLiveOverlay ? (
+            <div className="flex-1 flex flex-col items-center justify-between px-5 py-6 bg-[#F4F6FF]">
+              {/* Mic visualizer */}
+              <div className="flex-1 w-full flex flex-col items-center justify-center gap-6">
                 <div className="relative flex items-center justify-center">
-                  <div className={`absolute h-36 w-36 rounded-full bg-[#90A4FF]/40 blur-2xl ${liveListening ? "animate-pulse" : ""}`} />
-                  <div className="relative h-24 w-24 rounded-full bg-[#0D1A8A] text-white flex items-center justify-center shadow-lg">
-                    {liveListening ? <Mic className="h-8 w-8" /> : <MicOff className="h-8 w-8" />}
+                  <div className={`absolute h-40 w-40 rounded-full bg-[#3B5BDB]/20 blur-3xl ${liveListening ? "animate-pulse" : ""}`} />
+                  <div className={`relative h-28 w-28 rounded-full flex items-center justify-center shadow-xl transition-all ${liveListening ? "bg-[#0D1A8A] scale-100" : "bg-[#374A8C] scale-95"}`}>
+                    {liveListening
+                      ? <Mic className="h-10 w-10 text-white" />
+                      : <MicOff className="h-10 w-10 text-white/70" />
+                    }
                   </div>
                 </div>
 
-                <div className="w-full grid grid-cols-7 gap-1 px-3">
-                  {[0, 1, 2, 3, 4, 5, 6].map((n) => (
+                {/* Waveform bars */}
+                <div className="flex items-end justify-center gap-1.5 h-12 w-full max-w-xs">
+                  {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
                     <div
                       key={n}
-                      className={`rounded-full bg-[#2540D6] ${liveListening ? "animate-pulse" : ""}`}
+                      className="rounded-full bg-[#2540D6] w-2 transition-all duration-75"
                       style={{
-                        height: `${14 + ((n % 3) + 1) * 6 + Math.round(liveMicLevel * 26)}px`,
-                        opacity: `${0.45 + Math.min(0.55, liveMicLevel)}`,
-                        animationDelay: `${n * 90}ms`,
+                        height: `${Math.max(8, 12 + ((n % 3) + 1) * 5 + Math.round(liveMicLevel * 30))}px`,
+                        opacity: liveListening ? 0.5 + Math.min(0.5, liveMicLevel) : 0.25,
                       }}
                     />
                   ))}
                 </div>
 
-                <div className="w-full rounded-2xl border border-[#D9E0FF] bg-white/85 p-4 min-h-32">
-                  <p className="text-xs font-bold uppercase tracking-wide text-[#5D6FA9] mb-2">Lo que escucho</p>
-                  <p className="text-[#152452] text-base leading-relaxed wrap-break-word">
-                    {liveHeardText || "Habla ahora... iré transcribiendo en vivo."}
-                    {liveListening && <span className="inline-block ml-1 w-2 h-5 bg-[#2A44D2] animate-pulse align-middle rounded-sm" />}
+                {/* Transcript box */}
+                <div className="w-full rounded-2xl border border-[#D0D8FF] bg-white px-4 py-3 min-h-[80px]">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#7B8FCC] mb-1.5">Escuchando</p>
+                  <p className="text-[#152452] text-lg font-medium leading-snug">
+                    {liveHeardText || <span className="text-[#A0AECF] italic text-base">Habla ahora...</span>}
+                    {liveListening && <span className="inline-block ml-1 w-0.5 h-5 bg-[#2A44D2] animate-pulse align-middle" />}
                   </p>
                 </div>
               </div>
 
-              <div className="w-full max-w-xl flex items-center justify-center gap-3">
+              {/* Stop button */}
+              <div className="w-full flex justify-center pt-4">
                 {liveListening ? (
                   <button
                     type="button"
-                    onClick={() => {
-                      void stopLiveModeAndSend("manual");
-                    }}
-                    className="inline-flex items-center gap-3 rounded-2xl bg-[#AF1E37] px-7 py-4 text-base font-bold text-white shadow-lg active:scale-95 transition-transform"
+                    onClick={() => { void stopLiveModeAndSend("manual"); }}
+                    className="flex items-center gap-3 rounded-2xl bg-[#C0152A] px-8 py-4 text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
                   >
-                    <MicOff className="h-5 w-5" />
+                    <MicOff className="h-6 w-6" />
                     Parar y enviar
                   </button>
                 ) : (
                   <button
                     type="button"
-                    onClick={() => {
-                      void startLiveMode();
-                    }}
-                    className="inline-flex items-center gap-3 rounded-2xl bg-[#0A7A2F] px-7 py-4 text-base font-bold text-white shadow-lg active:scale-95 transition-transform"
+                    onClick={() => { void startLiveMode(); }}
+                    className="flex items-center gap-3 rounded-2xl bg-[#0A6B28] px-8 py-4 text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
                   >
-                    <Mic className="h-5 w-5" />
-                    Reanudar Live
+                    <Mic className="h-6 w-6" />
+                    Reanudar
                   </button>
                 )}
               </div>
             </div>
           ) : (
             <>
+              {/* ── Processing banner ── */}
               {liveProcessing && (
-                <div className="mx-3 mt-3 rounded-2xl border border-[#D7DBFF] bg-linear-to-r from-[#EEF1FF] via-white to-[#EEF1FF] px-4 py-3.5 text-[#1B2A6B] flex items-center gap-3">
-                  <span className="h-5 w-5 rounded-full border-2 border-[#2336C7]/25 border-t-[#2336C7] animate-spin shrink-0" />
-                  <span className="font-semibold text-sm">Procesando tu audio...</span>
+                <div className="mx-3 mt-2 rounded-xl bg-[#EEF1FF] border border-[#C7CFFF] px-4 py-2.5 flex items-center gap-3 shrink-0">
+                  <span className="h-4 w-4 rounded-full border-2 border-[#3B4FD4]/30 border-t-[#3B4FD4] animate-spin shrink-0" />
+                  <span className="text-sm font-semibold text-[#1B2A6B]">Procesando tu audio...</span>
                 </div>
               )}
-              <div id="voice-chat-scroll" className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-[#F7F8FF] min-h-0">
+
+              {/* ── Quick prompts ── */}
+              <div className="shrink-0 px-3 pt-2.5 pb-0">
+                <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
+                  {QUICK_PROMPTS.map((q) => (
+                    <button
+                      key={q.label}
+                      type="button"
+                      onClick={() => sendPrompt(q.text)}
+                      disabled={loading || liveMode}
+                      className="flex-none rounded-full border border-[#D0D8FF] bg-[#F4F6FF] px-3.5 py-2 text-xs font-semibold text-[#1E3A8A] whitespace-nowrap hover:bg-[#E0E8FF] active:bg-[#C7D4FF] disabled:opacity-40 transition"
+                    >
+                      {q.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Chat messages ── */}
+              <div id="voice-chat-scroll" className="flex-1 overflow-y-auto px-3 py-2.5 space-y-2.5 bg-[#F9FAFE] min-h-0">
                 {messages.map((m) => (
                   <div
                     key={m.id}
-                    className={`max-w-[90%] rounded-2xl px-4 py-3 text-base leading-relaxed ${
+                    className={`max-w-[88%] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm ${
                       m.role === "user"
-                        ? "ml-auto bg-[#000C74] text-white"
-                        : "mr-auto bg-white text-[#12203D] border border-[#E1E5FF]"
+                        ? "ml-auto bg-[#000C74] text-white rounded-br-sm"
+                        : "mr-auto bg-white text-[#111827] border border-[#E5E9FF] rounded-bl-sm"
                     }`}
                   >
                     {m.pending ? (
                       <span className="flex items-center gap-2.5">
-                        <span className="h-4 w-4 rounded-full border-2 border-[#1B2AA6]/25 border-t-[#1B2AA6] animate-spin shrink-0" />
-                        <span className="font-medium text-[#1B2AA6]">{m.text}</span>
+                        <span className="h-4 w-4 rounded-full border-2 border-[#1B2AA6]/20 border-t-[#1B2AA6] animate-spin shrink-0" />
+                        <span className="font-medium text-[#3B54C0]">{m.text}</span>
                       </span>
                     ) : m.text}
                   </div>
                 ))}
               </div>
 
-              <div className="border-t border-[#E5E8FF] bg-white p-3 shrink-0">
-                <div className="mb-2 rounded-xl border border-[#D7DBFF] bg-[#F6F8FF] p-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-[#1F2B6A]">Modo Live (estilo asistente de voz)</p>
-                      <p className="text-xs text-[#51609B]">Habla y se enviará al detectar silencio</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        void startLiveMode();
-                      }}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-[#0A7A2F] px-3.5 py-2 text-sm font-bold text-white active:scale-95 transition-transform shrink-0"
-                    >
-                      <Mic className="h-4 w-4" />
-                      Live
-                    </button>
-                  </div>
-                </div>
-
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {QUICK_PROMPTS.map((q) => (
-                    <button
-                      key={q.label}
-                      type="button"
-                      onClick={() => sendPrompt(q.text)}
-                      className="rounded-full border border-[#D7DBFF] bg-[#F5F7FF] px-3 py-1.5 text-xs font-medium text-[#253778] hover:bg-[#EAF0FF] active:bg-[#D8E4FF] transition"
-                    >
-                      {q.label}
-                    </button>
-                  ))}
-                </div>
-
+              {/* ── Bottom toolbar ── */}
+              <div className="shrink-0 bg-white border-t border-[#E5E8FF] px-3 pt-2.5 pb-3 space-y-2.5">
+                {/* Text input row */}
                 <div className="flex items-center gap-2">
                   <input
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        sendPrompt();
-                      }
-                    }}
-                    placeholder="Escribe tu consulta..."
-                    className="flex-1 rounded-xl border border-[#D2D8FF] px-3 py-2.5 text-base outline-none focus:border-[#6877E8] disabled:bg-[#F2F4FF]"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sendPrompt(); } }}
+                    placeholder="Escribe o usa el micrófono..."
+                    className="flex-1 rounded-xl border border-[#D0D8FF] bg-[#F9FAFE] px-3.5 py-2.5 text-base outline-none focus:border-[#4F6FD4] focus:bg-white disabled:opacity-50 transition"
                     maxLength={420}
-                    disabled={liveMode}
+                    disabled={liveMode || loading}
                   />
                   <button
                     type="button"
                     onClick={() => sendPrompt()}
                     disabled={!canSend}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-[#000C74] text-white disabled:opacity-50"
+                    className="h-11 w-11 flex items-center justify-center rounded-xl bg-[#000C74] text-white disabled:opacity-30 transition active:scale-95"
                     aria-label="Enviar"
                   >
                     <Send className="h-4 w-4" />
                   </button>
                 </div>
+
+                {/* Mic button — primary CTA for car use */}
+                <button
+                  type="button"
+                  onClick={() => { void startLiveMode(); }}
+                  disabled={loading || liveMode}
+                  className="w-full flex items-center justify-center gap-2.5 rounded-2xl bg-[#0A6B28] hover:bg-[#085E23] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-white py-3.5 text-base font-bold shadow-md transition-all"
+                >
+                  <Mic className="h-5 w-5" />
+                  Hablar con el asistente
+                </button>
               </div>
             </>
           )}
