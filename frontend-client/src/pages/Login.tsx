@@ -4,7 +4,7 @@ import { GoogleLogin } from '@react-oauth/google';
 import { motion } from 'framer-motion';
 import { Eye, EyeOff, KeyRound, Mail, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 function needsOnboarding(user: { modelo_coche?: string; tipo_combustible_coche?: string }) {
   return !user.modelo_coche || !user.tipo_combustible_coche;

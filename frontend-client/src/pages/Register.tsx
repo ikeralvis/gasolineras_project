@@ -14,7 +14,7 @@ import {
   User,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 const FUEL_OPTIONS = [
   { value: 'gasolina', label: 'Gasolina', hint: 'Te mostraremos gasolina por defecto' },

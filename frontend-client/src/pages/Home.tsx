@@ -12,7 +12,7 @@ import {
   Zap,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 type Feature = {
   id: string;
@@ -75,7 +75,7 @@ export default function Home() {
                 src={logo}
                 alt="TankGo"
                 width={160}
-                height={160}
+                height={120}
                 loading="eager"
                 decoding="async"
                 fetchPriority="high"

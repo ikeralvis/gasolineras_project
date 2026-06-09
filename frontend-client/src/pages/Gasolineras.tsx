@@ -421,7 +421,9 @@ export default function Gasolineras() {
             </div>
 
             {/* LISTA */}
-            {renderTableContent()}
+            <div className="min-h-[580px]">
+                {renderTableContent()}
+            </div>
 
             {/* ── MODAL DE FILTROS ── */}
             {filtrosAbiertos && (

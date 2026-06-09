@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import { useFavorites } from '../hooks/useFavorites';
 import LanguageSelector from './LanguageSelector';
-import logo from '../assets/logo.png';
+import logo from '../assets/logo.webp';
 
 type DesktopItem = {
   to: string;
@@ -92,9 +92,10 @@ export default function Navbar() {
                 src={logo}
                 alt="TankGo"
                 width={160}
-                height={160}
+                height={120}
                 loading="eager"
                 decoding="async"
+                fetchPriority="high"
                 className="h-10 w-auto object-contain"
               />
             </Link>

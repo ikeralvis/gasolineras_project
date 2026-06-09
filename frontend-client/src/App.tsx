@@ -47,9 +47,9 @@ function AppContent() {
   }, [location.pathname]);
 
   return (
-    <>
+    <div className="flex min-h-screen flex-col">
       {!isAuthPage && <Navbar />}
-      <main id="main-content" className={isAuthPage || isMapPage ? "" : "pb-24 md:pb-0"}>
+      <main id="main-content" className={`flex-1${isAuthPage || isMapPage ? "" : " pb-24 md:pb-0"}`}>
         <Routes>
           <Route path="/" element={isAuthenticated ? <Navigate to="/gasolineras" replace /> : <Home />} />
           <Route path="/login" element={isAuthenticated ? <Navigate to="/gasolineras" replace /> : <Login />} />
@@ -73,7 +73,7 @@ function AppContent() {
       </main>
       {!isAuthPage && !isMapPage && <Footer />}
       {isAuthenticated && !isAuthPage && <VoiceAssistantWidget />}
-    </>
+    </div>
   );
 }
 
