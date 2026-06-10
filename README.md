@@ -52,26 +52,25 @@ TankGo es una plataforma de microservicios para consultar, comparar y visualizar
 
 **Patrón: API Gateway + Microservicios**
 
-El frontend se comunica únicamente con el Gateway (puerto 8080). El Gateway actúa como proxy reverso hacia los servicios internos, que no son accesibles desde el exterior. Los servicios se comunican entre sí mediante peticiones HTTP con cabecera `X-Internal-Secret`.
+El frontend se comunica únicamente con el Gateway. El Gateway actúa como proxy reverso hacia los servicios internos, que no son accesibles desde el exterior. Los servicios se comunican entre sí mediante peticiones HTTP con cabecera `X-Internal-Secret`.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  Frontend React (PWA)  ·  :80                       │
+│  Frontend React (PWA)                               │
 │  i18n: Español / English / Euskera                  │
 └─────────────────────┬───────────────────────────────┘
                       │  HTTP  credentials: include
                       ▼
 ┌─────────────────────────────────────────────────────┐
-│  API Gateway (Hono)  ·  :8080                       │
+│  API Gateway (Hono)                                 │
 │  Proxy reverso · OpenAPI · OAuth · CORS · WS bridge │
 └──┬───────────┬──────────┬─────────────┬─────────────┘
    │           │          │             │
    ▼           ▼          ▼             ▼
 Usuarios   Gasolineras  Recomendacion  Voice / MCP
-:3001       :8000        :8001          :8090 / stdio
 (Fastify)  (FastAPI)   (FastAPI)      (Fastify/Gemini)
    │           │                        ▲
-   └─────┬─────┘                 Prediction :8001
+   └─────┬─────┘                 Prediction
          ▼                        (LightGBM, perfil ml)
   PostgreSQL (Neon cloud)
 ```
@@ -303,30 +302,39 @@ Punto de entrada único para el frontend. Ver sección [5. API Gateway](#5-api-g
 **Features:**
 - Modelos LightGBM de regresión cuantílica por gasolinera
 - Correlación con precio del Brent (yfinance)
-- Pipeline: GCS (Parquet raw) → entrenamiento → predicción → GCS (resultados)
-- Selección de estaciones basada en favoritos globales de usuarios
+- Pipeline: GCS o local (Parquet raw) → entrenamiento → predicción → **PostgreSQL `prediction_forecasts`** + backup opcional a GCS
+- Selección de estaciones basada en favoritos globales (`SOURCE_MODE=favorites`) o lista fija (`SOURCE_MODE=env`)
+- Validación de frescura del raw al arrancar (`REQUIRE_FRESH_RAW_DATA`, default `true`)
+- Dos fuentes de favoritos: `FAVORITES_SOURCE=usuarios-service` (API con IAM) o `sql` (consulta directa a BD)
 
 | Endpoint | Método | Descripción |
 |----------|--------|-------------|
 | `/health` | GET | Estado del servicio |
-| `/api/prediction/station/{ideess}` | GET | Predicción de precio para una estación |
+| `/api/prediction/station/{ideess}` | GET | Predicción de precio para una estación (solo si `RUN_HTTP_API=true`) |
 
 ### 3.7 Voice Assistant Service (`:8090`, perfil `ai`)
 
 **Features:**
-- Pipeline **STT → LLM con tool calling → TTS**, todo con Gemini 2.5 Flash
+- Pipeline **STT → LLM con tool calling → TTS** (HTTP REST, no WebSocket hacia Gemini)
 - Accesible tanto vía HTTP (petición única) como WebSocket (streaming)
-- Rate limiting: 40 req/min por IP
-- Audio de entrada en base64 (máx 5.5 MB), respuesta con audio TTS opcional
-- Contexto de gasolineras y precios integrado (tool calling hacia la API)
+- **Guardrails**: filtra preguntas fuera del dominio (gasolineras, precios, rutas) antes de llegar al LLM; modo configurable `strict` o `warn`
+- **Detección de idioma automática**: adapta el contexto del LLM según el texto del usuario (es/en/eu)
+- **Dos herramientas de function calling:**
+  - `get_prices` — precios de combustible ordenados por precio
+  - `get_nearest_stations` — gasolineras cercanas ordenadas por distancia
+- Rate limiting: configurable (default 40 req/min por IP)
+- Audio de entrada en base64, respuesta con audio TTS opcional
 
 | Endpoint | Método | Auth | Descripción |
 |----------|--------|------|-------------|
 | `/health` | GET | — | Estado |
-| `/voice/dialog` | POST | JWT | Diálogo: envía texto o audio base64, recibe respuesta texto+audio |
-| `/ws/voice` | WS | JWT | Stream de audio en tiempo real (acciones: `dialog`, `audio_chunk`, `ping`) |
+| `/capabilities` | GET | — | Modelos, límites y acciones disponibles |
+| `/voice/dialog` | POST | — | Diálogo: envía texto o audio base64, recibe respuesta texto+audio |
+| `/ws/voice` | WS | — | Stream en tiempo real (acciones: `dialog`, `audio_chunk`, `audio_commit`, `clear_buffer`, `ping`) |
 
 El Gateway expone `/api/voice/ws` como bridge WebSocket hacia este servicio.
+
+> `audio_commit` fusiona los chunks acumulados con `audio_chunk` y ejecuta el turno. `clear_buffer` descarta el buffer sin ejecutar. El JWT se pasa opcionalmente para personalizar respuestas según perfil del usuario (combustible favorito).
 
 ### 3.8 MCP Server (stdio, perfil `ai`)
 
@@ -617,16 +625,24 @@ ALLOW_STRAIGHT_LINE_FALLBACK=false
 GASOLINERAS_API_URL=http://gateway:8080/api/gasolineras/?limit=20000
 
 # ── Voice Assistant (perfil ai) ───────────────────────────────
-GEMINI_API_KEY=                   # Google AI Studio API key
-GEMINI_LIVE_MODEL=models/gemini-2.5-flash-native-audio-latest
+GEMINI_API_KEY=                   # Google AI Studio API key (o GOOGLE_API_KEY)
+GEMINI_DIALOG_MODEL=gemini-2.5-flash
+GEMINI_TTS_MODEL=gemini-2.5-flash-preview-tts
 GEMINI_VOICE_NAME=Aoede
 GEMINI_LANGUAGE=es-ES
 VOICE_RATE_LIMIT_MAX_REQUESTS=40
+VOICE_GUARDRAILS_ENABLED=true     # filtra preguntas fuera de dominio (gasolineras/precios/rutas)
+VOICE_GUARDRAILS_MODE=warn        # strict | warn
+VOICE_ENABLE_GAS_CONTEXT=true     # inyecta contexto de gasolineras cercanas en el LLM
+GATEWAY_BASE_URL=http://gateway:8080
 
 # ── Prediction (perfil ml) ────────────────────────────────────
 RUN_HTTP_API=false
-SOURCE_MODE=favorites
+SOURCE_MODE=favorites              # env | favorites
+FAVORITES_SOURCE=usuarios-service  # usuarios-service | sql
 TOP_N_STATIONS=500
+REQUIRE_FRESH_RAW_DATA=true
+RAW_MAX_AGE_HOURS=36
 ENABLE_GCS_BACKUP=false
 GCS_BUCKET=
 
