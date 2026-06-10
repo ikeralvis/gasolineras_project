@@ -12,10 +12,12 @@
 ![GCP](https://img.shields.io/badge/GCP-Cloud_Run-4285F4?logo=googlecloud)
 
 [![Unit Tests — Python Services](https://github.com/ikeralvis/gasolineras_project/actions/workflows/test-unit.yml/badge.svg)](https://github.com/ikeralvis/gasolineras_project/actions/workflows/test-unit.yml)
+[![Unit Tests — JavaScript Services](https://github.com/ikeralvis/gasolineras_project/actions/workflows/test-unit-js.yml/badge.svg)](https://github.com/ikeralvis/gasolineras_project/actions/workflows/test-unit-js.yml)
 [![Integration Tests — usuarios-service](https://github.com/ikeralvis/gasolineras_project/actions/workflows/test-integration.yml/badge.svg)](https://github.com/ikeralvis/gasolineras_project/actions/workflows/test-integration.yml)
 [![Smoke Tests — Cloud Run Production](https://github.com/ikeralvis/gasolineras_project/actions/workflows/smoke-test.yml/badge.svg)](https://github.com/ikeralvis/gasolineras_project/actions/workflows/smoke-test.yml)
 [![Security Audit — Dependencies](https://github.com/ikeralvis/gasolineras_project/actions/workflows/security-audit.yml/badge.svg)](https://github.com/ikeralvis/gasolineras_project/actions/workflows/security-audit.yml)
 [![TypeScript — Type Check](https://github.com/ikeralvis/gasolineras_project/actions/workflows/typecheck.yml/badge.svg)](https://github.com/ikeralvis/gasolineras_project/actions/workflows/typecheck.yml)
+
 
 **Encuentra las gasolineras más baratas de España**
 
