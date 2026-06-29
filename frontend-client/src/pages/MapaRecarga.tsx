@@ -376,17 +376,17 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                 const total = detail.evses?.length ?? 0;
                 const available = detail.evses?.filter((e) => e.status === "AVAILABLE").length ?? 0;
                 const charging = detail.evses?.filter((e) => e.status === "CHARGING").length ?? 0;
-                const statusLabel = available > 0 ? "Disponible" : "No disponible";
+                const statusLabel = available > 0 ? t("ev.available") : t("ev.unavailable");
                 const statusClasses = available > 0
                   ? "bg-emerald-50 border-emerald-200 text-emerald-800"
                   : "bg-rose-50 border-rose-200 text-rose-800";
 
                 return (
                   <div className={`rounded-2xl border px-4 py-3 ${statusClasses}`}>
-                    <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Estado de disponibilidad</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider opacity-80">{t("ev.availabilityStatus")}</p>
                     <p className="mt-1 text-2xl font-extrabold leading-none">{statusLabel}</p>
                     <p className="mt-2 text-xs font-semibold opacity-90">
-                      {available} libres · {charging} en uso · {Math.max(total - available - charging, 0)} fuera de servicio
+                      {available} {t("ev.free")} · {charging} {t("ev.inUse")} · {Math.max(total - available - charging, 0)} {t("ev.outOfService")}
                     </p>
                   </div>
                 );
@@ -400,7 +400,7 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                 const initials = operatorName.slice(0, 1).toUpperCase();
                 return (
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <p className="text-xs text-gray-500 mb-2">Operador</p>
+                    <p className="text-xs text-gray-500 mb-2">{t("ev.operator")}</p>
                     <div className="flex items-center gap-3">
                       {logo ? (
                         <img src={logo} alt={operatorName} className="h-10 w-10 rounded-xl object-contain bg-white border border-slate-200 p-1" />
@@ -411,7 +411,7 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                       )}
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-gray-900">{operatorName}</p>
-                        <p className="text-xs text-gray-500">Red de recarga</p>
+                        <p className="text-xs text-gray-500">{t("ev.chargingNetwork")}</p>
                       </div>
                     </div>
                   </div>
@@ -514,7 +514,7 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
               {detail.evses?.some((e) => e.payment_methods?.length) && (
                 <div>
                   <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
-                    Métodos de pago
+                    {t("ev.paymentMethods")}
                   </h3>
                   <div className="space-y-1">
                     {Array.from(
@@ -537,14 +537,14 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
                     <span className="flex items-center gap-1 text-sm font-medium text-green-700 bg-green-50 px-3 py-1 rounded-full">
                       <span className="inline-block w-2 h-2 bg-green-500 rounded-full" />
-                      {" Disponible"}
+                      {` ${t("ev.available")}`}
                     </span>
                   )}
                   {detail.evses.some((e) => e.status === "CHARGING") && (
                     // eslint-disable-next-line jsx-a11y/no-static-element-interactions
                     <span className="flex items-center gap-1 text-sm font-medium text-amber-700 bg-amber-50 px-3 py-1 rounded-full">
                       <span className="inline-block w-2 h-2 bg-amber-500 rounded-full" />
-                      {" En uso"}
+                      {` ${t("ev.inUse")}`}
                     </span>
                   )}
                 </div>
@@ -555,7 +555,7 @@ function LocationDrawer({ locationId, onClose }: Readonly<DrawerProps>) {
                 <div className="flex items-center gap-2 text-xs text-gray-500 justify-center pt-2">
                   <LuInfo size={12} />
                   <span>
-                    {typeof detail.source_type === "string" ? detail.source_type : "OCPI"} • {detail.access_restricted ? "Restringido" : "Público"}
+                    {typeof detail.source_type === "string" ? detail.source_type : "OCPI"} • {detail.access_restricted ? t("ev.restricted") : t("ev.public")}
                   </span>
                 </div>
               )}
@@ -652,7 +652,7 @@ export default function MapaRecarga() {
               })()}
               </p>
               {isTouchDevice && (
-                <p className="text-white/60 text-[11px] mt-1">Usa dos dedos para acercar/alejar el mapa</p>
+                <p className="text-white/60 text-[11px] mt-1">{t("ev.pinchToZoom")}</p>
               )}
             </div>
 
@@ -734,8 +734,8 @@ export default function MapaRecarga() {
       <button
         onClick={handleLocateMe}
         className="absolute bottom-6 right-4 z-600 w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center border border-gray-200 hover:bg-gray-50 active:scale-95 transition"
-        aria-label="Centrar en mi ubicación"
-        title="Centrar en mi ubicación"
+        aria-label={t("ev.centerOnLocation")}
+        title={t("ev.centerOnLocation")}
       >
         {locatingMe
           ? <div className="w-4 h-4 border-2 border-[#000C74] border-t-transparent rounded-full animate-spin" />

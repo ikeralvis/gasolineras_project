@@ -604,8 +604,19 @@ async function runLlm({ ai, text, location, gasContext, language }) {
 
 // ─── Paso 3: TTS (Gemini) ─────────────────────────────────────────────────────
 
+function buildTtsPrompt(text, languageCode) {
+  if (languageCode === "en-US") {
+    return `Read this message in English with a natural, friendly and clear tone:\n\n${text}`;
+  }
+  if (languageCode === "eu-ES") {
+    return `Irakurri mezu hau euskaraz tonu natural, hurbil eta argiarekin:\n\n${text}`;
+  }
+  return `Lee este mensaje en español de España con tono natural, cercano y claro:\n\n${text}`;
+}
+
 async function synthesizeGemini({ ai, text, languageCode }) {
   const models = buildModelCandidates(voiceEnv.gemini.ttsModel, TTS_FALLBACKS);
+  const resolvedLang = languageCode || voiceEnv.gemini.language;
   let lastError;
 
   for (const model of models) {
@@ -616,13 +627,13 @@ async function synthesizeGemini({ ai, text, languageCode }) {
           contents: [{
             role: "user",
             parts: [{
-              text: `Lee este mensaje en español de España con tono natural, cercano y claro:\n\n${text}`,
+              text: buildTtsPrompt(text, resolvedLang),
             }],
           }],
           config: {
             responseModalities: ["AUDIO"],
             speechConfig: {
-              languageCode: languageCode || voiceEnv.gemini.language,
+              languageCode: resolvedLang,
               voiceConfig: {
                 prebuiltVoiceConfig: { voiceName: voiceEnv.gemini.voiceName },
               },

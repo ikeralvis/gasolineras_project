@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Mic, MicOff, Send, Sparkles, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { askVoiceAssistant } from "../api/voiceAssistant";
 import { useLocationContext } from "../contexts/LocationContext";
 
@@ -11,15 +12,21 @@ type ChatMessage = {
   pending?: boolean;
 };
 
-type QuickPrompt = { label: string; text: string };
+type QuickPrompt = { labelKey: string; textKey: string };
 
-const QUICK_PROMPTS: QuickPrompt[] = [
-  { label: "📍 Las más cercanas", text: "¿Qué gasolineras hay cerca de mí?" },
-  { label: "💰 Más barata en 5 km", text: "¿Cuál es la gasolinera más barata de gasolina 95 en 5 kilómetros?" },
-  { label: "⛽ Gasolina 95", text: "¿Dónde está la gasolina 95 más barata cerca?" },
-  { label: "🛢️ Diésel barato", text: "¿Cuál es el diésel más barato cerca de mí?" },
-  { label: "💸 Precio mínimo 3 km", text: "¿Cuál es la gasolinera más barata en menos de 3 kilómetros?" },
+const QUICK_PROMPT_KEYS: QuickPrompt[] = [
+  { labelKey: "voice.quickNearest", textKey: "voice.quickNearestText" },
+  { labelKey: "voice.quickCheapest5km", textKey: "voice.quickCheapest5kmText" },
+  { labelKey: "voice.quickGasoline95", textKey: "voice.quickGasoline95Text" },
+  { labelKey: "voice.quickDieselCheap", textKey: "voice.quickDieselCheapText" },
+  { labelKey: "voice.quickMinPrice3km", textKey: "voice.quickMinPrice3kmText" },
 ];
+
+const LANG_TO_BCP47: Record<string, string> = {
+  es: "es-ES",
+  en: "en-US",
+  eu: "eu-ES",
+};
 
 function mergeTranscript(base: string, incoming: string): string {
   const previous = base.trim();
@@ -40,23 +47,25 @@ function mergeTranscript(base: string, incoming: string): string {
   return `${previous} ${next}`.trim();
 }
 
-function formatTtsFallbackReason(note?: string): string {
+function formatTtsFallbackReason(note: string | undefined, t: (key: string) => string): string {
   const normalized = String(note || "").trim().toLowerCase();
   if (!normalized) {
     return "";
   }
 
   if (normalized.includes("timeout")) {
-    return " (el servicio de audio tardó demasiado en responder)";
+    return t("voice.audioTimeout");
   }
 
   return "";
 }
 
 export default function VoiceAssistantWidget() {
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const isRoutesPage = location.pathname === "/rutas";
   const { location: userLocation } = useLocationContext();
+  const speechLang = LANG_TO_BCP47[i18n.language] || "es-ES";
   const isMobileDevice = /android|iphone|ipad|ipod|mobile/i.test(globalThis.navigator?.userAgent ?? "");
   const liveTuning = useMemo(
     () => ({
@@ -78,13 +87,16 @@ export default function VoiceAssistantWidget() {
   const [liveStatus, setLiveStatus] = useState("Pulsa Live para hablar");
   const [liveHeardText, setLiveHeardText] = useState("");
   const [liveMicLevel, setLiveMicLevel] = useState(0);
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "welcome",
-      role: "assistant",
-      text: "Hola, soy TankGo AI. Pideme por ejemplo: Dime la más cercana.",
-    },
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+
+  useEffect(() => {
+    setMessages((prev) => {
+      if (prev.length === 0 || (prev.length === 1 && prev[0].id === "welcome")) {
+        return [{ id: "welcome", role: "assistant", text: t("voice.welcomeMessage") }];
+      }
+      return prev.map((m) => m.id === "welcome" ? { ...m, text: t("voice.welcomeMessage") } : m);
+    });
+  }, [i18n.language, t]);
 
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -161,7 +173,7 @@ export default function VoiceAssistantWidget() {
     try {
       globalThis.speechSynthesis.cancel();
       const utterance = new globalThis.SpeechSynthesisUtterance(content);
-      utterance.lang = "es-ES";
+      utterance.lang = speechLang;
       utterance.rate = 1;
       globalThis.speechSynthesis.speak(utterance);
       return true;
@@ -266,7 +278,7 @@ export default function VoiceAssistantWidget() {
     setLiveProcessing(false);
     liveListeningRef.current = false;
     liveModeRef.current = false;
-    setLiveStatus("Pulsa Live para hablar");
+    setLiveStatus(t("voice.pressLiveToTalk"));
     setLiveHeardText("");
     liveSendingRef.current = false;
     recordedChunksRef.current = [];
@@ -312,7 +324,7 @@ export default function VoiceAssistantWidget() {
             adaptiveVolumeThresholdRef.current = Math.max(liveTuning.volumeThreshold, avgNoise * 2.4);
 
             if (liveListeningRef.current) {
-              setLiveStatus("Escuchando...");
+              setLiveStatus(t("voice.listening"));
             }
           }
 
@@ -323,7 +335,7 @@ export default function VoiceAssistantWidget() {
           speechDetectedRef.current = true;
           clearSilenceTimer();
           if (liveListeningRef.current) {
-            setLiveStatus("Escuchando...");
+            setLiveStatus(t("voice.listening"));
           }
           return;
         }
@@ -334,7 +346,7 @@ export default function VoiceAssistantWidget() {
           && recordedChunksRef.current.length > 0
           && silenceTimerRef.current == null
         ) {
-          setLiveStatus("Silencio detectado. Enviando automaticamente...");
+          setLiveStatus(t("voice.silenceDetectedSending"));
           silenceTimerRef.current = globalThis.setTimeout(() => {
             silenceTimerRef.current = null;
             void stopLiveModeAndSend("silence");
@@ -349,12 +361,12 @@ export default function VoiceAssistantWidget() {
   async function startLiveMode() {
     if (liveMode || loading) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-      setLiveStatus("Tu navegador no soporta modo Live");
+      setLiveStatus(t("voice.liveNotSupported"));
       return;
     }
 
     try {
-      setLiveStatus("Pidiendo permiso de microfono...");
+      setLiveStatus(t("voice.micPermissionRequest"));
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
@@ -375,7 +387,7 @@ export default function VoiceAssistantWidget() {
         }
       };
       recorder.onerror = () => {
-        setLiveStatus("Fallo capturando audio");
+        setLiveStatus(t("voice.micCaptureFailed"));
         stopLiveModeImmediate();
       };
       recorder.onstop = () => {
@@ -398,7 +410,7 @@ export default function VoiceAssistantWidget() {
       const RecognitionCtor = (globalThis as any).SpeechRecognition || (globalThis as any).webkitSpeechRecognition;
       if (RecognitionCtor) {
         const recognition = new RecognitionCtor();
-        recognition.lang = "es-ES";
+        recognition.lang = speechLang;
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.onresult = (event: any) => {
@@ -440,9 +452,9 @@ export default function VoiceAssistantWidget() {
       setLiveListening(true);
       liveModeRef.current = true;
       liveListeningRef.current = true;
-      setLiveStatus("Escuchando... calibrando ruido ambiente");
+      setLiveStatus(t("voice.listeningCalibrating"));
     } catch {
-      setLiveStatus("Permiso de microfono denegado");
+      setLiveStatus(t("voice.micPermissionDenied"));
       stopLiveModeImmediate();
     }
   }
@@ -451,7 +463,7 @@ export default function VoiceAssistantWidget() {
     setTimeout(() => {
       setLiveMode(false);
       liveModeRef.current = false;
-      setLiveStatus("Pulsa Live para hablar");
+      setLiveStatus(t("voice.pressLiveToTalk"));
       setLiveUiHidden(false);
       setLiveProcessing(false);
     }, delayMs);
@@ -467,7 +479,7 @@ export default function VoiceAssistantWidget() {
 
     setLiveListening(false);
     liveListeningRef.current = false;
-    setLiveStatus(reason === "silence" ? "Silencio detectado. Enviando..." : "Procesando audio final...");
+    setLiveStatus(reason === "silence" ? t("voice.silenceDetectedSendingShort") : t("voice.processingFinalAudio"));
 
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
@@ -501,10 +513,10 @@ export default function VoiceAssistantWidget() {
         {
           id: `a-live-empty-${Date.now()}`,
           role: "assistant",
-          text: "No te he escuchado con claridad. Prueba otra vez hablando un poco mas alto.",
+          text: t("voice.notHeard"),
         },
       ]);
-      setLiveStatus("No se detecto texto");
+      setLiveStatus(t("voice.noTextDetected"));
       scheduleLiveModeReset(1000);
       liveSendingRef.current = false;
       setLiveProcessing(false);
@@ -522,17 +534,17 @@ export default function VoiceAssistantWidget() {
       {
         id: userMsgId,
         role: "user",
-        text: previewText || "[procesando voz...]",
+        text: previewText || t("voice.processingVoice"),
       },
       {
         id: pendingId,
         role: "assistant",
-        text: "Enviando...",
+        text: t("voice.sending"),
         pending: true,
       },
     ]);
 
-    setLiveStatus("Enviando al asistente...");
+    setLiveStatus(t("voice.sendingToAssistant"));
 
     try {
       const response = await askVoiceAssistant({
@@ -546,7 +558,7 @@ export default function VoiceAssistantWidget() {
       const answerText =
         response?.answer?.text ||
         response?.message ||
-        (response?.error ? `No pude resolverlo: ${response.error}` : "No tengo respuesta ahora mismo.");
+        (response?.error ? `${t("voice.cannotResolve")}: ${response.error}` : t("voice.noAnswer"));
 
       const sttTranscript = response?.context?.sttTranscript;
 
@@ -569,23 +581,23 @@ export default function VoiceAssistantWidget() {
       if (hasTtsAudio) {
         const played = await playAssistantAudio(response?.tts?.audioBase64, response?.tts?.mimeType);
         if (played) {
-          setLiveStatus("Respuesta de voz reproducida");
+          setLiveStatus(t("voice.voiceResponsePlayed"));
         } else if (speakWithBrowserTts(answerText)) {
-          setLiveStatus("Audio TTS no compatible; usando voz del navegador");
+          setLiveStatus(t("voice.ttsFallbackBrowser"));
         } else {
-          setLiveStatus("No se pudo reproducir audio automatico");
+          setLiveStatus(t("voice.cannotPlayAudio"));
         }
       } else {
-        const ttsReason = formatTtsFallbackReason(response?.tts?.note);
+        const ttsReason = formatTtsFallbackReason(response?.tts?.note, t);
         setMessages((prev) => [
           ...prev,
           {
             id: `a-live-audio-${Date.now()}`,
             role: "assistant",
-            text: `Te he respondido en texto porque no se pudo generar audio${ttsReason}.`,
+            text: `${t("voice.respondedInText")}${ttsReason}.`,
           },
         ]);
-        setLiveStatus("Respuesta en texto (sin audio)");
+        setLiveStatus(t("voice.responseInText"));
       }
     } catch {
       setMessages((prev) => {
@@ -595,11 +607,11 @@ export default function VoiceAssistantWidget() {
           {
             id: `a-live-err-${Date.now()}`,
             role: "assistant",
-            text: "No pude enviar tu audio. Puedes usar el chat como fallback.",
+            text: t("voice.cannotSendAudio"),
           },
         ];
       });
-      setLiveStatus("Error enviando al asistente");
+      setLiveStatus(t("voice.sendError"));
     } finally {
       recordedChunksRef.current = [];
       liveDraftRef.current = "";
@@ -624,7 +636,7 @@ export default function VoiceAssistantWidget() {
     const pendingMessage: ChatMessage = {
       id: `a-pending-${Date.now()}`,
       role: "assistant",
-      text: "Pensando...",
+      text: t("voice.thinking"),
       pending: true,
     };
 
@@ -641,7 +653,7 @@ export default function VoiceAssistantWidget() {
       const answerText =
         response?.answer?.text ||
         response?.message ||
-        (response?.error ? `No pude resolverlo: ${response.error}` : "No tengo respuesta ahora mismo.");
+        (response?.error ? `${t("voice.cannotResolve")}: ${response.error}` : t("voice.noAnswer"));
 
       setMessages((prev) => {
         const trimmed = prev.filter((m) => !m.pending);
@@ -672,7 +684,7 @@ export default function VoiceAssistantWidget() {
           {
             id: `a-err-${Date.now()}`,
             role: "assistant",
-            text: "Ahora mismo no puedo conectar con el asistente. Intenta de nuevo en unos segundos.",
+            text: t("voice.cannotConnect"),
           },
         ];
       });
@@ -692,7 +704,7 @@ export default function VoiceAssistantWidget() {
           type="button"
           onClick={() => setOpen(true)}
           className={`fixed right-4 z-[1200] flex h-14 w-14 items-center justify-center rounded-full bg-[#000C74] text-white shadow-2xl transition-transform hover:scale-105 active:scale-95 md:right-6 md:h-16 md:w-16 md:bottom-6 ${isRoutesPage ? "bottom-[7.25rem]" : "bottom-[5.5rem]"}`}
-          aria-label="Abrir asistente TankGo"
+          aria-label={t("voice.openAssistant")}
         >
           <Sparkles className="h-6 w-6" />
         </button>
@@ -713,10 +725,10 @@ export default function VoiceAssistantWidget() {
                   {showLiveOverlay
                     ? liveStatus
                     : liveProcessing
-                      ? "Procesando audio..."
+                      ? t("voice.processingAudio")
                       : userLocation
-                        ? "Ubicación detectada ✓"
-                        : "Asistente de voz"}
+                        ? t("voice.locationDetected")
+                        : t("voice.voiceAssistant")}
                 </p>
               </div>
             </div>
@@ -731,7 +743,7 @@ export default function VoiceAssistantWidget() {
                 type="button"
                 onClick={() => { if (liveMode) stopLiveModeImmediate(); setOpen(false); }}
                 className="h-8 w-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 transition"
-                aria-label="Cerrar"
+                aria-label={t("voice.close")}
               >
                 <X className="h-4 w-4" />
               </button>
@@ -769,9 +781,9 @@ export default function VoiceAssistantWidget() {
 
                 {/* Transcript box */}
                 <div className="w-full rounded-2xl border border-[#D0D8FF] bg-white px-4 py-3 min-h-[80px]">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#7B8FCC] mb-1.5">Escuchando</p>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#7B8FCC] mb-1.5">{t("voice.escuchando")}</p>
                   <p className="text-[#152452] text-lg font-medium leading-snug">
-                    {liveHeardText || <span className="text-[#A0AECF] italic text-base">Habla ahora...</span>}
+                    {liveHeardText || <span className="text-[#A0AECF] italic text-base">{t("voice.speakNow")}</span>}
                     {liveListening && <span className="inline-block ml-1 w-0.5 h-5 bg-[#2A44D2] animate-pulse align-middle" />}
                   </p>
                 </div>
@@ -786,7 +798,7 @@ export default function VoiceAssistantWidget() {
                     className="flex items-center gap-3 rounded-2xl bg-[#C0152A] px-8 py-4 text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
                   >
                     <MicOff className="h-6 w-6" />
-                    Parar y enviar
+                    {t("voice.stopAndSend")}
                   </button>
                 ) : (
                   <button
@@ -795,7 +807,7 @@ export default function VoiceAssistantWidget() {
                     className="flex items-center gap-3 rounded-2xl bg-[#0A6B28] px-8 py-4 text-lg font-bold text-white shadow-lg active:scale-95 transition-transform"
                   >
                     <Mic className="h-6 w-6" />
-                    Reanudar
+                    {t("voice.resume")}
                   </button>
                 )}
               </div>
@@ -806,22 +818,22 @@ export default function VoiceAssistantWidget() {
               {liveProcessing && (
                 <div className="mx-3 mt-2 rounded-xl bg-[#EEF1FF] border border-[#C7CFFF] px-4 py-2.5 flex items-center gap-3 shrink-0">
                   <span className="h-4 w-4 rounded-full border-2 border-[#3B4FD4]/30 border-t-[#3B4FD4] animate-spin shrink-0" />
-                  <span className="text-sm font-semibold text-[#1B2A6B]">Procesando tu audio...</span>
+                  <span className="text-sm font-semibold text-[#1B2A6B]">{t("voice.processingYourAudio")}</span>
                 </div>
               )}
 
               {/* ── Quick prompts ── */}
               <div className="shrink-0 px-3 pt-2.5 pb-0">
                 <div className="flex gap-2 overflow-x-auto scrollbar-none pb-1">
-                  {QUICK_PROMPTS.map((q) => (
+                  {QUICK_PROMPT_KEYS.map((q) => (
                     <button
-                      key={q.label}
+                      key={q.labelKey}
                       type="button"
-                      onClick={() => sendPrompt(q.text)}
+                      onClick={() => sendPrompt(t(q.textKey))}
                       disabled={loading || liveMode}
                       className="flex-none rounded-full border border-[#D0D8FF] bg-[#F4F6FF] px-3.5 py-2 text-xs font-semibold text-[#1E3A8A] whitespace-nowrap hover:bg-[#E0E8FF] active:bg-[#C7D4FF] disabled:opacity-40 transition"
                     >
-                      {q.label}
+                      {t(q.labelKey)}
                     </button>
                   ))}
                 </div>
@@ -856,7 +868,7 @@ export default function VoiceAssistantWidget() {
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); sendPrompt(); } }}
-                    placeholder="Escribe o usa el micrófono..."
+                    placeholder={t("voice.inputPlaceholder")}
                     className="flex-1 rounded-xl border border-[#D0D8FF] bg-[#F9FAFE] px-3.5 py-2.5 text-base outline-none focus:border-[#4F6FD4] focus:bg-white disabled:opacity-50 transition"
                     maxLength={420}
                     disabled={liveMode || loading}
@@ -866,7 +878,7 @@ export default function VoiceAssistantWidget() {
                     onClick={() => sendPrompt()}
                     disabled={!canSend}
                     className="h-11 w-11 flex items-center justify-center rounded-xl bg-[#000C74] text-white disabled:opacity-30 transition active:scale-95"
-                    aria-label="Enviar"
+                    aria-label={t("voice.send")}
                   >
                     <Send className="h-4 w-4" />
                   </button>
@@ -880,7 +892,7 @@ export default function VoiceAssistantWidget() {
                   className="w-full flex items-center justify-center gap-2.5 rounded-2xl bg-[#0A6B28] hover:bg-[#085E23] active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed text-white py-3.5 text-base font-bold shadow-md transition-all"
                 >
                   <Mic className="h-5 w-5" />
-                  Hablar con el asistente
+                  {t("voice.talkToAssistant")}
                 </button>
               </div>
             </>
