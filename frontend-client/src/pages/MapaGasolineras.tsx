@@ -7,29 +7,21 @@ import { useNavigate } from "react-router-dom";
 import { LuX, LuMapPin, LuNavigation, LuExternalLink, LuClock, LuLocateFixed } from "react-icons/lu";
 import { MdLocalGasStation } from "react-icons/md";
 import { fetchGasMarkers, type GasMarker } from "../api/gasolineras";
+import type { GeocodingLocation } from "../api/geocoding";
 import HorarioDisplay, { type HorarioParsed } from "../components/HorarioDisplay";
+import MapSearchBox from "../components/MapSearchBox";
 import { useBodyScrollLock } from "../hooks/useBodyScrollLock";
 import { useIsCoarsePointer } from "../hooks/useIsCoarsePointer";
-
-import repsol from "../assets/logos/repsol.svg";
-import cepsa from "../assets/logos/cepsa.jpg";
-import bp from "../assets/logos/bp.png";
-import shell from "../assets/logos/shell.png";
-import galp from "../assets/logos/galp.png";
-import eroski from "../assets/logos/eroski.svg";
-import moeve from "../assets/logos/moeve.png";
-import petronor from "../assets/logos/petronor.png";
-import costco from "../assets/logos/costco.png";
-import easygas from "../assets/logos/easygas.png";
-import petroprix from "../assets/logos/petroprix.png";
+import { getBrandByRotulo } from "../data/brands";
+import { useBrandPreferences } from "../hooks/useBrandPreferences";
 
 const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 const TILE_URL =
   import.meta.env.VITE_MAP_TILE_URL
-  ?? "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const TILE_ATTRIBUTION =
   import.meta.env.VITE_MAP_TILE_ATTRIBUTION
-  ?? "&copy; <a href='https://carto.com/attributions'>CARTO</a>";
+  ?? "&copy; <a href='https://www.openstreetmap.org/copyright'>OpenStreetMap</a> contributors";
 
 interface Gasolinera {
   IDEESS: string;
@@ -112,19 +104,7 @@ const userLocationIcon = L.divIcon({
 });
 
 function getBrandIcon(rotulo?: string): string | null {
-  const name = (rotulo ?? "").toLowerCase();
-  if (name.includes("repsol")) return repsol;
-  if (name.includes("cepsa")) return cepsa;
-  if (name.includes("bp")) return bp;
-  if (name.includes("shell")) return shell;
-  if (name.includes("galp")) return galp;
-  if (name.includes("eroski")) return eroski;
-  if (name.includes("moeve")) return moeve;
-  if (name.includes("petronor")) return petronor;
-  if (name.includes("costco")) return costco;
-  if (name.includes("easygas")) return easygas;
-  if (name.includes("petroprix")) return petroprix;
-  return null;
+  return getBrandByRotulo(rotulo)?.logo ?? null;
 }
 
 function getBrandLogo(rotulo?: string): string | null {
@@ -287,6 +267,32 @@ function LocateMeController({ target }: { target: [number, number] | null }) {
   return null;
 }
 
+interface SearchTarget {
+  coords: [number, number];
+  seq: number;
+}
+
+// Vuela a la ubicación buscada. Usa un contador `seq` (no solo coords) para
+// poder repetir el vuelo aunque el usuario busque el mismo sitio dos veces.
+function SearchFlyToController({ target }: Readonly<{ target: SearchTarget | null }>) {
+  const map = useMap();
+  const prevSeqRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!target || target.seq === prevSeqRef.current) return;
+    prevSeqRef.current = target.seq;
+    map.flyTo(target.coords, Math.max(map.getZoom(), 14), { animate: true, duration: 1 });
+  }, [target, map]);
+  return null;
+}
+
+const searchLocationIcon = L.divIcon({
+  html: `<div style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;background:#DC2626;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,0.4);border:2px solid white"></div>`,
+  className: "",
+  iconSize: [30, 30],
+  iconAnchor: [15, 28],
+  popupAnchor: [0, -26],
+});
+
 interface ClusterCircleProps {
   marker: GasClusterMarker;
 }
@@ -348,6 +354,10 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
   const isOpen = !!ideess;
   useBodyScrollLock(isOpen);
   const logo = detail ? getBrandLogo(detail["Rótulo"]) : null;
+  const { esMarcaFavorita, getSocio } = useBrandPreferences();
+  const brand = detail ? getBrandByRotulo(detail["Rótulo"]) : null;
+  const isFavBrand = brand ? esMarcaFavorita(brand.id) : false;
+  const isSocioBrand = brand ? getSocio(brand.id) : false;
 
   const combustibles = detail ? [
     { label: "G95", nombre: "Gasolina 95 E5", precio: detail["Precio Gasolina 95 E5"] },
@@ -392,8 +402,13 @@ function GasolineraDrawer({ ideess, onClose }: Readonly<GasolineraDrawerProps>) 
               </div>
             )}
             <div className="min-w-0">
-              <h2 className="font-semibold text-[#000C74] text-base leading-tight truncate">
+              <h2 className="font-semibold text-[#000C74] text-base leading-tight truncate flex items-center gap-1.5">
                 {detail?.["Rótulo"] ?? t("map.title")}
+                {isFavBrand && (
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0 ${isSocioBrand ? 'bg-amber-100 text-amber-700' : 'bg-[#EEF0FF] text-[#000C74]'}`}>
+                    {isSocioBrand ? t('table.member', { defaultValue: 'Socio' }) : t('table.yourBrand', { defaultValue: 'Tu marca' })}
+                  </span>
+                )}
               </h2>
               {detail && (
                 <p className="text-xs text-gray-500 truncate">{detail.Municipio}, {detail.Provincia}</p>
@@ -511,6 +526,15 @@ export default function MapaGasolineras() {
   const [locateMeTarget, setLocateMeTarget] = useState<[number, number] | null>(null);
   const [locatingMe, setLocatingMe] = useState(false);
 
+  const [searchTarget, setSearchTarget] = useState<SearchTarget | null>(null);
+  const [searchMarker, setSearchMarker] = useState<GeocodingLocation | null>(null);
+  const searchSeqRef = useRef(0);
+
+  const handleSearchSelect = useCallback((location: GeocodingLocation) => {
+    setSearchMarker(location);
+    setSearchTarget({ coords: [location.lat, location.lng], seq: ++searchSeqRef.current });
+  }, []);
+
   const prevLocationRef = useRef<[number, number] | null>(savedLoc);
 
   useEffect(() => {
@@ -602,13 +626,16 @@ export default function MapaGasolineras() {
               <p className="text-white/70 text-xs mt-0.5">{getStatusMessage()}</p>
             </div>
             {locationGranted && (
-              <div className="flex items-center gap-2 bg-green-500/20 px-3 py-1.5 rounded-lg border border-green-400/50">
+              <div className="hidden sm:flex items-center gap-2 bg-green-500/20 px-3 py-1.5 rounded-lg border border-green-400/50 shrink-0">
                 <svg className="w-4 h-4 text-green-300" fill="currentColor" viewBox="0 0 20 20">
                   <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                 </svg>
                 <span className="text-xs font-medium text-green-300">{t("map.locationDetected")}</span>
               </div>
             )}
+          </div>
+          <div className="mt-3 max-w-md">
+            <MapSearchBox onSelect={handleSearchSelect} />
           </div>
         </div>
       </div>
@@ -632,6 +659,7 @@ export default function MapaGasolineras() {
           <MapUpdater center={userLocation} enabled={locationGranted} />
           <DefaultSpainViewController enabled={!locationGranted} />
           <LocateMeController target={locateMeTarget} />
+          <SearchFlyToController target={searchTarget} />
 
           <GasMapController
             onMarkersUpdate={setMarkers}
@@ -644,6 +672,19 @@ export default function MapaGasolineras() {
               <Popup>
                 <div className="p-2 text-center">
                   <p className="font-semibold text-[#000C74]">{t("map.yourLocation")}</p>
+                </div>
+              </Popup>
+            </Marker>
+          )}
+
+          {searchMarker && (
+            <Marker position={[searchMarker.lat, searchMarker.lng]} icon={searchLocationIcon}>
+              <Popup>
+                <div className="p-1 text-center">
+                  <p className="font-semibold text-[#000C74]">{searchMarker.name}</p>
+                  {searchMarker.address && (
+                    <p className="text-xs text-gray-500 mt-0.5">{searchMarker.address}</p>
+                  )}
                 </div>
               </Popup>
             </Marker>

@@ -27,14 +27,14 @@ export default function Accessibility() {
               <h2 className="text-lg font-semibold text-[#0f172a]">Limitaciones</h2>
               <p>
                 Puede haber contenidos de terceros que no cumplan con el mismo nivel de accesibilidad. Si detectas un
-                problema, por favor contacta con soporte@tankgo.dev.
+                problema, por favor contacta con iker.a@opendeusto.es.
               </p>
             </div>
 
             <div>
               <h2 className="text-lg font-semibold text-[#0f172a]">Contacto</h2>
               <p>
-                Puedes enviar sugerencias o incidencias de accesibilidad a soporte@tankgo.dev. Responderemos lo antes
+                Puedes enviar sugerencias o incidencias de accesibilidad a iker.a@opendeusto.es. Responderemos lo antes
                 posible.
               </p>
             </div>

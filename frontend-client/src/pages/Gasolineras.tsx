@@ -1,21 +1,15 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from 'react-i18next';
 import GasolinerasTable from "../components/GasolinerasTable";
+import FavoritoButton from "../components/FavoritoButton";
 import { getGasolinerasCerca } from "../api/gasolineras";
 import { useAuth } from "../contexts/AuthContext";
 import { useLocationContext } from "../contexts/LocationContext";
+import { BRANDS, getBrandByRotulo } from "../data/brands";
+import { useBrandPreferences } from "../hooks/useBrandPreferences";
 
-const MARCAS_POPULARES = [
-    { nombre: "Repsol",   color: "#D32F2F" },
-    { nombre: "Cepsa",    color: "#0050AC" },
-    { nombre: "BP",       color: "#007A33" },
-    { nombre: "Shell",    color: "#FBBB00" },
-    { nombre: "Galp",     color: "#FF6B00" },
-    { nombre: "Petronor", color: "#1A1A1A" },
-    { nombre: "Eroski",   color: "#C41E3A" },
-    { nombre: "Costco",   color: "#004F9E" },
-];
+const MARCAS_POPULARES = BRANDS.map(b => ({ nombre: b.label, color: b.color }));
 
 const GASOLINERAS_CACHE_KEY = "gasolineras:list:v1";
 const CACHE_MAX_AGE_MS = 8 * 60 * 1000;
@@ -55,8 +49,10 @@ const normalizeGasolinera = (g: any) => {
 
 export default function Gasolineras() {
     const { t } = useTranslation();
-    const { user } = useAuth();
+    const navigate = useNavigate();
+    const { user, isAuthenticated } = useAuth();
     const { location: ctxLocation } = useLocationContext();
+    const { marcas: marcasFavoritas, esMarcaFavorita, getSocio } = useBrandPreferences();
     const [gasolineras, setGasolineras] = useState<any[]>([]);
     const [filtered, setFiltered] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -305,6 +301,25 @@ export default function Gasolineras() {
 
     const activeFiltersCount = [provincia, municipio, nombre, precioMax].filter(Boolean).length + marcasSeleccionadas.length + (usarCercania ? 1 : 0);
 
+    // Gasolineras de marcas favoritas del usuario dentro de los resultados actuales,
+    // destacadas arriba de la lista (socios primero) sin alterar el orden elegido por el usuario.
+    const destacadas = useMemo(() => {
+        if (!isAuthenticated || marcasFavoritas.length === 0) return [];
+        return filtered
+            .filter(g => {
+                const brand = getBrandByRotulo(asText(g["Rótulo"] ?? g.Rotulo));
+                return brand !== null && esMarcaFavorita(brand.id);
+            })
+            .sort((a, b) => {
+                const brandA = getBrandByRotulo(asText(a["Rótulo"] ?? a.Rotulo));
+                const brandB = getBrandByRotulo(asText(b["Rótulo"] ?? b.Rotulo));
+                const socioA = brandA ? getSocio(brandA.id) : false;
+                const socioB = brandB ? getSocio(brandB.id) : false;
+                return socioA === socioB ? 0 : (socioA ? -1 : 1);
+            })
+            .slice(0, 4);
+    }, [filtered, marcasFavoritas, isAuthenticated, esMarcaFavorita, getSocio]);
+
     const renderTableContent = () => {
         if (loading) {
             return (
@@ -419,6 +434,61 @@ export default function Gasolineras() {
                     </div>
                 </div>
             </div>
+
+            {/* DESTACADAS: gasolineras de tus marcas favoritas dentro de los resultados actuales */}
+            {!loading && destacadas.length > 0 && (
+                <div className="mb-5">
+                    <p className="text-sm font-semibold text-gray-900 mb-2.5 flex items-center gap-1.5">
+                        <svg className="w-4 h-4 text-[#000C74]" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.958a1 1 0 00.95.69h4.162c.969 0 1.371 1.24.588 1.81l-3.367 2.446a1 1 0 00-.363 1.118l1.287 3.957c.3.922-.755 1.688-1.538 1.118l-3.367-2.445a1 1 0 00-1.176 0l-3.367 2.445c-.783.57-1.838-.196-1.538-1.118l1.287-3.957a1 1 0 00-.363-1.118L2.063 9.385c-.784-.57-.38-1.81.588-1.81h4.162a1 1 0 00.951-.69l1.285-3.958z" />
+                        </svg>
+                        {t('gasStations.highlightedForYou', { defaultValue: 'Destacadas para ti' })}
+                    </p>
+                    <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible">
+                        {destacadas.map((g) => {
+                            const stationName = asText(g["Rótulo"] ?? g.Rotulo) || "Gasolinera";
+                            const brand = getBrandByRotulo(stationName);
+                            const isSocio = brand ? getSocio(brand.id) : false;
+                            const precio = g[combustibleSeleccionado];
+                            return (
+                                <button
+                                    key={g.IDEESS}
+                                    type="button"
+                                    onClick={() => navigate(`/gasolinera/${g.IDEESS}`)}
+                                    className="shrink-0 w-56 sm:w-auto text-left rounded-xl border-2 border-[#000C74]/20 bg-[#F7F8FF] hover:border-[#000C74] transition-all p-3"
+                                >
+                                    <div className="flex items-start justify-between gap-2 mb-2">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            {brand ? (
+                                                <img src={brand.logo} alt="" className="w-8 h-8 object-contain rounded-md bg-white shadow-sm p-1 shrink-0" />
+                                            ) : (
+                                                <div className="w-8 h-8 rounded-md bg-[#000C74] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                                                    {stationName.slice(0, 2).toUpperCase()}
+                                                </div>
+                                            )}
+                                            <span className="text-sm font-semibold text-gray-900 truncate">{stationName}</span>
+                                        </div>
+                                        <div onClick={(e) => e.stopPropagation()}>
+                                            <FavoritoButton ideess={g.IDEESS} size="sm" />
+                                        </div>
+                                    </div>
+                                    <p className="text-xs text-gray-500 truncate mb-1.5">{g.Municipio}, {g.Provincia}</p>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-base font-bold text-gray-900">
+                                            {precio || "N/D"} <span className="text-xs font-normal text-gray-500">€/L</span>
+                                        </span>
+                                        {isSocio && (
+                                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                                {t('table.member', { defaultValue: 'Socio' })}
+                                            </span>
+                                        )}
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* LISTA */}
             <div className="min-h-[580px]">

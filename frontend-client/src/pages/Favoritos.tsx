@@ -194,69 +194,66 @@ export default function Favoritos() {
           </div>
         ) : (
           <>
-            {/* Estadísticas rápidas */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('favorites.averagePrice95')}</p>
-                    <p className="text-2xl font-bold text-[#000C74] mt-2">
-                      {(gasolineras.reduce((acc, g) => {
-                        const precio = Number.parseFloat(g['Precio Gasolina 95 E5'].replace(',', '.'));
-                        return acc + (Number.isNaN(precio) ? 0 : precio);
-                      }, 0) / gasolineras.length).toFixed(3)}€
-                    </p>
-                  </div>
-                  <div className="bg-blue-100 p-3 rounded-xl">
-                    <svg className="w-6 h-6 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-                    </svg>
-                  </div>
+            {/* Estadísticas rápidas: tira compacta, sin duplicar el panel de la tabla */}
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="bg-white rounded-xl border border-[#E7E9FB] px-3 py-3 sm:px-4 sm:py-4 shadow-sm flex items-center gap-2.5 sm:gap-3">
+                <div className="bg-blue-100 p-2 rounded-lg shrink-0">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wide truncate">{t('favorites.averagePrice95')}</p>
+                  <p className="text-base sm:text-xl font-bold text-[#000C74]">
+                    {(gasolineras.reduce((acc, g) => {
+                      const precio = Number.parseFloat(g['Precio Gasolina 95 E5'].replace(',', '.'));
+                      return acc + (Number.isNaN(precio) ? 0 : precio);
+                    }, 0) / gasolineras.length).toFixed(3)}€
+                  </p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('favorites.averagePriceDiesel')}</p>
-                    <p className="text-2xl font-bold text-[#000C74] mt-2">
-                      {(gasolineras.reduce((acc, g) => {
-                        const precio = Number.parseFloat(g['Precio Gasoleo A'].replace(',', '.'));
-                        return acc + (Number.isNaN(precio) ? 0 : precio);
-                      }, 0) / gasolineras.length).toFixed(3)}€
-                    </p>
-                  </div>
-                  <div className="bg-green-100 p-3 rounded-xl">
-                    <svg className="w-6 h-6 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
-                    </svg>
-                  </div>
+              <div className="bg-white rounded-xl border border-[#E7E9FB] px-3 py-3 sm:px-4 sm:py-4 shadow-sm flex items-center gap-2.5 sm:gap-3">
+                <div className="bg-green-100 p-2 rounded-lg shrink-0">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wide truncate">{t('favorites.averagePriceDiesel')}</p>
+                  <p className="text-base sm:text-xl font-bold text-[#000C74]">
+                    {(gasolineras.reduce((acc, g) => {
+                      const precio = Number.parseFloat(g['Precio Gasoleo A'].replace(',', '.'));
+                      return acc + (Number.isNaN(precio) ? 0 : precio);
+                    }, 0) / gasolineras.length).toFixed(3)}€
+                  </p>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500 font-semibold uppercase tracking-wide">{t('favorites.totalFavorites')}</p>
-                    <p className="text-2xl font-bold text-[#000C74] mt-2">
-                      {gasolineras.length}
-                    </p>
-                  </div>
-                  <div className="bg-red-100 p-3 rounded-xl">
-                    <FaHeart className="w-6 h-6 text-red-600" />
-                  </div>
+              <div className="bg-white rounded-xl border border-[#E7E9FB] px-3 py-3 sm:px-4 sm:py-4 shadow-sm flex items-center gap-2.5 sm:gap-3">
+                <div className="bg-red-100 p-2 rounded-lg shrink-0">
+                  <FaHeart className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] sm:text-xs text-gray-500 font-semibold uppercase tracking-wide truncate">{t('favorites.totalFavorites')}</p>
+                  <p className="text-base sm:text-xl font-bold text-[#000C74]">
+                    {gasolineras.length}
+                  </p>
                 </div>
               </div>
             </div>
 
-            {/* Tabla de gasolineras */}
-            <GasolinerasTable
-              gasolineras={gasolineras}
-              combustibleSeleccionado={combustibleSeleccionado}
-            />
-
-            {/* Predicción de precios próximos 7 días */}
+            {/* Predicción de precios próximos 7 días: primero, porque es el valor añadido frente a una lista simple */}
             <PrediccionRepostaje gasolineras={gasolineras} />
+
+            {/* Tabla de gasolineras favoritas */}
+            <div className="mt-6">
+              <GasolinerasTable
+                gasolineras={gasolineras}
+                combustibleSeleccionado={combustibleSeleccionado}
+                showGlobalStats={false}
+              />
+            </div>
           </>
         )}
       </div>

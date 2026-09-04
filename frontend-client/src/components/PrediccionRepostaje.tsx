@@ -7,7 +7,6 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ReferenceDot,
   ErrorBar,
   ResponsiveContainer,
@@ -30,6 +29,7 @@ const FUEL_KEYS = {
 } as const;
 
 const STATION_COLORS = ['#000C74', '#4338ca', '#7c3aed', '#0891b2', '#0f766e', '#b45309'];
+const MAX_CHART_STATIONS = 5;
 
 function formatDay(dateStr: string): string {
   const d = new Date(dateStr + 'T00:00:00');
@@ -87,13 +87,34 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
     return bestStation ? { station: bestStation, date: bestDay, price: bestPrice } : null;
   }, [byStation, gasolineras, fuelKey]);
 
+  // En favoritos con muchas estaciones, un gráfico con demasiadas líneas es
+  // ilegible (sobre todo en móvil). Mostramos solo las más baratas de media
+  // y avisamos si se ha recortado la selección.
+  const chartStations = useMemo(() => {
+    if (gasolineras.length <= MAX_CHART_STATIONS) return gasolineras;
+    const withAvg = gasolineras.map(g => {
+      const preds = (byStation[g.IDEESS] ?? []).filter(p => p.fuel === fuelKey);
+      const avg = preds.length
+        ? preds.reduce((acc, p) => acc + p.precio_predicho, 0) / preds.length
+        : Infinity;
+      return { g, avg };
+    });
+    withAvg.sort((a, b) => a.avg - b.avg);
+    const top = withAvg.slice(0, MAX_CHART_STATIONS).map(x => x.g);
+    // El "mejor día" puntual puede no coincidir con la más barata de media — aseguramos que siempre esté visible.
+    if (best && !top.some(g => g.IDEESS === best.station.IDEESS)) {
+      top[top.length - 1] = best.station;
+    }
+    return top;
+  }, [gasolineras, byStation, fuelKey, best]);
+
   const chartData = useMemo((): ChartEntry[] => {
     return forecastDates.map(date => {
       const entry: ChartEntry = { date: formatDay(date), fullDate: date };
       let cheapestDay = '';
       let minPrice = Infinity;
 
-      for (const g of gasolineras) {
+      for (const g of chartStations) {
         const preds: PredictionPoint[] = byStation[g.IDEESS] ?? [];
         const point = preds.find(p => p.forecast_date === date && p.fuel === fuelKey);
         if (point) {
@@ -114,7 +135,7 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
       entry.cheapestDay = cheapestDay;
       return entry;
     });
-  }, [forecastDates, gasolineras, byStation, fuelKey]);
+  }, [forecastDates, chartStations, byStation, fuelKey]);
 
   const cheapestDot = useMemo(() => {
     if (!best) return null;
@@ -126,7 +147,7 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
     const dayEntry = chartData.find(d => d.date === label);
     if (!dayEntry) return null;
 
-    const rows = gasolineras
+    const rows = chartStations
       .map((g, i) => {
         const price = dayEntry[`s_${g.IDEESS}`] as number | undefined;
         if (price === undefined) return null;
@@ -198,7 +219,8 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
     );
   }
 
-  const cheapestIdx = best ? gasolineras.findIndex(g => g.IDEESS === best.station.IDEESS) : -1;
+  const cheapestIdx = best ? chartStations.findIndex(g => g.IDEESS === best.station.IDEESS) : -1;
+  const stationsOmitted = gasolineras.length - chartStations.length;
 
   return (
     <div className="bg-white rounded-2xl border border-[#E7E9FB] p-6 shadow-sm mt-6">
@@ -262,88 +284,90 @@ export default function PrediccionRepostaje({ gasolineras }: Props) {
       )}
 
       {/* Chart */}
-      <div className="overflow-x-auto -mx-2">
-        <div style={{ minWidth: 320 }}>
-          <ResponsiveContainer width="100%" height={250}>
-            <LineChart data={chartData} margin={{ top: 12, right: 20, left: 0, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
-              <XAxis
-                dataKey="date"
-                tick={{ fontSize: 11, fill: '#6b7280' }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                domain={['dataMin - 0.03', 'dataMax + 0.03']}
-                tickFormatter={v => `${Number(v).toFixed(2)}`}
-                tick={{ fontSize: 11, fill: '#6b7280' }}
-                axisLine={false}
-                tickLine={false}
-                width={44}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend
-                formatter={(_value, entry) => {
-                  const stationId = (entry?.dataKey as string)?.replace('s_', '');
-                  const g = gasolineras.find(x => x.IDEESS === stationId);
-                  return (
-                    <span style={{ color: '#374151', fontSize: 11 }}>
-                      {g ? (g.Rótulo || g.Municipio) : stationId}
-                    </span>
-                  );
+      <div className="h-52.5 sm:h-70 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 8, right: 12, left: -8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+            <XAxis
+              dataKey="date"
+              tick={{ fontSize: 11, fill: '#6b7280' }}
+              axisLine={false}
+              tickLine={false}
+            />
+            <YAxis
+              domain={['dataMin - 0.03', 'dataMax + 0.03']}
+              tickFormatter={v => `${Number(v).toFixed(2)}`}
+              tick={{ fontSize: 11, fill: '#6b7280' }}
+              axisLine={false}
+              tickLine={false}
+              width={40}
+            />
+            <Tooltip content={<CustomTooltip />} />
+
+            {chartStations.map((g, i) => (
+              <Line
+                key={g.IDEESS}
+                type="monotone"
+                dataKey={`s_${g.IDEESS}`}
+                stroke={STATION_COLORS[i % STATION_COLORS.length]}
+                strokeWidth={2}
+                dot={{
+                  r: 3.5,
+                  fill: STATION_COLORS[i % STATION_COLORS.length],
+                  strokeWidth: 0,
                 }}
-                wrapperStyle={{ paddingTop: 8 }}
-              />
-
-              {gasolineras.map((g, i) => (
-                <Line
-                  key={g.IDEESS}
-                  type="monotone"
-                  dataKey={`s_${g.IDEESS}`}
+                activeDot={{
+                  r: 5.5,
+                  stroke: 'white',
+                  strokeWidth: 2,
+                  fill: STATION_COLORS[i % STATION_COLORS.length],
+                }}
+              >
+                <ErrorBar
+                  dataKey={`err_${g.IDEESS}`}
+                  width={4}
+                  strokeWidth={1.5}
                   stroke={STATION_COLORS[i % STATION_COLORS.length]}
-                  strokeWidth={2}
-                  dot={{
-                    r: 3.5,
-                    fill: STATION_COLORS[i % STATION_COLORS.length],
-                    strokeWidth: 0,
-                  }}
-                  activeDot={{
-                    r: 5.5,
-                    stroke: 'white',
-                    strokeWidth: 2,
-                    fill: STATION_COLORS[i % STATION_COLORS.length],
-                  }}
-                >
-                  <ErrorBar
-                    dataKey={`err_${g.IDEESS}`}
-                    width={4}
-                    strokeWidth={1.5}
-                    stroke={STATION_COLORS[i % STATION_COLORS.length]}
-                    opacity={0.35}
-                    direction="y"
-                  />
-                </Line>
-              ))}
-
-              {/* Green dot on global cheapest point */}
-              {cheapestDot && best && cheapestIdx >= 0 && (
-                <ReferenceDot
-                  x={cheapestDot.date as string}
-                  y={best.price}
-                  r={8}
-                  fill="#16a34a"
-                  stroke="white"
-                  strokeWidth={2.5}
+                  opacity={0.35}
+                  direction="y"
                 />
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
+              </Line>
+            ))}
+
+            {/* Green dot on global cheapest point */}
+            {cheapestDot && best && cheapestIdx >= 0 && (
+              <ReferenceDot
+                x={cheapestDot.date as string}
+                y={best.price}
+                r={8}
+                fill="#16a34a"
+                stroke="white"
+                strokeWidth={2.5}
+              />
+            )}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Leyenda propia: envuelve en varias líneas en vez de forzar scroll horizontal */}
+      <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1.5">
+        {chartStations.map((g, i) => (
+          <div key={g.IDEESS} className="flex items-center gap-1.5 min-w-0">
+            <span
+              className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+              style={{ background: STATION_COLORS[i % STATION_COLORS.length] }}
+            />
+            <span className="text-[11px] text-gray-600 truncate max-w-40">
+              {g.Rótulo || g.Municipio}
+            </span>
+          </div>
+        ))}
       </div>
 
       {/* Caption */}
-      <p className="text-[10px] text-gray-400 mt-1">
+      <p className="text-[10px] text-gray-400 mt-2">
         Las barras verticales muestran el intervalo de confianza (percentiles 5%–95%) · El punto verde marca el mejor precio predicho
+        {stationsOmitted > 0 && ` · Mostrando las ${MAX_CHART_STATIONS} estaciones más económicas de ${gasolineras.length}`}
       </p>
 
       {runDate && (

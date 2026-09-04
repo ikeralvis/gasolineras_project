@@ -42,7 +42,7 @@ export default function Privacy() {
               <h2 className="text-lg font-semibold text-[#0f172a]">Derechos del usuario</h2>
               <p>
                 Puedes ejercer derechos de acceso, rectificacion, supresion, limitacion y portabilidad escribiendo a
-                soporte@tankgo.dev.
+                iker.a@opendeusto.es.
               </p>
             </div>
 

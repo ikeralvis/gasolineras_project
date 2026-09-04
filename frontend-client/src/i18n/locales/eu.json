@@ -121,7 +121,8 @@
     "brand": "Marka",
     "location": "Kokapena",
     "favorite": "Gog",
-    "actions": "Ekintzak"
+    "actions": "Ekintzak",
+    "highlightedForYou": "Zuretzat nabarmenduta"
   },
   "favorites": {
     "title": "Nire Gogokoak",
@@ -184,7 +185,11 @@
       "electrico": "Elektrikoa",
       "hibrido": "Hibridoa"
     },
-    "language": "Hizkuntza"
+    "language": "Hizkuntza",
+    "favoriteBrands": "Marka gogokoenak",
+    "favoriteBrandsDescription": "Zerrendetan eta mapan nabarmenduko dira",
+    "isMember": "Bazkidea naiz / deskontua dut",
+    "noBrandSelected": "Ukitu marka bat zure bilaketetan nabarmentzeko."
   },
   "auth": {
     "welcomeBack": "Ongi etorri berriro!",
@@ -233,7 +238,9 @@
     "schedule": "Ordutegia",
     "price": "Prezioa",
     "favorite": "Gog",
-    "viewDetails": "Xehetasunak ikusi"
+    "viewDetails": "Xehetasunak ikusi",
+    "yourBrand": "Zure marka",
+    "member": "Bazkidea"
   },
   "map": {
     "title": "Gasolindegien Mapa",
@@ -242,7 +249,10 @@
     "showingStations": "{{count}} gasolindegia erakusten",
     "locationDetected": "Kokapena detektatu da",
     "yourLocation": "Zure kokapena",
-    "loadingMap": "Mapa kargatzen..."
+    "loadingMap": "Mapa kargatzen...",
+    "searchPlaceholder": "Bilatu helbidea, herria edo lekua...",
+    "searchNoResults": "Emaitzarik ez",
+    "searchClear": "Bilaketa garbitu"
   },
   "detail": {
     "back": "Atzera",

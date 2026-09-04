@@ -122,7 +122,8 @@
     "brand": "Marca",
     "location": "Ubicación",
     "favorite": "Fav",
-    "actions": "Acciones"
+    "actions": "Acciones",
+    "highlightedForYou": "Destacadas para ti"
   },
   "favorites": {
     "title": "Mis Favoritos",
@@ -185,7 +186,11 @@
       "electrico": "Eléctrico",
       "hibrido": "Híbrido"
     },
-    "language": "Idioma"
+    "language": "Idioma",
+    "favoriteBrands": "Marcas favoritas",
+    "favoriteBrandsDescription": "Se destacarán en los listados y en el mapa",
+    "isMember": "Soy socio / tengo descuento",
+    "noBrandSelected": "Toca una marca para destacarla en tus búsquedas."
   },
   "auth": {
     "welcomeBack": "¡Bienvenido de nuevo!",
@@ -234,7 +239,9 @@
     "schedule": "Horario",
     "price": "Precio",
     "favorite": "Fav",
-    "viewDetails": "Ver detalles"
+    "viewDetails": "Ver detalles",
+    "yourBrand": "Tu marca",
+    "member": "Socio"
   },
   "map": {
     "title": "Mapa de Gasolineras",
@@ -243,7 +250,10 @@
     "showingStations": "Mostrando {{count}} gasolineras",
     "locationDetected": "Ubicación detectada",
     "yourLocation": "Tu ubicación",
-    "loadingMap": "Cargando mapa..."
+    "loadingMap": "Cargando mapa...",
+    "searchPlaceholder": "Buscar dirección, ciudad o lugar...",
+    "searchNoResults": "Sin resultados",
+    "searchClear": "Borrar búsqueda"
   },
   "detail": {
     "back": "Volver",

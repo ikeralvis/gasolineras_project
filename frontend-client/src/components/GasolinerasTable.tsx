@@ -5,15 +5,8 @@ import FavoritoButton from "./FavoritoButton";
 import { useEstadisticas } from "../hooks/useEstadisticas";
 import { getPriceBadgeFromStats } from "../api/estadisticas";
 import HorarioDisplay, { type HorarioParsed } from "./HorarioDisplay";
-
-// Iconos de marcas
-import repsol from "../assets/logos/repsol.svg";
-import cepsa from "../assets/logos/cepsa.jpg";
-import bp from "../assets/logos/bp.png";
-import shell from "../assets/logos/shell.png";
-import galp from "../assets/logos/galp.png";
-import eroski from "../assets/logos/eroski.svg";
-import moeve from "../assets/logos/moeve.png";
+import { getBrandByRotulo } from "../data/brands";
+import { useBrandPreferences } from "../hooks/useBrandPreferences";
 
 interface Gasolinera {
   IDEESS: string;
@@ -32,14 +25,17 @@ interface Gasolinera {
 interface Props {
   gasolineras: Gasolinera[];
   combustibleSeleccionado: string;
+  /** Muestra el panel colapsable de estadísticas globales del mercado (min/media/max). Desactívalo en contextos donde ya se muestran estadísticas propias (p.ej. favoritos) para evitar duplicar información. */
+  showGlobalStats?: boolean;
 }
 
-const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionado }) => {
+const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionado, showGlobalStats = true }) => {
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
   const [showStats, setShowStats] = useState(false);
   const navigate = useNavigate();
-  const { estadisticas, loading: loadingStats } = useEstadisticas();
+  const { estadisticas, loading: loadingStats } = useEstadisticas({ autoLoad: showGlobalStats });
+  const { esMarcaFavorita, getSocio } = useBrandPreferences();
 
   const rowsPerPage = 12;
 
@@ -61,17 +57,20 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
     }
   };
 
-  // Función para obtener logo de la marca
-  const getBrandLogo = (rotulo?: string): string | null => {
-    const name = (rotulo ?? "").toLowerCase();
-    if (name.includes("repsol")) return repsol;
-    if (name.includes("cepsa")) return cepsa;
-    if (name.includes("bp")) return bp;
-    if (name.includes("shell")) return shell;
-    if (name.includes("galp")) return galp;
-    if (name.includes("eroski")) return eroski;
-    if (name.includes("moeve")) return moeve;
-    return null;
+  // Badge "tu marca" / "socio" para gasolineras de una marca favorita del usuario
+  const renderBrandBadge = (rotulo?: string) => {
+    const brand = getBrandByRotulo(rotulo);
+    if (!brand || !esMarcaFavorita(brand.id)) return null;
+    const isSocio = getSocio(brand.id);
+    return (
+      <span
+        className={`inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+          isSocio ? 'bg-amber-100 text-amber-700' : 'bg-[#EEF0FF] text-[#000C74]'
+        }`}
+      >
+        {isSocio ? t('table.member', { defaultValue: 'Socio' }) : t('table.yourBrand', { defaultValue: 'Tu marca' })}
+      </span>
+    );
   };
 
   // Función para obtener el nombre legible del combustible
@@ -133,7 +132,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
     <div className="bg-white shadow-lg border border-gray-100 rounded-2xl p-4 overflow-hidden">
 
       {/* ESTADISTICAS DE PRECIOS (modo compacto) */}
-      {estadisticas && !loadingStats && (
+      {showGlobalStats && estadisticas && !loadingStats && (
         <div className="mb-4 rounded-xl border border-[#E5E7F9] bg-[#FCFCFF] px-3 py-2.5">
           <button
             type="button"
@@ -193,7 +192,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
           <tbody>
             {paginated.map((g) => {
               const stationName = g["Rótulo"] ?? (g as any).Rotulo ?? "Gasolinera";
-              const logo = getBrandLogo(stationName);
+              const logo = getBrandByRotulo(stationName)?.logo ?? null;
               
               return (
                 <tr
@@ -220,7 +219,10 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                         </div>
                       )}
                       <div>
-                        <p className="font-semibold text-gray-900">{stationName}</p>
+                        <p className="font-semibold text-gray-900 flex items-center gap-1.5">
+                          {stationName}
+                          {renderBrandBadge(stationName)}
+                        </p>
                       </div>
                     </div>
                   </td>
@@ -278,7 +280,7 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
       <div className="md:hidden space-y-2.5">
         {paginated.map((g) => {
           const stationName = g["Rótulo"] ?? (g as any).Rotulo ?? "Gasolinera";
-          const logo = getBrandLogo(stationName);
+          const logo = getBrandByRotulo(stationName)?.logo ?? null;
           
           return (
             <div
@@ -303,8 +305,9 @@ const GasolinerasTable: React.FC<Props> = ({ gasolineras, combustibleSeleccionad
                     </div>
                   )}
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-base text-[#000C74] truncate">
-                      {stationName}
+                    <h3 className="font-semibold text-base text-[#000C74] truncate flex items-center gap-1.5">
+                      <span className="truncate">{stationName}</span>
+                      {renderBrandBadge(stationName)}
                     </h3>
                     <p className="text-xs text-gray-600 truncate">{g.Municipio}, {g.Provincia}</p>
                   </div>

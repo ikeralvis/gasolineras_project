@@ -47,6 +47,10 @@ async function buildProxyResponse(c, response, cookieConfig) {
     return c.redirect(location, response.status);
   }
 
+  if ([204, 205, 304].includes(response.status)) {
+    return c.body(null, response.status);
+  }
+
   const contentType = response.headers.get("content-type");
   if (contentType?.includes("application/json")) {
     const data = await response.json();

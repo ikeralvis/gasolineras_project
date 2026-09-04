@@ -6,22 +6,11 @@ import L from "leaflet";
 import HistorialPrecios from "./HistorialPrecios";
 import FavoritoButton from "./FavoritoButton";
 import HorarioDisplay, { type HorarioParsed } from "./HorarioDisplay";
+import { getBrandByRotulo } from "../data/brands";
+import { useBrandPreferences } from "../hooks/useBrandPreferences";
 
 // API URL
 const API_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
-
-// Importar logos
-import repsol from "../assets/logos/repsol.svg";
-import cepsa from "../assets/logos/cepsa.jpg";
-import bp from "../assets/logos/bp.png";
-import shell from "../assets/logos/shell.png";
-import galp from "../assets/logos/galp.png";
-import eroski from "../assets/logos/eroski.svg";
-import moeve from "../assets/logos/moeve.png";
-import petronor from "../assets/logos/petronor.png";
-import costco from "../assets/logos/costco.png";
-import easygas from "../assets/logos/easygas.png";
-import petroprix from "../assets/logos/petroprix.png";
 
 interface Gasolinera {
   IDEESS: string;
@@ -52,21 +41,7 @@ const normalizeStation = (g: any): Gasolinera => {
 };
 
 // Función para obtener logo
-const getBrandLogo = (rotulo?: string): string | null => {
-  const name = (rotulo ?? "").toLowerCase();
-  if (name.includes("repsol")) return repsol;
-  if (name.includes("cepsa")) return cepsa;
-  if (name.includes("bp")) return bp;
-  if (name.includes("shell")) return shell;
-  if (name.includes("galp")) return galp;
-  if (name.includes("eroski")) return eroski;
-  if (name.includes("moeve")) return moeve;
-  if (name.includes("petronor")) return petronor;
-  if (name.includes("costco")) return costco;
-  if (name.includes("easygas")) return easygas;
-  if (name.includes("petroprix")) return petroprix;
-  return null;
-};
+const getBrandLogo = (rotulo?: string): string | null => getBrandByRotulo(rotulo)?.logo ?? null;
 
 // Función para determinar si un precio es bajo
 const esPrecioBajo = (precio: string, tipo: "gasolina" | "diesel"): boolean => {
@@ -86,6 +61,7 @@ export default function GasolineraDetalle() {
   const [ordenCercanas, setOrdenCercanas] = useState<"distancia" | "precio">("distancia");
   const [shareFeedback, setShareFeedback] = useState<string | null>(null);
   const [mostrarCombustiblesExtra, setMostrarCombustiblesExtra] = useState(false);
+  const { esMarcaFavorita, getSocio } = useBrandPreferences();
 
   useEffect(() => {
     globalThis.scrollTo({ top: 0, behavior: "auto" });
@@ -113,6 +89,9 @@ export default function GasolineraDetalle() {
   }
 
   const logo = getBrandLogo(gasolinera["Rótulo"]);
+  const brand = getBrandByRotulo(gasolinera["Rótulo"]);
+  const isFavBrand = brand ? esMarcaFavorita(brand.id) : false;
+  const isSocioBrand = brand ? getSocio(brand.id) : false;
 
   // Preparar lista de combustibles
   const combustibles = [
@@ -213,8 +192,13 @@ export default function GasolineraDetalle() {
             )}
 
             <div className="flex-1 min-w-0">
-              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight">
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 leading-tight flex items-center flex-wrap gap-2">
                 {gasolinera["Rótulo"]}
+                {isFavBrand && (
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${isSocioBrand ? 'bg-amber-100 text-amber-700' : 'bg-[#EEF0FF] text-[#000C74]'}`}>
+                    {isSocioBrand ? t('table.member', { defaultValue: 'Socio' }) : t('table.yourBrand', { defaultValue: 'Tu marca' })}
+                  </span>
+                )}
               </h1>
               <p className="text-sm text-gray-500 mt-0.5">
                 {gasolinera.Municipio}, {gasolinera.Provincia}
@@ -359,7 +343,7 @@ export default function GasolineraDetalle() {
             className="h-56 sm:h-80 w-full z-0"
             style={{ zIndex: 0 }}
           >
-            <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+            <TileLayer url={import.meta.env.VITE_MAP_TILE_URL ?? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"} />
             <Marker position={[gasolinera.Latitud, gasolinera.Longitud]} icon={icon}>
               <Popup>
                 <div className="p-2">

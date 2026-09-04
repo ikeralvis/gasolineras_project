@@ -122,7 +122,8 @@
     "brand": "Brand",
     "location": "Location",
     "favorite": "Fav",
-    "actions": "Actions"
+    "actions": "Actions",
+    "highlightedForYou": "Highlighted for you"
   },
   "favorites": {
     "title": "My Favorites",
@@ -185,7 +186,11 @@
       "electrico": "Electric",
       "hibrido": "Hybrid"
     },
-    "language": "Language"
+    "language": "Language",
+    "favoriteBrands": "Favorite brands",
+    "favoriteBrandsDescription": "They'll be highlighted in listings and on the map",
+    "isMember": "I'm a member / have a discount",
+    "noBrandSelected": "Tap a brand to highlight it in your searches."
   },
   "auth": {
     "welcomeBack": "Welcome back!",
@@ -234,7 +239,9 @@
     "schedule": "Schedule",
     "price": "Price",
     "favorite": "Fav",
-    "viewDetails": "View details"
+    "viewDetails": "View details",
+    "yourBrand": "Your brand",
+    "member": "Member"
   },
   "map": {
     "title": "Gas Stations Map",
@@ -243,7 +250,10 @@
     "showingStations": "Showing {{count}} stations",
     "locationDetected": "Location detected",
     "yourLocation": "Your location",
-    "loadingMap": "Loading map..."
+    "loadingMap": "Loading map...",
+    "searchPlaceholder": "Search address, city or place...",
+    "searchNoResults": "No results",
+    "searchClear": "Clear search"
   },
   "detail": {
     "back": "Back",

@@ -20,7 +20,7 @@ export default function Footer() {
 
         <div className="mt-6 flex flex-col gap-2 text-xs text-gray-500 md:flex-row md:items-center md:justify-between">
           <span>© {new Date().getFullYear()} TankGo. Todos los derechos reservados.</span>
-          <span>Contacto: soporte@tankgo.dev</span>
+          <span>Contacto: iker.a@opendeusto.es</span>
         </div>
       </div>
     </footer>

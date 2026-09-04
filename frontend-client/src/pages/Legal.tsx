@@ -11,7 +11,7 @@ export default function Legal() {
               <h2 className="text-lg font-semibold text-[#0f172a]">Titularidad</h2>
               <p>
                 TankGo es una plataforma informativa para la consulta de precios de carburantes. El titular del sitio es
-                TankGo Labs, con domicilio en Espana. Para cualquier consulta puedes escribir a soporte@tankgo.dev.
+                TankGo Labs, con domicilio en Espana. Para cualquier consulta puedes escribir a iker.a@opendeusto.es.
               </p>
             </div>
 

@@ -28,3 +28,15 @@ CREATE TABLE IF NOT EXISTS user_favorites (
 -- Crear índices
 CREATE INDEX IF NOT EXISTS idx_user_favorites_user_id ON user_favorites(user_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
+-- Marcas favoritas del usuario (para destacar sus gasolineras preferidas y marcar si es socio/tiene descuento)
+CREATE TABLE IF NOT EXISTS user_brand_preferences (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    marca VARCHAR(50) NOT NULL,
+    es_socio BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, marca)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_brand_preferences_user_id ON user_brand_preferences(user_id);

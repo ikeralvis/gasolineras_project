@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from "../contexts/AuthContext";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { apiFetch } from "../api/http";
+import { BRANDS } from "../data/brands";
+import { useBrandPreferences } from "../hooks/useBrandPreferences";
 
 interface Usuario {
   id: number;
@@ -35,6 +37,8 @@ export default function Profile() {
   const [saveOkMessage, setSaveOkMessage] = useState<string>("");
   const navigate = useNavigate();
   const onboardingMode = searchParams.get('onboarding') === '1';
+  const { marcas: marcasFavoritas, esMarcaFavorita, getSocio, toggleMarca, guardarMarca } = useBrandPreferences();
+  const [marcaGuardando, setMarcaGuardando] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -143,6 +147,28 @@ export default function Profile() {
       hibrido: t('profile.vehicleFuelOptions.hibrido'),
     };
     return tipo ? labels[tipo] || tipo : t('profile.notDefined');
+  };
+
+  const handleToggleMarca = async (marcaId: string) => {
+    setMarcaGuardando(marcaId);
+    try {
+      await toggleMarca(marcaId);
+    } catch (err) {
+      console.error('Error al actualizar marca favorita:', err);
+    } finally {
+      setMarcaGuardando(null);
+    }
+  };
+
+  const handleToggleSocio = async (marcaId: string, esSocio: boolean) => {
+    setMarcaGuardando(marcaId);
+    try {
+      await guardarMarca(marcaId, esSocio);
+    } catch (err) {
+      console.error('Error al actualizar socio de marca:', err);
+    } finally {
+      setMarcaGuardando(null);
+    }
   };
 
   const initials = perfil?.nombre
@@ -327,6 +353,73 @@ export default function Profile() {
               </svg>
               {saveOkMessage}
             </div>
+          )}
+        </div>
+
+        {/* Marcas favoritas */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-xl bg-[#F0F2FF] flex items-center justify-center">
+              <svg className="w-5 h-5 text-[#000C74]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v18l7-4 7 4V3a1 1 0 00-1-1H6a1 1 0 00-1 1z" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-gray-900">{t('profile.favoriteBrands', { defaultValue: 'Marcas favoritas' })}</h2>
+              <p className="text-xs text-gray-500">{t('profile.favoriteBrandsDescription', { defaultValue: 'Se destacarán en los listados y en el mapa' })}</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-4">
+            {BRANDS.map((brand) => {
+              const isFav = esMarcaFavorita(brand.id);
+              const isSocio = getSocio(brand.id);
+              const isSaving = marcaGuardando === brand.id;
+              return (
+                <div
+                  key={brand.id}
+                  className={`relative rounded-xl border-2 p-2.5 transition-all ${
+                    isFav ? 'border-[#000C74] bg-[#F0F2FF]' : 'border-gray-100 bg-gray-50'
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleToggleMarca(brand.id)}
+                    disabled={isSaving}
+                    className="w-full flex items-center gap-2 text-left disabled:opacity-50"
+                  >
+                    <img src={brand.logo} alt="" className="w-7 h-7 object-contain rounded-md bg-white shrink-0 p-0.5" />
+                    <span className="text-xs font-semibold text-gray-800 truncate">{brand.label}</span>
+                    {isFav && (
+                      <svg className="w-3.5 h-3.5 text-[#000C74] ml-auto shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                      </svg>
+                    )}
+                  </button>
+
+                  {isFav && (
+                    <label className="flex items-center gap-1.5 mt-2 pt-2 border-t border-[#D7DBFF] cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isSocio}
+                        disabled={isSaving}
+                        onChange={(e) => handleToggleSocio(brand.id, e.target.checked)}
+                        className="w-3.5 h-3.5 text-[#000C74] rounded border-gray-300 focus:ring-[#000C74]"
+                      />
+                      <span className="text-[10px] font-medium text-gray-600">
+                        {t('profile.isMember', { defaultValue: 'Soy socio / tengo descuento' })}
+                      </span>
+                    </label>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {marcasFavoritas.length === 0 && (
+            <p className="text-xs text-gray-400 mt-3">
+              {t('profile.noBrandSelected', { defaultValue: 'Toca una marca para destacarla en tus búsquedas.' })}
+            </p>
           )}
         </div>
 

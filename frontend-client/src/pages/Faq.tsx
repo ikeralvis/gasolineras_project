@@ -34,7 +34,7 @@ export default function Faq() {
               <h2 className="text-lg font-semibold text-[#0f172a]">Puedo eliminar mi cuenta?</h2>
               <p>
                 Si. Desde tu perfil puedes solicitar la eliminacion de la cuenta. Tambien puedes escribir a
-                soporte@tankgo.dev.
+                iker.a@opendeusto.es.
               </p>
             </div>
 

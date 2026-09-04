@@ -12,15 +12,18 @@ import fastifyCompress from '@fastify/compress';
 import { settings } from './config/env.js';
 import { authRoutes } from './routes/auth.js';
 import { favoritesRoutes } from './routes/favorites.js';
+import { brandPreferencesRoutes } from './routes/brandPreferences.js';
 import { healthRoutes } from './routes/health.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { buildInternalAuthHook } from './hooks/internalAuthHook.js';
 
 import { UserRepository } from './repositories/userRepository.js';
 import { FavoriteRepository } from './repositories/favoriteRepository.js';
+import { BrandPreferenceRepository } from './repositories/brandPreferenceRepository.js';
 import { AuthService } from './services/authService.js';
 import { UserService } from './services/userService.js';
 import { FavoriteService } from './services/favoriteService.js';
+import { BrandPreferenceService } from './services/brandPreferenceService.js';
 import { GasolinerasClient } from './clients/gasolinerasClient.js';
 
 function buildPgConnectionString(databaseUrl) {
@@ -43,6 +46,7 @@ async function setupDatabase(fastify) {
 function buildContainer(fastify) {
   const userRepository = new UserRepository(fastify.pg);
   const favoriteRepository = new FavoriteRepository(fastify.pg);
+  const brandPreferenceRepository = new BrandPreferenceRepository(fastify.pg);
   const gasolinerasClient = new GasolinerasClient({ baseUrl: settings.gasolinerasServiceUrl });
 
   const authService = new AuthService({
@@ -59,10 +63,13 @@ function buildContainer(fastify) {
     validateOnWrite: settings.favoritesValidateOnWrite,
   });
 
+  const brandPreferenceService = new BrandPreferenceService({ brandPreferenceRepository });
+
   return {
     authService,
     userService,
     favoriteService,
+    brandPreferenceService,
   };
 }
 
@@ -134,6 +141,7 @@ export async function buildServer() {
   fastify.register(healthRoutes);
   fastify.register(authRoutes, { prefix: '/api/usuarios' });
   fastify.register(favoritesRoutes, { prefix: '/api/usuarios' });
+  fastify.register(brandPreferencesRoutes, { prefix: '/api/usuarios' });
 
   fastify.get('/', async () => ({
     service: 'usuarios-service',
